@@ -136,7 +136,8 @@ body{
 
 body.app-booting > header,
 body.app-booting > main,
-body.app-booting > .bottom-controls{
+body.app-booting > .bottom-controls,
+body.app-booting > .auth-gate{
   visibility:hidden;
 }
 

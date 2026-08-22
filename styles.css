@@ -136,9 +136,26 @@ body{
 
 body.app-booting > header,
 body.app-booting > main,
-body.app-booting > .bottom-controls,
-body.app-booting > .auth-gate{
+body.app-booting > .bottom-controls{
   visibility:hidden;
+}
+
+.boot-cover{
+  position:fixed;
+  inset:0;
+  z-index:1000;
+
+  background:
+    radial-gradient(
+      130% 55% at 50% -10%,
+      var(--glow) 0%,
+      var(--glow0) 60%
+    ),
+    var(--bg);
+}
+
+body:not(.app-booting) > .boot-cover{
+  display:none;
 }
 
 button,input,select{font-family:inherit}

@@ -2610,7 +2610,10 @@ body.login-page{
       0
     );
 
-  transition:none;
+  transition:
+    top
+    80ms
+    cubic-bezier(.22,.61,.36,1);
 
   will-change:top;
 }

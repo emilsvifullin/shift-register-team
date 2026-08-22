@@ -119,6 +119,18 @@ export async function signOut(){
     throw error;
   }
 
+  document.body.classList.add(
+    "auth-signing-out"
+  );
+
+  await new Promise(
+    resolve=>
+      window.setTimeout(
+        resolve,
+        240
+      )
+  );
+
   window.location.replace(
     "./login.html"
   );

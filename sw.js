@@ -1,4 +1,4 @@
-const CACHE_NAME="sr-team-runtime-v5";
+const CACHE_NAME="sr-team-runtime-v6";
 
 const INDEX_FILE="./index.html";
 

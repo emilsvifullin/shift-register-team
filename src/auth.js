@@ -187,6 +187,42 @@ export async function startAuth({
     );
   }
 
+  let autofillFocusTimer=0;
+
+  const releaseAutofillFocus=()=>{
+    window.clearTimeout(
+      autofillFocusTimer
+    );
+
+    autofillFocusTimer=
+      window.setTimeout(
+        ()=>{
+          if(
+            email.value.trim() &&
+            password.value &&
+            document.activeElement===email
+          ){
+            email.blur();
+          }
+        },
+        80
+      );
+  };
+
+  form.addEventListener(
+    "animationstart",
+    event=>{
+      if(
+        event.animationName!==
+        "auth-autofill-detected"
+      ){
+        return;
+      }
+
+      releaseAutofillFocus();
+    }
+  );
+
   form.addEventListener(
     "submit",
     async event=>{

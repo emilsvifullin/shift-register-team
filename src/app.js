@@ -40,6 +40,7 @@ import {
 } from "./storage.js";
 
 import {
+  signOut,
   startAuth
 } from "./auth.js";
 
@@ -1301,6 +1302,9 @@ function viewData(){
       ${backupAction}
 
       <button class="btn warn" id="doWipe">Удалить все смены</button>
+
+      <div class="ml">Аккаунт</div>
+      <button class="btn" id="doSignOut">Выйти</button>
     `}
 
     <div class="developer-credit">
@@ -5231,6 +5235,33 @@ app.addEventListener("click",async event=>{
     input.value="";
     render();
     toast("Загружено: "+shiftsWord(shifts.length));
+    return;
+  }
+
+  if(button.id==="doSignOut"){
+    const confirmed=await appConfirm(
+      "Выйти из аккаунта?",
+      {
+        okText:"Выйти"
+      }
+    );
+
+    if(!confirmed) return;
+
+    try{
+      await signOut();
+    }catch(error){
+      console.error(
+        "Не удалось выйти:",
+        error
+      );
+
+      toast(
+        "Не удалось выйти из аккаунта",
+        3200
+      );
+    }
+
     return;
   }
 

@@ -189,28 +189,6 @@ export async function startAuth({
     );
   }
 
-  let autofillFocusTimer=0;
-
-  const releaseAutofillFocus=()=>{
-    window.clearTimeout(
-      autofillFocusTimer
-    );
-
-    autofillFocusTimer=
-      window.setTimeout(
-        ()=>{
-          if(
-            email.value.trim() &&
-            password.value &&
-            document.activeElement===email
-          ){
-            email.blur();
-          }
-        },
-        80
-      );
-  };
-
   const setSubmitting=value=>{
     submit.disabled=value;
 
@@ -224,20 +202,6 @@ export async function startAuth({
       String(value)
     );
   };
-
-  form.addEventListener(
-    "animationstart",
-    event=>{
-      if(
-        event.animationName!==
-        "auth-autofill-detected"
-      ){
-        return;
-      }
-
-      releaseAutofillFocus();
-    }
-  );
 
   form.addEventListener(
     "submit",

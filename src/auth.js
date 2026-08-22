@@ -2,80 +2,11 @@ import {
   supabaseClient
 } from "./supabase.js";
 
-function authElements(){
-  return {
-    gate:
-      document.getElementById(
-        "authGate"
-      ),
-
-    form:
-      document.getElementById(
-        "authForm"
-      ),
-
-    email:
-      document.getElementById(
-        "email"
-      ),
-
-    password:
-      document.getElementById(
-        "current-password"
-      ),
-
-    submit:
-      document.getElementById(
-        "authSubmit"
-      ),
-
-    error:
-      document.getElementById(
-        "authError"
-      )
-  };
-}
-
-function setAuthError(message=""){
-  const {error}=
-    authElements();
-
-  if(!error){
-    return;
-  }
-
-  error.textContent=
-    message;
-
-  error.hidden=
-    !message;
-}
-
-function showAuthGate(){
-  const {gate}=
-    authElements();
-
-  document.body.classList.add(
-    "auth-required"
-  );
-
-  document.body.classList.remove(
-    "auth-authenticated"
-  );
-
-  document.body.classList.remove(
-    "app-booting"
-  );
-
-  gate?.setAttribute(
-    "aria-hidden",
-    "false"
-  );
-}
-
 function prepareApp(){
-  const {gate}=
-    authElements();
+  const gate=
+    document.getElementById(
+      "authGate"
+    );
 
   document.body.classList.add(
     "app-booting"
@@ -124,180 +55,21 @@ async function getProfile(userId){
   return data;
 }
 
-async function openSession(
-  session,
-  onAuthenticated,
-  {freshLogin=false}={}
-){
-  if(!session?.user){
-    showAuthGate();
-    return;
-  }
-
+async function goToLogin(){
   try{
-    const profile=
-      await getProfile(
-        session.user.id
-      );
+    await supabaseClient
+      .auth
+      .signOut();
+  }catch{}
 
-    prepareApp();
-
-    await onAuthenticated({
-      user:session.user,
-      profile,
-      freshLogin
-    });
-  }catch(error){
-    console.error(
-      "Не удалось открыть профиль:",
-      error
-    );
-
-    try{
-      await supabaseClient
-        .auth
-        .signOut();
-    }catch{}
-
-    setAuthError(
-      "Не удалось открыть профиль пользователя."
-    );
-
-    showAuthGate();
-  }
+  window.location.replace(
+    "./login.html"
+  );
 }
 
 export async function startAuth({
   onAuthenticated
 }){
-  const {
-    form,
-    email,
-    password,
-    submit
-  }=
-    authElements();
-
-  if(
-    !form ||
-    !email ||
-    !password ||
-    !submit
-  ){
-    throw new Error(
-      "Форма авторизации не найдена"
-    );
-  }
-
-  const setSubmitting=value=>{
-    submit.disabled=value;
-
-    submit.textContent=
-      value
-        ? "Входим…"
-        : "Войти";
-
-    form.setAttribute(
-      "aria-busy",
-      String(value)
-    );
-  };
-
-  form.addEventListener(
-    "submit",
-    async event=>{
-      event.preventDefault();
-
-      const emailValue=
-        email.value
-          .trim();
-
-      const passwordValue=
-        password.value;
-
-      if(
-        !emailValue ||
-        !passwordValue
-      ){
-        setAuthError(
-          "Введите email и пароль."
-        );
-
-        return;
-      }
-
-      setAuthError();
-
-      email.blur();
-      password.blur();
-
-      setSubmitting(true);
-
-      let data;
-      let error;
-
-      try{
-        ({
-          data,
-          error
-        }=
-          await supabaseClient
-            .auth
-            .signInWithPassword({
-              email:emailValue,
-              password:passwordValue
-            }));
-      }catch(authError){
-        console.error(
-          "Не удалось выполнить вход:",
-          authError
-        );
-
-        setSubmitting(false);
-
-        setAuthError(
-          "Не удалось выполнить вход."
-        );
-
-        return;
-      }
-
-      if(
-        error ||
-        !data.session
-      ){
-        setSubmitting(false);
-
-        password.value="";
-
-        setAuthError(
-          "Неверный email или пароль."
-        );
-
-        return;
-      }
-
-      await openSession(
-        data.session,
-        onAuthenticated,
-        {
-          freshLogin:true
-        }
-      );
-
-      if(
-        document.body.classList.contains(
-          "auth-authenticated"
-        )
-      ){
-        email.value="";
-        password.value="";
-      }
-
-      setSubmitting(false);
-    }
-  );
-
   const {
     data,
     error
@@ -306,30 +78,35 @@ export async function startAuth({
       .auth
       .getSession();
 
-  if(error){
+  if(
+    error ||
+    !data.session?.user
+  ){
+    await goToLogin();
+    return;
+  }
+
+  try{
+    const profile=
+      await getProfile(
+        data.session.user.id
+      );
+
+    prepareApp();
+
+    await onAuthenticated({
+      user:data.session.user,
+      profile,
+      freshLogin:false
+    });
+  }catch(error){
     console.error(
-      "Не удалось проверить сессию:",
+      "Не удалось открыть профиль:",
       error
     );
 
-    setAuthError(
-      "Не удалось проверить авторизацию."
-    );
-
-    showAuthGate();
-    return;
+    await goToLogin();
   }
-
-  if(data.session){
-    await openSession(
-      data.session,
-      onAuthenticated
-    );
-
-    return;
-  }
-
-  showAuthGate();
 }
 
 export async function signOut(){
@@ -342,5 +119,7 @@ export async function signOut(){
     throw error;
   }
 
-  window.location.reload();
+  window.location.replace(
+    "./login.html"
+  );
 }

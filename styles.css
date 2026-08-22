@@ -2612,6 +2612,13 @@ body.auth-required > .bottom-controls{
 }
 
 .auth-field input{
+  --auth-input-bg:
+    color-mix(
+      in srgb,
+      var(--surf) 95.5%,
+      var(--ink) 4.5%
+    );
+
   width:100%;
   height:48px;
 
@@ -2621,7 +2628,7 @@ body.auth-required > .bottom-controls{
   border-radius:14px;
   outline:0;
 
-  background:var(--tint);
+  background:var(--auth-input-bg);
   color:var(--ink);
 
   direction:ltr;
@@ -2637,6 +2644,58 @@ body.auth-required > .bottom-controls{
   border-color:var(--gold-line);
 
   box-shadow:
+    0 0 0 3px
+    var(--gold-soft);
+}
+
+@keyframes auth-autofill-detected{
+  from{
+    opacity:1;
+  }
+
+  to{
+    opacity:1;
+  }
+}
+
+.auth-field input:-webkit-autofill{
+  -webkit-text-fill-color:var(--ink);
+  caret-color:var(--ink);
+
+  -webkit-box-shadow:
+    0 0 0 1000px
+    var(--auth-input-bg)
+    inset;
+
+  box-shadow:
+    0 0 0 1000px
+    var(--auth-input-bg)
+    inset;
+
+  animation-name:
+    auth-autofill-detected;
+
+  animation-duration:.001s;
+
+  transition:
+    background-color
+    9999s
+    ease-out
+    0s;
+}
+
+.auth-field input:-webkit-autofill:focus{
+  -webkit-box-shadow:
+    0 0 0 1000px
+    var(--auth-input-bg)
+    inset,
+    0 0 0 3px
+    var(--gold-soft);
+
+  box-shadow:
+    0 0 0 1000px
+    var(--auth-input-bg)
+    inset,
     0 0 0 3px
     var(--gold-soft);
 }

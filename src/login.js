@@ -32,21 +32,24 @@ const visualViewport=
   window.visualViewport;
 
 const KEYBOARD_OPEN_DELTA=120;
-const KEYBOARD_CLOSED_DELTA=80;
-const KEYBOARD_OPEN_STABLE_MS=140;
-const KEYBOARD_CLOSE_STABLE_MS=240;
-const CARD_LOCK_DELAY_MS=300;
+const KEYBOARD_CLOSE_START_DELTA=28;
+const KEYBOARD_CLOSED_DELTA=70;
+const KEYBOARD_SETTLE_MS=120;
+const FIELD_SWITCH_GUARD_MS=320;
 
 let submitting=false;
 let userInteracted=false;
 let focusEnabled=false;
 
 let autofillTimer=0;
-let keyboardOpenTimer=0;
+let keyboardSettleTimer=0;
 let keyboardCloseTimer=0;
-let keyboardLockTimer=0;
+let fieldSwitchTimer=0;
+let viewportFrame=0;
 
-let keyboardSession=false;
+let keyboardState="idle";
+let keyboardOpenHeight=null;
+let fieldSwitchGuardUntil=0;
 
 let fullViewportHeight=
   visualViewport
@@ -115,35 +118,9 @@ function getViewportMetrics(){
   };
 }
 
-function blurInputs(){
-  if(
-    isAuthInput(
-      document.activeElement
-    )
-  ){
-    document.activeElement.blur();
-  }
-
-  email.blur();
-  password.blur();
-
-  document.body.classList.remove(
-    "auth-input-focused"
-  );
-}
-
-function setIdleFields(){
-  userInteracted=false;
-
-  setFocusEnabled(false);
-  setInputsReadonly(true);
-
-  blurInputs();
-}
-
 function clearKeyboardTimers(){
   window.clearTimeout(
-    keyboardOpenTimer
+    keyboardSettleTimer
   );
 
   window.clearTimeout(
@@ -151,116 +128,28 @@ function clearKeyboardTimers(){
   );
 
   window.clearTimeout(
-    keyboardLockTimer
+    fieldSwitchTimer
   );
+
+  if(viewportFrame){
+    cancelAnimationFrame(
+      viewportFrame
+    );
+
+    viewportFrame=0;
+  }
 }
 
-function resetCardImmediately(){
-  clearKeyboardTimers();
-
-  keyboardSession=false;
-
-  document.body.classList.remove(
-    "auth-keyboard-open",
-    "auth-keyboard-locked"
-  );
-
+function setCardCenterToPage(){
   document.documentElement
     .style
     .removeProperty(
-      "--auth-keyboard-center-y"
+      "--auth-card-center-y"
     );
 }
 
-function returnCardToCenter(){
-  clearKeyboardTimers();
-
-  if(!keyboardSession){
-    resetCardImmediately();
-    return;
-  }
-
-  keyboardSession=false;
-
-  /*
-    Пока клавиатура закрывалась,
-    карточка оставалась полностью
-    замороженной.
-
-    Теперь возвращаем transition
-    и одним движением отправляем
-    карточку в центр страницы.
-  */
-  document.body.classList.remove(
-    "auth-keyboard-locked"
-  );
-
-  void authCard?.offsetHeight;
-
-  requestAnimationFrame(
-    ()=>{
-      document.body.classList.remove(
-        "auth-keyboard-open"
-      );
-
-      document.documentElement
-        .style
-        .removeProperty(
-          "--auth-keyboard-center-y"
-        );
-    }
-  );
-}
-
-function requestKeyboardDismiss(){
-  window.clearTimeout(
-    keyboardOpenTimer
-  );
-
-  userInteracted=false;
-
-  setFocusEnabled(false);
-
-  /*
-    Никакого изменения позиции карточки.
-    Только снимаем focus.
-
-    Карточка вернётся в центр лишь после
-    того, как visualViewport подтвердит,
-    что клавиатура полностью закрылась.
-  */
-  blurInputs();
-
-  setInputsReadonly(true);
-}
-
-function focusAuthInput(input){
-  if(!isAuthInput(input)){
-    return;
-  }
-
-  userInteracted=true;
-
-  setInputsReadonly(false);
-  setFocusEnabled(true);
-
-  try{
-    input.focus({
-      preventScroll:true
-    });
-  }catch{
-    input.focus();
-  }
-}
-
-function freezeCardAboveKeyboard(){
-  if(
-    keyboardSession ||
-    !focusEnabled ||
-    !isAuthInput(
-      document.activeElement
-    )
-  ){
+function setCardCenterFromViewport(){
+  if(!authCard){
     return;
   }
 
@@ -270,20 +159,10 @@ function freezeCardAboveKeyboard(){
   }=
     getViewportMetrics();
 
-  if(
-    fullViewportHeight -
-      height <=
-    KEYBOARD_OPEN_DELTA
-  ){
-    return;
-  }
-
   const cardHeight=
     authCard
-      ? authCard
-          .getBoundingClientRect()
-          .height
-      : 0;
+      .getBoundingClientRect()
+      .height;
 
   const margin=12;
 
@@ -322,37 +201,194 @@ function freezeCardAboveKeyboard(){
   document.documentElement
     .style
     .setProperty(
-      "--auth-keyboard-center-y",
+      "--auth-card-center-y",
       `${Math.round(center)}px`
-    );
-
-  keyboardSession=true;
-
-  document.body.classList.add(
-    "auth-keyboard-open"
-  );
-
-  window.clearTimeout(
-    keyboardLockTimer
-  );
-
-  keyboardLockTimer=
-    window.setTimeout(
-      ()=>{
-        if(!keyboardSession){
-          return;
-        }
-
-        document.body.classList.add(
-          "auth-keyboard-locked"
-        );
-      },
-      CARD_LOCK_DELAY_MS
     );
 }
 
+function scheduleCardCenterFromViewport(){
+  if(viewportFrame){
+    return;
+  }
+
+  viewportFrame=
+    requestAnimationFrame(
+      ()=>{
+        viewportFrame=0;
+        setCardCenterFromViewport();
+      }
+    );
+}
+
+function blurInputs(){
+  if(
+    isAuthInput(
+      document.activeElement
+    )
+  ){
+    document.activeElement.blur();
+  }
+
+  email.blur();
+  password.blur();
+
+  document.body.classList.remove(
+    "auth-input-focused"
+  );
+}
+
+function setIdleFields(){
+  userInteracted=false;
+
+  setFocusEnabled(false);
+  setInputsReadonly(true);
+
+  blurInputs();
+}
+
+function finishKeyboardSession(){
+  clearKeyboardTimers();
+
+  keyboardState="idle";
+  keyboardOpenHeight=null;
+  fieldSwitchGuardUntil=0;
+
+  setIdleFields();
+  setCardCenterToPage();
+}
+
+function beginKeyboardDismiss(){
+  window.clearTimeout(
+    keyboardSettleTimer
+  );
+
+  userInteracted=false;
+  setFocusEnabled(false);
+  setInputsReadonly(true);
+
+  if(keyboardState!=="idle"){
+    keyboardState="closing";
+  }
+
+  blurInputs();
+}
+
+function beginOpeningSession(){
+  if(keyboardState!=="idle"){
+    return;
+  }
+
+  keyboardState="opening";
+  keyboardOpenHeight=null;
+
+  window.clearTimeout(
+    keyboardCloseTimer
+  );
+}
+
+function focusAuthInput(input){
+  if(!isAuthInput(input)){
+    return;
+  }
+
+  const previous=
+    document.activeElement;
+
+  const switchingFields=
+    keyboardState==="open" &&
+    isAuthInput(previous) &&
+    previous!==input;
+
+  userInteracted=true;
+  setInputsReadonly(false);
+  setFocusEnabled(true);
+
+  if(keyboardState==="idle"){
+    beginOpeningSession();
+  }
+
+  if(switchingFields){
+    fieldSwitchGuardUntil=
+      performance.now() +
+      FIELD_SWITCH_GUARD_MS;
+  }
+
+  try{
+    input.focus({
+      preventScroll:true
+    });
+  }catch{
+    input.focus();
+  }
+
+  if(switchingFields){
+    window.clearTimeout(
+      fieldSwitchTimer
+    );
+
+    fieldSwitchTimer=
+      window.setTimeout(
+        ()=>{
+          if(
+            keyboardState!=="open" ||
+            !isAuthInput(
+              document.activeElement
+            )
+          ){
+            return;
+          }
+
+          const {
+            height
+          }=
+            getViewportMetrics();
+
+          keyboardOpenHeight=
+            height;
+        },
+        FIELD_SWITCH_GUARD_MS+40
+      );
+  }
+}
+
+function settleKeyboardOpen(){
+  if(keyboardState!=="opening"){
+    return;
+  }
+
+  const {
+    height
+  }=
+    getViewportMetrics();
+
+  const keyboardVisible=
+    fullViewportHeight -
+      height >
+    KEYBOARD_OPEN_DELTA;
+
+  if(
+    !keyboardVisible ||
+    !focusEnabled ||
+    !isAuthInput(
+      document.activeElement
+    )
+  ){
+    return;
+  }
+
+  setCardCenterFromViewport();
+
+  keyboardOpenHeight=
+    height;
+
+  keyboardState="open";
+}
+
 function confirmKeyboardClosed(){
-  if(!keyboardSession){
+  if(
+    keyboardState!=="closing" &&
+    keyboardState!=="open"
+  ){
     return;
   }
 
@@ -376,89 +412,116 @@ function confirmKeyboardClosed(){
       height
     );
 
-  /*
-    При закрытии клавиатуры кнопкой iOS
-    input иногда формально остаётся focused.
-    Убираем этот остаточный focus только
-    после подтверждённого закрытия.
-  */
-  setIdleFields();
-
-  returnCardToCenter();
+  finishKeyboardSession();
 }
 
-function scheduleKeyboardState(){
+function handleViewportGeometry(){
   const {
     height
   }=
     getViewportMetrics();
 
-  if(!keyboardSession){
+  if(keyboardState==="idle"){
+    if(
+      !isAuthInput(
+        document.activeElement
+      )
+    ){
+      fullViewportHeight=
+        Math.max(
+          fullViewportHeight,
+          height
+        );
+    }
+
+    return;
+  }
+
+  if(keyboardState==="opening"){
     const keyboardVisible=
       fullViewportHeight -
         height >
       KEYBOARD_OPEN_DELTA;
 
+    if(!keyboardVisible){
+      return;
+    }
+
+    /*
+      Карточка двигается вместе
+      с реальной анимацией клавиатуры iOS.
+      Собственной CSS-анимации нет.
+    */
+    scheduleCardCenterFromViewport();
+
+    window.clearTimeout(
+      keyboardSettleTimer
+    );
+
+    keyboardSettleTimer=
+      window.setTimeout(
+        settleKeyboardOpen,
+        KEYBOARD_SETTLE_MS
+      );
+
+    return;
+  }
+
+  if(keyboardState==="open"){
+    /*
+      Email <-> Пароль:
+      карточка заморожена.
+    */
     if(
-      !keyboardVisible ||
-      !focusEnabled ||
-      !isAuthInput(
-        document.activeElement
-      )
+      performance.now()<
+      fieldSwitchGuardUntil
     ){
+      return;
+    }
+
+    const startedClosing=
+      keyboardOpenHeight!==null &&
+      height>=
+        keyboardOpenHeight +
+        KEYBOARD_CLOSE_START_DELTA;
+
+    if(!startedClosing){
+      return;
+    }
+
+    keyboardState="closing";
+  }
+
+  if(keyboardState==="closing"){
+    /*
+      При закрытии карточка снова
+      следует за нативной клавиатурой.
+    */
+    scheduleCardCenterFromViewport();
+
+    const keyboardClosed=
+      fullViewportHeight -
+        height <=
+      KEYBOARD_CLOSED_DELTA;
+
+    if(!keyboardClosed){
       window.clearTimeout(
-        keyboardOpenTimer
+        keyboardCloseTimer
       );
 
       return;
     }
 
-    /*
-      Ждём окончания resize-анимации iOS,
-      затем вычисляем позицию только один раз.
-    */
-    window.clearTimeout(
-      keyboardOpenTimer
-    );
-
-    keyboardOpenTimer=
-      window.setTimeout(
-        freezeCardAboveKeyboard,
-        KEYBOARD_OPEN_STABLE_MS
-      );
-
-    return;
-  }
-
-  /*
-    Во время открытой клавиатуры top карточки
-    больше никогда не пересчитывается.
-
-    resize/scroll нужны только для определения
-    окончательного закрытия клавиатуры.
-  */
-  const keyboardClosed=
-    fullViewportHeight -
-      height <=
-    KEYBOARD_CLOSED_DELTA;
-
-  if(!keyboardClosed){
     window.clearTimeout(
       keyboardCloseTimer
     );
 
-    return;
+    keyboardCloseTimer=
+      window.setTimeout(
+        confirmKeyboardClosed,
+        60
+      );
   }
-
-  window.clearTimeout(
-    keyboardCloseTimer
-  );
-
-  keyboardCloseTimer=
-    window.setTimeout(
-      confirmKeyboardClosed,
-      KEYBOARD_CLOSE_STABLE_MS
-    );
 }
 
 document.addEventListener(
@@ -480,15 +543,6 @@ document.addEventListener(
           );
 
         if(isAuthInput(input)){
-          /*
-            Всегда берём focus под свой контроль.
-            Safari не получает возможности
-            самостоятельно панорамировать страницу.
-
-            Первый focus и Email <-> Пароль
-            проходят через одну и ту же
-            непрерывную клавиатурную сессию.
-          */
           if(event.cancelable){
             event.preventDefault();
           }
@@ -507,7 +561,7 @@ document.addEventListener(
         document.activeElement
       )
     ){
-      requestKeyboardDismiss();
+      beginKeyboardDismiss();
     }
   },
   {
@@ -523,7 +577,6 @@ document.addEventListener(
     }
 
     userInteracted=true;
-
     setInputsReadonly(false);
     setFocusEnabled(true);
   },
@@ -596,7 +649,7 @@ form.addEventListener(
       "auth-input-focused"
     );
 
-    scheduleKeyboardState();
+    handleViewportGeometry();
   }
 );
 
@@ -610,10 +663,6 @@ form.addEventListener(
             document.activeElement
           )
         ){
-          /*
-            Email -> Пароль:
-            клавиатурная сессия продолжается.
-          */
           return;
         }
 
@@ -627,13 +676,7 @@ form.addEventListener(
 );
 
 function releaseAutofillFocus(){
-  /*
-    AutoFill уже выбран пользователем.
-    Сразу убираем focus и клавиатуру,
-    но карточку не двигаем до фактического
-    завершения закрытия клавиатуры.
-  */
-  requestKeyboardDismiss();
+  beginKeyboardDismiss();
 }
 
 function scheduleAutofillSubmit(){
@@ -862,7 +905,7 @@ form.addEventListener(
 
     setError();
 
-    requestKeyboardDismiss();
+    beginKeyboardDismiss();
     setSubmitting(true);
 
     let data;
@@ -975,8 +1018,14 @@ function enforceInitialIdleState(){
     return;
   }
 
+  clearKeyboardTimers();
+
+  keyboardState="idle";
+  keyboardOpenHeight=null;
+  fieldSwitchGuardUntil=0;
+
   setIdleFields();
-  resetCardImmediately();
+  setCardCenterToPage();
 
   const {
     height
@@ -990,12 +1039,6 @@ function enforceInitialIdleState(){
     );
 }
 
-/*
-  readonly уже есть непосредственно
-  в login.html, поэтому до загрузки JS
-  Safari физически не может сам открыть
-  клавиатуру.
-*/
 enforceInitialIdleState();
 
 window.addEventListener(
@@ -1036,10 +1079,14 @@ document.addEventListener(
   }
 );
 
+function onViewportChange(){
+  handleViewportGeometry();
+}
+
 if(visualViewport){
   visualViewport.addEventListener(
     "resize",
-    scheduleKeyboardState,
+    onViewportChange,
     {
       passive:true
     }
@@ -1047,7 +1094,7 @@ if(visualViewport){
 
   visualViewport.addEventListener(
     "scroll",
-    scheduleKeyboardState,
+    onViewportChange,
     {
       passive:true
     }
@@ -1055,7 +1102,7 @@ if(visualViewport){
 }else{
   window.addEventListener(
     "resize",
-    scheduleKeyboardState,
+    onViewportChange,
     {
       passive:true
     }
@@ -1065,8 +1112,14 @@ if(visualViewport){
 window.addEventListener(
   "orientationchange",
   ()=>{
+    clearKeyboardTimers();
+
+    keyboardState="idle";
+    keyboardOpenHeight=null;
+    fieldSwitchGuardUntil=0;
+
     setIdleFields();
-    resetCardImmediately();
+    setCardCenterToPage();
 
     window.setTimeout(
       ()=>{

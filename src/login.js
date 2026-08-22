@@ -61,6 +61,63 @@ function isAuthInput(element){
   );
 }
 
+const visualViewport=
+  window.visualViewport;
+
+let fullViewportHeight=
+  visualViewport
+    ? visualViewport.height
+    : window.innerHeight;
+
+function syncAuthViewport(){
+  const viewport=
+    window.visualViewport;
+
+  const viewportTop=
+    viewport
+      ? viewport.offsetTop
+      : 0;
+
+  const viewportHeight=
+    viewport
+      ? viewport.height
+      : window.innerHeight;
+
+  if(
+    !isAuthInput(
+      document.activeElement
+    ) &&
+    viewportHeight>
+      fullViewportHeight
+  ){
+    fullViewportHeight=
+      viewportHeight;
+  }
+
+  const keyboardVisible=
+    isAuthInput(
+      document.activeElement
+    ) &&
+    viewportHeight<
+      fullViewportHeight - 120;
+
+  const visibleCenter=
+    viewportTop +
+    viewportHeight / 2;
+
+  document.documentElement
+    .style
+    .setProperty(
+      "--auth-visible-center-y",
+      `${visibleCenter}px`
+    );
+
+  document.body.classList.toggle(
+    "auth-keyboard-visible",
+    keyboardVisible
+  );
+}
+
 function updateFocusState(){
   document.body.classList.toggle(
     "auth-input-focused",
@@ -69,6 +126,8 @@ function updateFocusState(){
       document.activeElement
     )
   );
+
+  syncAuthViewport();
 }
 
 function clearFieldFocus(){
@@ -87,6 +146,10 @@ function clearFieldFocus(){
 
   document.body.classList.remove(
     "auth-input-focused"
+  );
+
+  document.body.classList.remove(
+    "auth-keyboard-visible"
   );
 }
 
@@ -538,3 +601,31 @@ userInteracted=false;
 focusAllowed=false;
 
 clearFieldFocus();
+
+if(visualViewport){
+  visualViewport.addEventListener(
+    "resize",
+    syncAuthViewport,
+    {
+      passive:true
+    }
+  );
+
+  visualViewport.addEventListener(
+    "scroll",
+    syncAuthViewport,
+    {
+      passive:true
+    }
+  );
+}
+
+window.addEventListener(
+  "resize",
+  syncAuthViewport,
+  {
+    passive:true
+  }
+);
+
+syncAuthViewport();

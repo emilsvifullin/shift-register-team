@@ -1,7 +1,7 @@
 :root{
   color-scheme:light dark;
   --bg:#0B0C0E;
-  --glow:rgba(28,30,35,1);
+  --glow:rgba(30,32,36,.48);
   --glow0:rgba(11,12,14,0);
   --surf:#141518;
   --line:rgba(255,255,255,.065);
@@ -35,7 +35,7 @@
 @media (prefers-color-scheme: light){
   :root{
     --bg:#F2F1EE;
-    --glow:rgba(255,255,255,1);
+    --glow:rgba(255,255,255,.55);
     --glow0:rgba(242,241,238,0);
     --surf:#FFFFFF;
     --line:rgba(0,0,0,.075);

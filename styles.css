@@ -2584,7 +2584,11 @@ body.login-page{
   position:fixed;
 
   left:50%;
-  top:50%;
+  top:
+    var(
+      --auth-card-center-y,
+      50%
+    );
 
   width:min(
     calc(100% - 40px),
@@ -2606,26 +2610,9 @@ body.login-page{
       0
     );
 
-  transition:
-    top
-    .24s
-    cubic-bezier(.22,.72,.22,1);
+  transition:none;
 
   will-change:top;
-}
-
-body.login-page.auth-keyboard-open
-.auth-card{
-  top:
-    var(
-      --auth-keyboard-center-y,
-      50%
-    );
-}
-
-body.login-page.auth-keyboard-locked
-.auth-card{
-  transition:none;
 }
 
 .auth-brand{

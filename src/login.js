@@ -23,10 +23,29 @@ const error=
     "authError"
   );
 
+const authCard=
+  document.querySelector(
+    ".auth-card"
+  );
+
+const visualViewport=
+  window.visualViewport;
+
 let submitting=false;
-let autofillTimer=0;
 let userInteracted=false;
-let focusAllowed=false;
+let focusEnabled=false;
+
+let autofillTimer=0;
+let keyboardTimer=0;
+
+let keyboardOpen=false;
+let keyboardScreenCenter=null;
+
+let fullViewportHeight=
+  visualViewport
+    ? visualViewport.height
+    : window.innerHeight;
+
 let supabaseClientPromise=null;
 
 function setError(message=""){
@@ -61,78 +80,50 @@ function isAuthInput(element){
   );
 }
 
-const visualViewport=
-  window.visualViewport;
+function setInputsReadonly(value){
+  email.readOnly=value;
+  password.readOnly=value;
+}
 
-let fullViewportHeight=
-  visualViewport
-    ? visualViewport.height
-    : window.innerHeight;
+function setFocusEnabled(value){
+  focusEnabled=value;
 
-function syncAuthViewport(){
-  const viewport=
-    window.visualViewport;
+  document.body.classList.toggle(
+    "auth-focus-enabled",
+    value
+  );
+}
 
-  const viewportTop=
-    viewport
-      ? viewport.offsetTop
-      : 0;
+function getViewportMetrics(){
+  return {
+    height:
+      visualViewport
+        ? visualViewport.height
+        : window.innerHeight,
 
-  const viewportHeight=
-    viewport
-      ? viewport.height
-      : window.innerHeight;
+    offsetTop:
+      visualViewport
+        ? visualViewport.offsetTop
+        : 0
+  };
+}
 
-  if(
-    !isAuthInput(
-      document.activeElement
-    ) &&
-    viewportHeight>
-      fullViewportHeight
-  ){
-    fullViewportHeight=
-      viewportHeight;
-  }
+function removeKeyboardPosition(){
+  keyboardOpen=false;
+  keyboardScreenCenter=null;
 
-  const keyboardVisible=
-    isAuthInput(
-      document.activeElement
-    ) &&
-    viewportHeight<
-      fullViewportHeight - 120;
-
-  const visibleCenter=
-    viewportTop +
-    viewportHeight / 2;
+  document.body.classList.remove(
+    "auth-keyboard-open"
+  );
 
   document.documentElement
     .style
-    .setProperty(
-      "--auth-visible-center-y",
-      `${visibleCenter}px`
+    .removeProperty(
+      "--auth-keyboard-center-y"
     );
-
-  document.body.classList.toggle(
-    "auth-keyboard-visible",
-    keyboardVisible
-  );
 }
 
-function updateFocusState(){
-  document.body.classList.toggle(
-    "auth-input-focused",
-    focusAllowed &&
-    isAuthInput(
-      document.activeElement
-    )
-  );
-
-  syncAuthViewport();
-}
-
-function clearFieldFocus(){
-  focusAllowed=false;
-
+function blurInputs(){
   if(
     isAuthInput(
       document.activeElement
@@ -147,10 +138,188 @@ function clearFieldFocus(){
   document.body.classList.remove(
     "auth-input-focused"
   );
+}
 
-  document.body.classList.remove(
-    "auth-keyboard-visible"
+function lockIdleState(){
+  userInteracted=false;
+
+  setFocusEnabled(false);
+  setInputsReadonly(true);
+
+  blurInputs();
+  removeKeyboardPosition();
+}
+
+function unlockForUser(){
+  userInteracted=true;
+
+  setInputsReadonly(false);
+  setFocusEnabled(true);
+}
+
+function setKeyboardTop(){
+  if(
+    !keyboardOpen ||
+    keyboardScreenCenter===null
+  ){
+    return;
+  }
+
+  const {
+    offsetTop
+  }=
+    getViewportMetrics();
+
+  /*
+    keyboardScreenCenter хранится
+    в экранных координатах.
+
+    offsetTop компенсирует попытки
+    Safari автоматически панорамировать
+    visual viewport.
+  */
+  const layoutTop=
+    offsetTop +
+    keyboardScreenCenter;
+
+  document.documentElement
+    .style
+    .setProperty(
+      "--auth-keyboard-center-y",
+      `${Math.round(layoutTop)}px`
+    );
+}
+
+function syncKeyboardState(){
+  const {
+    height
+  }=
+    getViewportMetrics();
+
+  const keyboardVisible=
+    fullViewportHeight -
+      height >
+    120;
+
+  if(!keyboardVisible){
+    /*
+      Клавиатура закрыта.
+
+      Обновляем нормальную высоту
+      экрана и возвращаем карточку
+      строго в центр страницы.
+    */
+    fullViewportHeight=
+      height;
+
+    const wasOpen=
+      keyboardOpen;
+
+    removeKeyboardPosition();
+
+    /*
+      Если клавиатуру скрыли кнопкой
+      на самой клавиатуре, Safari
+      может оставить input focused.
+
+      Нам это не нужно.
+    */
+    if(
+      wasOpen &&
+      isAuthInput(
+        document.activeElement
+      )
+    ){
+      lockIdleState();
+    }
+
+    return;
+  }
+
+  if(
+    !focusEnabled &&
+    !keyboardOpen
+  ){
+    return;
+  }
+
+  if(!keyboardOpen){
+    keyboardOpen=true;
+
+    /*
+      Положение вычисляем ТОЛЬКО
+      при первом открытии клавиатуры.
+
+      При Email -> Пароль оно уже
+      не пересчитывается.
+    */
+    const cardHeight=
+      authCard
+        ? authCard
+            .getBoundingClientRect()
+            .height
+        : 0;
+
+    const margin=12;
+
+    const idealCenter=
+      height / 2;
+
+    const minimumCenter=
+      cardHeight / 2 +
+      margin;
+
+    const maximumCenter=
+      Math.max(
+        minimumCenter,
+        height -
+          cardHeight / 2 -
+          margin
+      );
+
+    keyboardScreenCenter=
+      Math.min(
+        Math.max(
+          idealCenter,
+          minimumCenter
+        ),
+        maximumCenter
+      );
+
+    document.body.classList.add(
+      "auth-keyboard-open"
+    );
+  }
+
+  setKeyboardTop();
+}
+
+function scheduleKeyboardSync(){
+  window.clearTimeout(
+    keyboardTimer
   );
+
+  keyboardTimer=
+    window.setTimeout(
+      syncKeyboardState,
+      90
+    );
+}
+
+function handleViewportChange(){
+  if(keyboardOpen){
+    /*
+      При переключении Email/Пароль
+      не меняем выбранный центр.
+
+      Корректируем только offsetTop,
+      если Safari сам попытался
+      сдвинуть visual viewport.
+    */
+    setKeyboardTop();
+  }
+
+  scheduleKeyboardSync();
 }
 
 document.addEventListener(
@@ -165,18 +334,24 @@ document.addEventListener(
         ".auth-field"
       )
     ){
-      userInteracted=true;
-      focusAllowed=true;
-
+      unlockForUser();
       return;
     }
 
+    /*
+      Нажатие в любое место
+      вне Email/Пароля закрывает
+      клавиатуру и снимает фокус.
+
+      Нажатие с Email на Пароль
+      сюда не попадает.
+    */
     if(
       isAuthInput(
         document.activeElement
       )
     ){
-      clearFieldFocus();
+      lockIdleState();
     }
   },
   {
@@ -191,8 +366,7 @@ document.addEventListener(
       return;
     }
 
-    userInteracted=true;
-    focusAllowed=true;
+    unlockForUser();
   },
   {
     capture:true
@@ -210,9 +384,13 @@ form.addEventListener(
       return;
     }
 
+    /*
+      Любой самопроизвольный focus
+      Safari при запуске запрещён.
+    */
     if(
-      !focusAllowed ||
-      !userInteracted
+      !userInteracted ||
+      !focusEnabled
     ){
       event.target.blur();
 
@@ -220,23 +398,14 @@ form.addEventListener(
         "auth-input-focused"
       );
 
-      requestAnimationFrame(
-        ()=>{
-          if(
-            !focusAllowed &&
-            isAuthInput(
-              document.activeElement
-            )
-          ){
-            document.activeElement.blur();
-          }
-        }
-      );
-
       return;
     }
 
-    updateFocusState();
+    document.body.classList.add(
+      "auth-input-focused"
+    );
+
+    scheduleKeyboardSync();
   }
 );
 
@@ -244,11 +413,42 @@ form.addEventListener(
   "focusout",
   ()=>{
     window.setTimeout(
-      updateFocusState,
+      ()=>{
+        if(
+          isAuthInput(
+            document.activeElement
+          )
+        ){
+          /*
+            Email -> Пароль:
+            ничего не меняем.
+          */
+          return;
+        }
+
+        document.body.classList.remove(
+          "auth-input-focused"
+        );
+      },
       0
     );
   }
 );
+
+function releaseAutofillFocus(){
+  /*
+    Не ставим readonly прямо сейчас:
+    Password Manager ещё может
+    дописывать второе поле.
+
+    Но визуального/системного
+    фокуса уже нет.
+  */
+  setFocusEnabled(false);
+
+  blurInputs();
+  removeKeyboardPosition();
+}
 
 function scheduleAutofillSubmit(){
   if(
@@ -263,54 +463,75 @@ function scheduleAutofillSubmit(){
   );
 
   let attempts=0;
+  let stableCount=0;
+
+  let previousEmail="";
+  let previousPassword="";
 
   const check=()=>{
     if(submitting){
       return;
     }
 
-    const ready=
-      Boolean(
-        email.value.trim() &&
-        password.value
-      );
+    const emailValue=
+      email.value.trim();
 
-    if(ready){
-      clearFieldFocus();
+    const passwordValue=
+      password.value;
 
-      autofillTimer=
-        window.setTimeout(
-          ()=>{
-            if(submitting){
-              return;
-            }
+    if(
+      emailValue &&
+      passwordValue
+    ){
+      if(
+        emailValue===
+          previousEmail &&
+        passwordValue===
+          previousPassword
+      ){
+        stableCount+=1;
+      }else{
+        stableCount=0;
 
-            if(
-              typeof form.requestSubmit===
-              "function"
-            ){
-              form.requestSubmit();
-              return;
-            }
+        previousEmail=
+          emailValue;
 
-            submit.click();
-          },
-          80
-        );
+        previousPassword=
+          passwordValue;
+      }
 
-      return;
+      /*
+        Значения должны остаться
+        одинаковыми несколько циклов,
+        чтобы не отправить форму
+        посреди работы AutoFill.
+      */
+      if(stableCount>=2){
+        setInputsReadonly(true);
+
+        if(
+          typeof form.requestSubmit===
+          "function"
+        ){
+          form.requestSubmit();
+          return;
+        }
+
+        submit.click();
+        return;
+      }
     }
 
     attempts+=1;
 
-    if(attempts>=6){
+    if(attempts>=12){
       return;
     }
 
     autofillTimer=
       window.setTimeout(
         check,
-        40
+        50
       );
   };
 
@@ -324,12 +545,7 @@ form.addEventListener(
   event=>{
     if(
       event.animationName!==
-      "auth-autofill-detected"
-    ){
-      return;
-    }
-
-    if(
+        "auth-autofill-detected" ||
       !userInteracted ||
       submitting
     ){
@@ -337,20 +553,19 @@ form.addEventListener(
     }
 
     /*
-      Password AutoFill уже начался.
-      Сразу убираем системный фокус,
-      выделение текста и клавиатуру.
+      Системный Password AutoFill
+      начался.
+
+      Убираем Email highlight,
+      caret и клавиатуру сразу.
     */
     requestAnimationFrame(
       ()=>{
-        if(
-          !userInteracted ||
-          submitting
-        ){
+        if(submitting){
           return;
         }
 
-        clearFieldFocus();
+        releaseAutofillFocus();
         scheduleAutofillSubmit();
       }
     );
@@ -360,13 +575,21 @@ form.addEventListener(
 form.addEventListener(
   "input",
   event=>{
+    /*
+      Дополнительный fallback
+      для менеджеров паролей,
+      которые сообщают AutoFill
+      через input event.
+    */
     if(
-      event.inputType===
-        "insertReplacementText" ||
-      event.inputType===null
+      event.inputType!==
+      "insertReplacementText"
     ){
-      scheduleAutofillSubmit();
+      return;
     }
+
+    releaseAutofillFocus();
+    scheduleAutofillSubmit();
   }
 );
 
@@ -456,8 +679,7 @@ form.addEventListener(
     );
 
     const emailValue=
-      email.value
-        .trim();
+      email.value.trim();
 
     const passwordValue=
       password.value;
@@ -475,8 +697,7 @@ form.addEventListener(
 
     setError();
 
-    clearFieldFocus();
-
+    lockIdleState();
     setSubmitting(true);
 
     let data;
@@ -579,33 +800,66 @@ form.addEventListener(
   }
 );
 
+function enforceInitialIdleState(){
+  if(userInteracted){
+    return;
+  }
+
+  lockIdleState();
+}
+
+/*
+  Первый idle-state выполняется
+  сразу.
+
+  readonly уже находится в HTML,
+  поэтому даже до выполнения JS
+  клавиатура открыться не должна.
+*/
+lockIdleState();
+
 window.addEventListener(
   "pageshow",
   ()=>{
-    userInteracted=false;
-    focusAllowed=false;
+    if(userInteracted){
+      return;
+    }
 
-    clearFieldFocus();
+    enforceInitialIdleState();
 
     requestAnimationFrame(
-      ()=>{
-        if(!userInteracted){
-          clearFieldFocus();
-        }
-      }
+      enforceInitialIdleState
+    );
+
+    window.setTimeout(
+      enforceInitialIdleState,
+      80
+    );
+
+    window.setTimeout(
+      enforceInitialIdleState,
+      220
     );
   }
 );
 
-userInteracted=false;
-focusAllowed=false;
-
-clearFieldFocus();
+document.addEventListener(
+  "visibilitychange",
+  ()=>{
+    if(
+      document.visibilityState===
+        "visible" &&
+      !userInteracted
+    ){
+      enforceInitialIdleState();
+    }
+  }
+);
 
 if(visualViewport){
   visualViewport.addEventListener(
     "resize",
-    syncAuthViewport,
+    handleViewportChange,
     {
       passive:true
     }
@@ -613,7 +867,15 @@ if(visualViewport){
 
   visualViewport.addEventListener(
     "scroll",
-    syncAuthViewport,
+    handleViewportChange,
+    {
+      passive:true
+    }
+  );
+}else{
+  window.addEventListener(
+    "resize",
+    handleViewportChange,
     {
       passive:true
     }
@@ -621,11 +883,29 @@ if(visualViewport){
 }
 
 window.addEventListener(
-  "resize",
-  syncAuthViewport,
-  {
-    passive:true
+  "orientationchange",
+  ()=>{
+    removeKeyboardPosition();
+
+    window.setTimeout(
+      ()=>{
+        const {
+          height
+        }=
+          getViewportMetrics();
+
+        fullViewportHeight=
+          height;
+
+        if(
+          !isAuthInput(
+            document.activeElement
+          )
+        ){
+          lockIdleState();
+        }
+      },
+      320
+    );
   }
 );
-
-syncAuthViewport();

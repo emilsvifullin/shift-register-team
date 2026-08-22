@@ -245,14 +245,48 @@ function scheduleAutofillFinish(){
     autofillTimer
   );
 
+  const emailSnapshot=
+    email.value
+      .trim();
+
+  const passwordSnapshot=
+    password.value;
+
+  if(
+    !emailSnapshot ||
+    !passwordSnapshot
+  ){
+    return;
+  }
+
   autofillTimer=
     window.setTimeout(
       ()=>{
+        if(submitting){
+          return;
+        }
+
+        const currentEmail=
+          email.value
+            .trim();
+
+        const currentPassword=
+          password.value;
+
         if(
-          !email.value.trim() ||
-          !password.value ||
-          submitting
+          !currentEmail ||
+          !currentPassword
         ){
+          return;
+        }
+
+        if(
+          currentEmail!==
+            emailSnapshot ||
+          currentPassword!==
+            passwordSnapshot
+        ){
+          scheduleAutofillFinish();
           return;
         }
 
@@ -274,10 +308,10 @@ function scheduleAutofillFinish(){
 
             submit.click();
           },
-          80
+          100
         );
       },
-      120
+      350
     );
 }
 
@@ -486,10 +520,37 @@ form.addEventListener(
     ){
       setSubmitting(false);
 
-      password.value="";
+      console.error(
+        "Ошибка входа Supabase:",
+        authError
+      );
+
+      if(
+        authError?.code===
+        "invalid_credentials"
+      ){
+        password.value="";
+
+        setError(
+          "Неверный email или пароль."
+        );
+
+        return;
+      }
+
+      if(
+        authError?.code===
+        "email_not_confirmed"
+      ){
+        setError(
+          "Email не подтверждён."
+        );
+
+        return;
+      }
 
       setError(
-        "Неверный email или пароль."
+        "Не удалось выполнить вход. Попробуйте ещё раз."
       );
 
       return;

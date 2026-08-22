@@ -2556,6 +2556,22 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
     var(--bg);
 }
 
+body.login-page .auth-gate{
+  background:var(--bg);
+}
+
+@media (display-mode:standalone){
+  body.login-page .auth-gate{
+    background:
+      radial-gradient(
+        130% 55% at 50% -10%,
+        var(--glow) 0%,
+        var(--glow0) 60%
+      ),
+      var(--bg);
+  }
+}
+
 body.auth-authenticated .auth-gate{
   display:none;
 }

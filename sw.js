@@ -1,4 +1,4 @@
-const CACHE_NAME="shift-register-runtime-v1";
+const CACHE_NAME="sr-team-runtime-v1";
 
 const INDEX_FILE="./index.html";
 
@@ -42,7 +42,7 @@ self.addEventListener("activate",event=>{
       names
         .filter(name=>name!==CACHE_NAME)
         .filter(name=>
-          name.startsWith("shift-register-")
+          name.startsWith("sr-team-")
         )
         .map(name=>caches.delete(name))
     );

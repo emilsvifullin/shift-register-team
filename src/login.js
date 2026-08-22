@@ -238,98 +238,39 @@ function setKeyboardTop(){
     );
 }
 
-function syncKeyboardState({
-  forceClose=false
-}={}){
+function syncKeyboardState(){
   const {
     height
   }=
     getViewportMetrics();
 
-  const keyboardVisible=
-    fullViewportHeight -
-      height >
-    120;
+  /*
+    Клавиатура ещё не была
+    зафиксирована.
+  */
+  if(!keyboardOpen){
+    const keyboardVisible=
+      fullViewportHeight -
+        height >
+      120;
 
-  if(!keyboardVisible){
-    /*
-      При переключении Email -> Пароль
-      iOS иногда на очень короткое время
-      сообщает промежуточную геометрию.
-
-      Не считаем это закрытием клавиатуры.
-    */
     if(
-      !forceClose &&
-      keyboardOpen &&
-      focusEnabled &&
-      isAuthInput(
+      !keyboardVisible ||
+      !focusEnabled ||
+      !isAuthInput(
         document.activeElement
       )
     ){
-      window.clearTimeout(
-        keyboardCloseTimer
-      );
-
-      keyboardCloseTimer=
-        window.setTimeout(
-          ()=>{
-            syncKeyboardState({
-              forceClose:true
-            });
-          },
-          220
-        );
-
       return;
     }
 
-    window.clearTimeout(
-      keyboardCloseTimer
-    );
-
-    fullViewportHeight=
-      Math.max(
-        fullViewportHeight,
-        height
-      );
-
-    const wasOpen=
-      keyboardOpen;
-
-    if(
-      forceClose &&
-      isAuthInput(
-        document.activeElement
-      )
-    ){
-      dismissInput();
-    }
-
-    removeKeyboardPosition({
-      animate:wasOpen
-    });
-
-    return;
-  }
-
-  window.clearTimeout(
-    keyboardCloseTimer
-  );
-
-  if(
-    !focusEnabled &&
-    !keyboardOpen
-  ){
-    return;
-  }
-
-  if(!keyboardOpen){
     keyboardOpen=true;
+    keyboardOpenHeight=height;
 
     /*
-      Центр выбирается один раз
-      на всё время жизни клавиатуры.
+      Положение карточки вычисляем
+      ОДИН РАЗ на всю клавиатурную
+      сессию.
     */
     const cardHeight=
       authCard
@@ -368,14 +309,12 @@ function syncKeyboardState({
       "auth-keyboard-open"
     );
 
+    /*
+      Единственный вызов setKeyboardTop()
+      за всю открытую клавиатуру.
+    */
     setKeyboardTop();
 
-    /*
-      Даём закончиться единственному
-      плавному подъёму карточки.
-
-      После этого позиция заморожена.
-    */
     window.clearTimeout(
       keyboardLockTimer
     );
@@ -400,12 +339,120 @@ function syncKeyboardState({
   /*
     Клавиатура уже открыта.
 
-    При Email <-> Пароль меняется только
-    техническая компенсация viewport.
-    Благодаря auth-keyboard-locked она
-    применяется БЕЗ новой анимации.
+    Здесь НИКОГДА не меняем top
+    карточки. Email -> Пароль ->
+    Email не может сдвинуть окно.
   */
-  setKeyboardTop();
+
+  const inputStillFocused=
+    isAuthInput(
+      document.activeElement
+    );
+
+  const viewportExpanded=
+    keyboardOpenHeight!==null &&
+    height>=
+      keyboardOpenHeight+100;
+
+  /*
+    Обычное переключение полей.
+
+    Пока один из наших inputs
+    остаётся активным и viewport
+    не раскрылся заметно вверх,
+    вообще ничего не делаем.
+  */
+  if(
+    inputStillFocused &&
+    !viewportExpanded
+  ){
+    window.clearTimeout(
+      keyboardCloseTimer
+    );
+
+    return;
+  }
+
+  /*
+    Возможное настоящее закрытие
+    клавиатуры.
+
+    Ничего не закрываем сами.
+    Просто ждём, пока Safari
+    окончательно закончит анимацию.
+  */
+  window.clearTimeout(
+    keyboardCloseTimer
+  );
+
+  keyboardCloseTimer=
+    window.setTimeout(
+      ()=>{
+        if(!keyboardOpen){
+          return;
+        }
+
+        const {
+          height:currentHeight
+        }=
+          getViewportMetrics();
+
+        const stillFocused=
+          isAuthInput(
+            document.activeElement
+          );
+
+        const stillExpanded=
+          keyboardOpenHeight!==null &&
+          currentHeight>=
+            keyboardOpenHeight+100;
+
+        /*
+          Если поле снова активно,
+          а keyboard viewport снова
+          уменьшился — это было лишь
+          переключение Email/Пароль.
+        */
+        if(
+          stillFocused &&
+          !stillExpanded
+        ){
+          return;
+        }
+
+        fullViewportHeight=
+          Math.max(
+            fullViewportHeight,
+            currentHeight
+          );
+
+        /*
+          Кнопка закрытия клавиатуры
+          iOS иногда оставляет input
+          формально focused.
+
+          Blur делаем ТОЛЬКО ПОСЛЕ
+          того, как viewport уже
+          подтвердил закрытие.
+        */
+        if(stillFocused){
+          dismissInput();
+        }
+
+        /*
+          Теперь клавиатура уже
+          закончила движение.
+
+          Только теперь разрешаем
+          карточке плавно вернуться
+          в центр страницы.
+        */
+        removeKeyboardPosition({
+          animate:true
+        });
+      },
+      460
+    );
 }
 
 function scheduleKeyboardSync(){
@@ -421,18 +468,14 @@ function scheduleKeyboardSync(){
 }
 
 function handleViewportChange(){
-  if(keyboardOpen){
-    /*
-      При переключении Email/Пароль
-      не меняем выбранный центр.
+  /*
+    visualViewport теперь используется
+    только для определения состояния
+    клавиатуры.
 
-      Корректируем только offsetTop,
-      если Safari сам попытался
-      сдвинуть visual viewport.
-    */
-    setKeyboardTop();
-  }
-
+    Положение уже открытой карточки
+    здесь НИКОГДА не меняется.
+  */
   scheduleKeyboardSync();
 }
 
@@ -443,13 +486,55 @@ document.addEventListener(
       event.target;
 
     if(
-      target instanceof Element &&
-      target.closest(
-        ".auth-field"
-      )
+      target instanceof Element
     ){
-      unlockForUser();
-      return;
+      const field=
+        target.closest(
+          ".auth-field"
+        );
+
+      if(field){
+        const input=
+          field.querySelector(
+            "input"
+          );
+
+        unlockForUser();
+
+        /*
+          Первый тап оставляем браузеру:
+          он нормально открывает
+          клавиатуру и Password AutoFill.
+
+          Когда клавиатура уже открыта,
+          переключаем Email/Пароль сами
+          с preventScroll, чтобы Safari
+          не пытался дополнительно
+          панорамировать страницу.
+        */
+        if(
+          keyboardOpen &&
+          (
+            input===email ||
+            input===password
+          ) &&
+          document.activeElement!==input
+        ){
+          if(event.cancelable){
+            event.preventDefault();
+          }
+
+          try{
+            input.focus({
+              preventScroll:true
+            });
+          }catch{
+            input.focus();
+          }
+        }
+
+        return;
+      }
     }
 
     /*
@@ -465,7 +550,7 @@ document.addEventListener(
         document.activeElement
       )
     ){
-      lockIdleState();
+      dismissInput();
     }
   },
   {
@@ -811,7 +896,7 @@ form.addEventListener(
 
     setError();
 
-    lockIdleState();
+    dismissInput();
     setSubmitting(true);
 
     let data;

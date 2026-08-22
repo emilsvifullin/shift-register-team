@@ -1,10 +1,13 @@
-const CACHE_NAME="sr-team-runtime-v9";
+const CACHE_NAME=
+  "sr-team-runtime-v10";
 
-const INDEX_FILE="./index.html";
+const INDEX_FILE=
+  "./index.html";
 
 const ASSETS=[
   "./",
   INDEX_FILE,
+  "./login.html",
   "./styles.css",
   "./manifest.webmanifest",
   "./src/config.js",
@@ -12,54 +15,86 @@ const ASSETS=[
   "./src/storage.js",
   "./src/supabase.js",
   "./src/auth.js",
+  "./src/login.js",
   "./src/app.js",
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"
 ];
 
-self.addEventListener("install",event=>{
-  event.waitUntil((async()=>{
-    const cache=await caches.open(CACHE_NAME);
+self.addEventListener(
+  "install",
+  event=>{
+    event.waitUntil(
+      (async()=>{
+        const cache=
+          await caches.open(
+            CACHE_NAME
+          );
 
-    try{
-      await cache.addAll(ASSETS);
-    }catch(error){
-      console.error("Не удалось предварительно заполнить кеш",error);
-    }
+        try{
+          await cache.addAll(
+            ASSETS
+          );
+        }catch(error){
+          console.error(
+            "Не удалось предварительно заполнить кеш",
+            error
+          );
+        }
 
-    /*
-      Новый service worker становится активным сам.
-      Страница при этом насильно НЕ перезагружается.
-    */
-    await self.skipWaiting();
-  })());
-});
-
-self.addEventListener("activate",event=>{
-  event.waitUntil((async()=>{
-    const names=await caches.keys();
-
-    await Promise.all(
-      names
-        .filter(name=>name!==CACHE_NAME)
-        .filter(name=>
-          name.startsWith("sr-team-")
-        )
-        .map(name=>caches.delete(name))
+        await self.skipWaiting();
+      })()
     );
+  }
+);
 
-    await self.clients.claim();
-  })());
-});
+self.addEventListener(
+  "activate",
+  event=>{
+    event.waitUntil(
+      (async()=>{
+        const names=
+          await caches.keys();
 
-function fetchWithTimeout(request,timeoutMs=5000){
-  const controller=new AbortController();
+        await Promise.all(
+          names
+            .filter(
+              name=>
+                name!==CACHE_NAME
+            )
+            .filter(
+              name=>
+                name.startsWith(
+                  "sr-team-"
+                )
+            )
+            .map(
+              name=>
+                caches.delete(
+                  name
+                )
+            )
+        );
 
-  const timer=setTimeout(
-    ()=>controller.abort(),
-    timeoutMs
-  );
+        await self.clients.claim();
+      })()
+    );
+  }
+);
+
+function fetchWithTimeout(
+  request,
+  timeoutMs=5000
+){
+  const controller=
+    new AbortController();
+
+  const timer=
+    setTimeout(
+      ()=>controller.abort(),
+      timeoutMs
+    );
 
   return fetch(
     request,
@@ -72,13 +107,19 @@ function fetchWithTimeout(request,timeoutMs=5000){
   );
 }
 
-async function networkFirst(request){
+async function networkFirst(
+  request
+){
   const cache=
-    await caches.open(CACHE_NAME);
+    await caches.open(
+      CACHE_NAME
+    );
 
   try{
     const response=
-      await fetchWithTimeout(request);
+      await fetchWithTimeout(
+        request
+      );
 
     if(response.ok){
       await cache.put(
@@ -92,28 +133,45 @@ async function networkFirst(request){
     const cached=
       await cache.match(
         request,
-        {ignoreSearch:true}
+        {
+          ignoreSearch:true
+        }
       );
 
-    return cached || Response.error();
+    return (
+      cached ||
+      Response.error()
+    );
   }
 }
 
-async function navigationResponse(request){
+async function navigationResponse(
+  request
+){
   const cache=
-    await caches.open(CACHE_NAME);
+    await caches.open(
+      CACHE_NAME
+    );
 
   try{
     const response=
-      await fetchWithTimeout(request);
+      await fetchWithTimeout(
+        request
+      );
 
     if(response.ok){
       const contentType=
-        response.headers.get("content-type") || "";
+        response.headers.get(
+          "content-type"
+        ) || "";
 
-      if(contentType.includes("text/html")){
+      if(
+        contentType.includes(
+          "text/html"
+        )
+      ){
         await cache.put(
-          INDEX_FILE,
+          request,
           response.clone()
         );
       }
@@ -121,51 +179,114 @@ async function navigationResponse(request){
 
     return response;
   }catch{
-    return (
-      await cache.match(INDEX_FILE)
-    ) || Response.error();
+    const cached=
+      await cache.match(
+        request,
+        {
+          ignoreSearch:true
+        }
+      );
+
+    if(cached){
+      return cached;
+    }
+
+    const requestUrl=
+      new URL(
+        request.url
+      );
+
+    const scope=
+      new URL(
+        self.registration.scope
+      );
+
+    const indexUrl=
+      new URL(
+        INDEX_FILE,
+        scope
+      );
+
+    if(
+      requestUrl.pathname===
+        scope.pathname ||
+      requestUrl.pathname===
+        indexUrl.pathname
+    ){
+      return (
+        await cache.match(
+          INDEX_FILE
+        )
+      ) || Response.error();
+    }
+
+    return Response.error();
   }
 }
 
-self.addEventListener("fetch",event=>{
-  const request=event.request;
+self.addEventListener(
+  "fetch",
+  event=>{
+    const request=
+      event.request;
 
-  if(request.method!=="GET"){
-    return;
-  }
+    if(
+      request.method!=="GET"
+    ){
+      return;
+    }
 
-  const url=
-    new URL(request.url);
+    const url=
+      new URL(
+        request.url
+      );
 
-  const scope=
-    new URL(self.registration.scope);
+    const scope=
+      new URL(
+        self.registration.scope
+      );
 
-  if(url.origin!==scope.origin){
-    return;
-  }
+    if(
+      url.origin!==
+      scope.origin
+    ){
+      return;
+    }
 
-  if(request.mode==="navigate"){
-    event.respondWith(
-      navigationResponse(request)
-    );
+    if(
+      request.mode===
+      "navigate"
+    ){
+      event.respondWith(
+        navigationResponse(
+          request
+        )
+      );
 
-    return;
-  }
+      return;
+    }
 
-  const assetPaths=
-    new Set(
-      ASSETS.map(
-        path=>
-          new URL(
-            path,
-            self.registration.scope
-          ).pathname
+    const assetPaths=
+      new Set(
+        ASSETS.map(
+          path=>
+            new URL(
+              path,
+              self.registration.scope
+            ).pathname
+        )
+      );
+
+    if(
+      assetPaths.has(
+        url.pathname
       )
-    );
-
-  if(assetPaths.has(url.pathname)){
-    event.respondWith(
-      networkFirst(request)
-    );
+    ){
+      event.respondWith(
+        networkFirst(
+          request
+        )
+      );
+    }
   }
-});
+);

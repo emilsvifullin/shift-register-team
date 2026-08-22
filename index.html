@@ -65,6 +65,7 @@
     <form
       class="auth-form"
       id="authForm"
+      method="post"
       autocomplete="on"
     >
       <label
@@ -74,9 +75,9 @@
         <span>Email</span>
 
         <input
-          type="text"
+          type="email"
           id="authEmail"
-          name="username"
+          name="email"
           autocomplete="username"
           inputmode="email"
           autocapitalize="none"
@@ -84,6 +85,7 @@
           spellcheck="false"
           dir="ltr"
           enterkeyhint="next"
+          aria-label="Email"
           required
         >
       </label>
@@ -100,9 +102,11 @@
           name="password"
           autocomplete="current-password"
           autocapitalize="none"
+          autocorrect="off"
           spellcheck="false"
           dir="ltr"
           enterkeyhint="go"
+          aria-label="Пароль"
           required
         >
       </label>

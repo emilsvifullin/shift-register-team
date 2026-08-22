@@ -2606,6 +2606,11 @@ body.login-page.auth-keyboard-open
     );
 }
 
+body.login-page.auth-keyboard-locked
+.auth-card{
+  transition:none;
+}
+
 .auth-brand{
   color:var(--gold);
 

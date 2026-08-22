@@ -16,12 +16,12 @@ function authElements(){
 
     email:
       document.getElementById(
-        "authEmail"
+        "email"
       ),
 
     password:
       document.getElementById(
-        "authPassword"
+        "current-password"
       ),
 
     submit:

@@ -28,7 +28,7 @@
   >
 </head>
 
-<body>
+<body class="app-booting">
 
 <div
   class="auth-gate"
@@ -116,6 +116,17 @@
 
   </div>
 </div>
+
+<script>
+  window.setTimeout(
+    ()=>{
+      document.body.classList.remove(
+        "app-booting"
+      );
+    },
+    1500
+  );
+</script>
 
 </body>
 </html>

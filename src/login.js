@@ -23,6 +23,16 @@ const error=
     "authError"
   );
 
+const focusSink=
+  document.getElementById(
+    "authFocusSink"
+  );
+
+const emailField=
+  email.closest(
+    ".auth-field"
+  );
+
 let fieldsUnlocked=false;
 let submitting=false;
 let autofillTimer=0;
@@ -53,27 +63,29 @@ function setSubmitting(value){
   );
 }
 
-function clearFieldFocus(){
+function moveFocusAway(){
   email.blur();
   password.blur();
 
-  const active=
-    document.activeElement;
-
-  if(
-    active===email ||
-    active===password
-  ){
-    active.blur();
+  try{
+    focusSink.focus({
+      preventScroll:true
+    });
+  }catch{
+    focusSink.focus();
   }
 }
 
-function keepInitialState(){
-  if(fieldsUnlocked){
-    return;
-  }
+function lockFields(){
+  fieldsUnlocked=false;
 
-  clearFieldFocus();
+  email.readOnly=true;
+  password.readOnly=true;
+
+  email.tabIndex=-1;
+  password.tabIndex=-1;
+
+  moveFocusAway();
 }
 
 function unlockFields(){
@@ -85,9 +97,17 @@ function unlockFields(){
 
   email.readOnly=false;
   password.readOnly=false;
+
+  email.removeAttribute(
+    "tabindex"
+  );
+
+  password.removeAttribute(
+    "tabindex"
+  );
 }
 
-email.addEventListener(
+emailField.addEventListener(
   "pointerdown",
   unlockFields,
   {
@@ -95,7 +115,7 @@ email.addEventListener(
   }
 );
 
-email.addEventListener(
+emailField.addEventListener(
   "touchstart",
   unlockFields,
   {
@@ -104,7 +124,7 @@ email.addEventListener(
   }
 );
 
-email.addEventListener(
+emailField.addEventListener(
   "mousedown",
   unlockFields,
   {
@@ -112,9 +132,42 @@ email.addEventListener(
   }
 );
 
-email.addEventListener(
+document.addEventListener(
   "keydown",
-  unlockFields
+  event=>{
+    if(
+      fieldsUnlocked ||
+      event.key!=="Tab"
+    ){
+      return;
+    }
+
+    unlockFields();
+  },
+  {
+    capture:true
+  }
+);
+
+form.addEventListener(
+  "focusin",
+  event=>{
+    if(fieldsUnlocked){
+      return;
+    }
+
+    if(
+      event.target!==email &&
+      event.target!==password
+    ){
+      return;
+    }
+
+    window.setTimeout(
+      moveFocusAway,
+      0
+    );
+  }
 );
 
 function scheduleAutofillFinish(){
@@ -140,7 +193,7 @@ function scheduleAutofillFinish(){
           return;
         }
 
-        clearFieldFocus();
+        moveFocusAway();
 
         window.setTimeout(
           ()=>{
@@ -158,10 +211,10 @@ function scheduleAutofillFinish(){
 
             submit.click();
           },
-          60
+          80
         );
       },
-      100
+      120
     );
 }
 
@@ -328,7 +381,7 @@ form.addEventListener(
 
     setError();
 
-    clearFieldFocus();
+    moveFocusAway();
 
     setSubmitting(true);
 
@@ -394,22 +447,12 @@ form.addEventListener(
 window.addEventListener(
   "pageshow",
   ()=>{
-    keepInitialState();
+    if(submitting){
+      return;
+    }
 
-    requestAnimationFrame(
-      keepInitialState
-    );
-
-    window.setTimeout(
-      keepInitialState,
-      80
-    );
-
-    window.setTimeout(
-      keepInitialState,
-      200
-    );
+    lockFields();
   }
 );
 
-keepInitialState();
+lockFields();

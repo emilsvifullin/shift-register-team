@@ -23,11 +23,6 @@ const error=
     "authError"
   );
 
-const focusSink=
-  document.getElementById(
-    "authFocusSink"
-  );
-
 const emailField=
   email.closest(
     ".auth-field"
@@ -63,21 +58,32 @@ function setSubmitting(value){
   );
 }
 
-function moveFocusAway(){
+function setManualEntry(value){
+  document.body.classList.toggle(
+    "auth-manual-entry",
+    value
+  );
+}
+
+function clearFieldFocus(){
   email.blur();
   password.blur();
 
-  try{
-    focusSink.focus({
-      preventScroll:true
-    });
-  }catch{
-    focusSink.focus();
+  const active=
+    document.activeElement;
+
+  if(
+    active===email ||
+    active===password
+  ){
+    active.blur();
   }
 }
 
 function lockFields(){
   fieldsUnlocked=false;
+
+  setManualEntry(false);
 
   email.readOnly=true;
   password.readOnly=true;
@@ -85,7 +91,7 @@ function lockFields(){
   email.tabIndex=-1;
   password.tabIndex=-1;
 
-  moveFocusAway();
+  clearFieldFocus();
 }
 
 function unlockFields(){
@@ -132,17 +138,59 @@ emailField.addEventListener(
   }
 );
 
-document.addEventListener(
-  "keydown",
+password.addEventListener(
+  "pointerdown",
+  ()=>{
+    if(fieldsUnlocked){
+      setManualEntry(true);
+    }
+  },
+  {
+    capture:true
+  }
+);
+
+form.addEventListener(
+  "beforeinput",
   event=>{
     if(
-      fieldsUnlocked ||
-      event.key!=="Tab"
+      event.target!==email &&
+      event.target!==password
     ){
       return;
     }
 
-    unlockFields();
+    if(
+      [
+        "insertText",
+        "insertCompositionText",
+        "insertFromPaste"
+      ].includes(
+        event.inputType
+      )
+    ){
+      setManualEntry(true);
+    }
+  }
+);
+
+document.addEventListener(
+  "keydown",
+  event=>{
+    if(
+      !fieldsUnlocked &&
+      event.key==="Tab"
+    ){
+      unlockFields();
+      return;
+    }
+
+    if(
+      event.target===email ||
+      event.target===password
+    ){
+      setManualEntry(true);
+    }
   },
   {
     capture:true
@@ -164,7 +212,7 @@ form.addEventListener(
     }
 
     window.setTimeout(
-      moveFocusAway,
+      clearFieldFocus,
       0
     );
   }
@@ -193,7 +241,9 @@ function scheduleAutofillFinish(){
           return;
         }
 
-        moveFocusAway();
+        setManualEntry(false);
+
+        clearFieldFocus();
 
         window.setTimeout(
           ()=>{
@@ -381,7 +431,9 @@ form.addEventListener(
 
     setError();
 
-    moveFocusAway();
+    setManualEntry(false);
+
+    clearFieldFocus();
 
     setSubmitting(true);
 

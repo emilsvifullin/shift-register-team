@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://rxosovinouuonwrrzigs.supabase.co wss://rxosovinouuonwrrzigs.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 
 <meta name="apple-mobile-web-app-title" content="Shift Register">
 <meta name="theme-color" content="#0B0C0E" media="(prefers-color-scheme: dark)">
@@ -34,11 +34,80 @@
 >
 
 <script
+  src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
+></script>
+
+<script
   type="module"
   src="./src/app.js"
 ></script>
 </head>
 <body class="app-booting">
+
+<div
+  class="auth-gate"
+  id="authGate"
+  aria-hidden="true"
+>
+  <div class="auth-card">
+    <div class="auth-brand">
+      Shift Register
+    </div>
+
+    <h1 class="auth-title">
+      Вход
+    </h1>
+
+    <div class="auth-subtitle">
+      Войдите в рабочий аккаунт
+    </div>
+
+    <form
+      class="auth-form"
+      id="authForm"
+    >
+      <label class="auth-field">
+        <span>Email</span>
+
+        <input
+          type="email"
+          id="authEmail"
+          autocomplete="username"
+          inputmode="email"
+          autocapitalize="none"
+          spellcheck="false"
+          required
+        >
+      </label>
+
+      <label class="auth-field">
+        <span>Пароль</span>
+
+        <input
+          type="password"
+          id="authPassword"
+          autocomplete="current-password"
+          required
+        >
+      </label>
+
+      <div
+        class="auth-error"
+        id="authError"
+        role="alert"
+        hidden
+      ></div>
+
+      <button
+        type="submit"
+        class="auth-submit"
+        id="authSubmit"
+      >
+        Войти
+      </button>
+    </form>
+  </div>
+</div>
 
 <header>
   <div class="nav">

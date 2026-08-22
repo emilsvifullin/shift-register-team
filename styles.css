@@ -2604,6 +2604,22 @@ body.auth-required > .bottom-controls{
   box-shadow:var(--shadow);
 }
 
+body.login-page.auth-card-position-locked
+.auth-gate{
+  display:block;
+}
+
+body.login-page.auth-card-position-locked
+.auth-card{
+  position:absolute;
+
+  top:var(--auth-card-top);
+  left:20px;
+  right:20px;
+
+  margin:0 auto;
+}
+
 body.login-page .auth-card{
   animation:
     auth-login-in
@@ -2700,16 +2716,6 @@ body.login-page .auth-card{
   -webkit-appearance:none;
 }
 
-body.login-page:not(.auth-manual-entry)
-.auth-field input{
-  caret-color:transparent;
-}
-
-body.login-page.auth-manual-entry
-.auth-field input{
-  caret-color:var(--ink);
-}
-
 .auth-field input:focus{
   border-color:var(--gold-line);
 
@@ -2767,11 +2773,6 @@ body.login-page.auth-manual-entry
     inset,
     0 0 0 3px
     var(--gold-soft);
-}
-
-body.login-page:not(.auth-manual-entry)
-.auth-field input:-webkit-autofill{
-  caret-color:transparent;
 }
 
 .auth-error{

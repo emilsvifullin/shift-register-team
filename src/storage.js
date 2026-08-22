@@ -3,11 +3,11 @@ import {
   parseBackupJson
 } from "./domain.js";
 
-export const DB_KEY="shift-register-db-v3";
-export const LEGACY_DB_KEY="wb-shifts-v1";
-export const BACKUP_KEY="shift-register-last-good-v3";
-export const CORRUPT_KEY="shift-register-corrupt-v3";
-export const CHANNEL_NAME="shift-register-sync-v3";
+export const DB_KEY="shift-register-team-db-v3";
+export const LEGACY_DB_KEY="shift-register-team-legacy-v1";
+export const BACKUP_KEY="shift-register-team-last-good-v3";
+export const CORRUPT_KEY="shift-register-team-corrupt-v3";
+export const CHANNEL_NAME="shift-register-team-sync-v3";
 
 export class StorageConflictError extends Error {
   constructor(message="Данные изменились в другой вкладке"){
@@ -85,7 +85,7 @@ export function createAppStorage({
 
   const withWriteLock=async fn=>{
     if(lockManager?.request){
-      return lockManager.request("shift-register-database",{mode:"exclusive"},fn);
+      return lockManager.request("shift-register-team-database",{mode:"exclusive"},fn);
     }
     return fn();
   };

@@ -5499,7 +5499,14 @@ window.addEventListener(
 );
 
 startAuth({
-  onAuthenticated:async()=>{
+  onAuthenticated:async({
+    freshLogin
+  })=>{
+    if(freshLogin){
+      tab="shifts";
+      safeSessionRemove(UI_KEY);
+    }
+
     await load();
   }
 });

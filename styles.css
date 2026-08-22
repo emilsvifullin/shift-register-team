@@ -2533,6 +2533,21 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
 
 /* ===== авторизация ===== */
 
+.auth-focus-sink{
+  position:fixed;
+  left:0;
+  top:0;
+
+  width:1px;
+  height:1px;
+
+  opacity:0;
+  overflow:hidden;
+  pointer-events:none;
+
+  outline:0;
+}
+
 .auth-gate{
   position:fixed;
   inset:0;

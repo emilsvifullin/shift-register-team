@@ -28,10 +28,16 @@ const emailField=
     ".auth-field"
   );
 
+const authCard=
+  document.querySelector(
+    ".auth-card"
+  );
+
 let fieldsUnlocked=false;
 let submitting=false;
 let autofillTimer=0;
 let supabaseClientPromise=null;
+let cardPositionLocked=false;
 
 function setError(message=""){
   error.textContent=
@@ -58,13 +64,6 @@ function setSubmitting(value){
   );
 }
 
-function setManualEntry(value){
-  document.body.classList.toggle(
-    "auth-manual-entry",
-    value
-  );
-}
-
 function clearFieldFocus(){
   email.blur();
   password.blur();
@@ -82,8 +81,6 @@ function clearFieldFocus(){
 
 function lockFields(){
   fieldsUnlocked=false;
-
-  setManualEntry(false);
 
   email.readOnly=true;
   password.readOnly=true;
@@ -113,6 +110,58 @@ function unlockFields(){
   );
 }
 
+function lockCardPosition(){
+  if(
+    cardPositionLocked ||
+    !authCard
+  ){
+    return;
+  }
+
+  const rect=
+    authCard.getBoundingClientRect();
+
+  document.documentElement
+    .style
+    .setProperty(
+      "--auth-card-top",
+      `${Math.round(rect.top)}px`
+    );
+
+  document.body.classList.add(
+    "auth-card-position-locked"
+  );
+
+  cardPositionLocked=true;
+}
+
+function resetCardPosition(){
+  cardPositionLocked=false;
+
+  document.body.classList.remove(
+    "auth-card-position-locked"
+  );
+
+  document.documentElement
+    .style
+    .removeProperty(
+      "--auth-card-top"
+    );
+
+  window.setTimeout(
+    ()=>{
+      requestAnimationFrame(
+        ()=>{
+          requestAnimationFrame(
+            lockCardPosition
+          );
+        }
+      );
+    },
+    280
+  );
+}
+
 emailField.addEventListener(
   "pointerdown",
   unlockFields,
@@ -138,42 +187,6 @@ emailField.addEventListener(
   }
 );
 
-password.addEventListener(
-  "pointerdown",
-  ()=>{
-    if(fieldsUnlocked){
-      setManualEntry(true);
-    }
-  },
-  {
-    capture:true
-  }
-);
-
-form.addEventListener(
-  "beforeinput",
-  event=>{
-    if(
-      event.target!==email &&
-      event.target!==password
-    ){
-      return;
-    }
-
-    if(
-      [
-        "insertText",
-        "insertCompositionText",
-        "insertFromPaste"
-      ].includes(
-        event.inputType
-      )
-    ){
-      setManualEntry(true);
-    }
-  }
-);
-
 document.addEventListener(
   "keydown",
   event=>{
@@ -182,14 +195,6 @@ document.addEventListener(
       event.key==="Tab"
     ){
       unlockFields();
-      return;
-    }
-
-    if(
-      event.target===email ||
-      event.target===password
-    ){
-      setManualEntry(true);
     }
   },
   {
@@ -240,8 +245,6 @@ function scheduleAutofillFinish(){
         ){
           return;
         }
-
-        setManualEntry(false);
 
         clearFieldFocus();
 
@@ -431,8 +434,6 @@ form.addEventListener(
 
     setError();
 
-    setManualEntry(false);
-
     clearFieldFocus();
 
     setSubmitting(true);
@@ -504,7 +505,30 @@ window.addEventListener(
     }
 
     lockFields();
+
+    if(!cardPositionLocked){
+      requestAnimationFrame(
+        ()=>{
+          requestAnimationFrame(
+            lockCardPosition
+          );
+        }
+      );
+    }
   }
 );
 
+window.addEventListener(
+  "orientationchange",
+  resetCardPosition
+);
+
 lockFields();
+
+requestAnimationFrame(
+  ()=>{
+    requestAnimationFrame(
+      lockCardPosition
+    );
+  }
+);

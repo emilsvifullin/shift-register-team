@@ -2639,6 +2639,46 @@ body.login-page.auth-card-position-locked
   right:20px;
 
   margin:0 auto;
+
+  transform:
+    translate3d(
+      0,
+      var(--auth-visual-offset-top, 0px),
+      0
+    );
+
+  will-change:transform;
+
+  transition:
+    transform
+    .24s
+    cubic-bezier(.22,.72,.22,1);
+}
+
+body.login-page.auth-card-position-locked.auth-field-active
+.auth-card{
+  transform:
+    translate3d(
+      0,
+      calc(
+        var(--auth-visual-offset-top, 0px)
+        -
+        clamp(84px,10vh,108px)
+      ),
+      0
+    );
+}
+
+@media (hover:hover) and (pointer:fine){
+  body.login-page.auth-card-position-locked.auth-field-active
+  .auth-card{
+    transform:
+      translate3d(
+        0,
+        var(--auth-visual-offset-top, 0px),
+        0
+      );
+  }
 }
 
 body.login-page .auth-card{

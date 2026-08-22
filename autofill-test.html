@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <title>AutoFill Test</title>
+</head>
+<body>
+
+  <h1>AutoFill Test</h1>
+
+  <form
+    method="post"
+    autocomplete="on"
+  >
+    <p>
+      <label for="username">
+        Email
+      </label>
+    </p>
+
+    <p>
+      <input
+        type="email"
+        id="username"
+        name="username"
+        autocomplete="username"
+        inputmode="email"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        required
+      >
+    </p>
+
+    <p>
+      <label for="password">
+        Пароль
+      </label>
+    </p>
+
+    <p>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        autocomplete="current-password"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        required
+      >
+    </p>
+
+    <button type="submit">
+      Войти
+    </button>
+  </form>
+
+</body>
+</html>

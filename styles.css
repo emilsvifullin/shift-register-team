@@ -2520,7 +2520,7 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
   inset:0;
   z-index:200;
 
-  display:none;
+  display:flex;
   align-items:center;
   justify-content:center;
 
@@ -2538,8 +2538,8 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
     var(--bg);
 }
 
-body.auth-required .auth-gate{
-  display:flex;
+body.auth-authenticated .auth-gate{
+  display:none;
 }
 
 body.auth-required > header,

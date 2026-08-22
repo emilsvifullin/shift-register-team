@@ -31,14 +31,11 @@ const authCard=
 const visualViewport=
   window.visualViewport;
 
-const KEYBOARD_MOVE_DELTA=6;
 const KEYBOARD_OPEN_DELTA=120;
 const KEYBOARD_CLOSE_START_DELTA=8;
 const KEYBOARD_CLOSED_DELTA=60;
 const KEYBOARD_SETTLE_MS=90;
 const FIELD_SWITCH_GUARD_MS=360;
-const CARD_SMOOTH_TIME_MS=220;
-const CARD_MAX_FRAME_MS=20;
 
 let submitting=false;
 let userInteracted=false;
@@ -52,13 +49,6 @@ let fieldSwitchTimer=0;
 let keyboardState="idle";
 let keyboardOpenHeight=null;
 let fieldSwitchGuardUntil=0;
-
-let cardMotionFrame=0;
-let cardMotionLastTime=0;
-let cardCurrentShift=0;
-let cardTargetShift=0;
-let cardVelocity=0;
-let clearCardShiftWhenCentered=false;
 
 let fullViewportHeight=
   visualViewport
@@ -141,218 +131,17 @@ function clearKeyboardTimers(){
   );
 }
 
-function writeCardShift(value){
-  document.documentElement
-    .style
-    .setProperty(
-      "--auth-card-shift-y",
-      `${value.toFixed(2)}px`
-    );
-}
-
-function stopCardMotion({
-  reset=false
-}={}){
-  if(cardMotionFrame){
-    cancelAnimationFrame(
-      cardMotionFrame
-    );
-
-    cardMotionFrame=0;
-  }
-
-  cardMotionLastTime=0;
-  cardVelocity=0;
-
-  if(!reset){
-    return;
-  }
-
-  cardCurrentShift=0;
-  cardTargetShift=0;
-  clearCardShiftWhenCentered=false;
-
+function setCardCenterToPage(){
   document.documentElement
     .style
     .removeProperty(
-      "--auth-card-shift-y"
+      "--auth-card-center-y"
     );
 }
 
-function cardMotionStep(timestamp){
-  const elapsedMs=
-    cardMotionLastTime
-      ? Math.min(
-          CARD_MAX_FRAME_MS,
-          Math.max(
-            1,
-            timestamp-cardMotionLastTime
-          )
-        )
-      : 16.67;
-
-  cardMotionLastTime=
-    timestamp;
-
-  const deltaTime=
-    elapsedMs / 1000;
-
-  const smoothTime=
-    CARD_SMOOTH_TIME_MS /
-    1000;
-
-  /*
-    Критически затухающая пружина.
-
-    В отличие от обычного easing,
-    скорость сохраняется между кадрами
-    и между изменениями целевой позиции.
-
-    Поэтому скачки visualViewport
-    больше не создают скачков скорости
-    самой карточки.
-  */
-  const omega=
-    2 / smoothTime;
-
-  const x=
-    omega *
-    deltaTime;
-
-  const decay=
-    1 /
-    (
-      1 +
-      x +
-      0.48*x*x +
-      0.235*x*x*x
-    );
-
-  const change=
-    cardCurrentShift -
-    cardTargetShift;
-
-  const temp=
-    (
-      cardVelocity +
-      omega*change
-    ) *
-    deltaTime;
-
-  cardVelocity=
-    (
-      cardVelocity -
-      omega*temp
-    ) *
-    decay;
-
-  cardCurrentShift=
-    cardTargetShift +
-    (
-      change +
-      temp
-    ) *
-    decay;
-
-  const distance=
-    Math.abs(
-      cardTargetShift -
-      cardCurrentShift
-    );
-
-  const speed=
-    Math.abs(
-      cardVelocity
-    );
-
-  if(
-    distance<0.12 &&
-    speed<0.5
-  ){
-    cardCurrentShift=
-      cardTargetShift;
-
-    cardVelocity=0;
-  }
-
-  writeCardShift(
-    cardCurrentShift
-  );
-
-  if(
-    cardCurrentShift===
-      cardTargetShift &&
-    cardVelocity===0
-  ){
-    cardMotionFrame=0;
-    cardMotionLastTime=0;
-
-    if(
-      clearCardShiftWhenCentered &&
-      Math.abs(
-        cardCurrentShift
-      )<0.15
-    ){
-      clearCardShiftWhenCentered=false;
-
-      document.documentElement
-        .style
-        .removeProperty(
-          "--auth-card-shift-y"
-        );
-    }
-
-    return;
-  }
-
-  cardMotionFrame=
-    requestAnimationFrame(
-      cardMotionStep
-    );
-}
-
-function startCardMotion(){
-  if(cardMotionFrame){
-    return;
-  }
-
-  cardMotionLastTime=0;
-
-  cardMotionFrame=
-    requestAnimationFrame(
-      cardMotionStep
-    );
-}
-
-function setCardTargetShift(
-  value,
-  {
-    clearAtCenter=false
-  }={}
-){
-  cardTargetShift=
-    Number.isFinite(value)
-      ? value
-      : 0;
-
-  clearCardShiftWhenCentered=
-    clearAtCenter &&
-    Math.abs(
-      cardTargetShift
-    )<0.15;
-
-  startCardMotion();
-}
-
-function setCardCenterToPage(){
-  stopCardMotion({
-    reset:true
-  });
-}
-
-function getCardShiftFromViewport(){
+function setCardCenterFromViewport(){
   if(!authCard){
-    return 0;
+    return;
   }
 
   const {
@@ -400,10 +189,12 @@ function getCardShiftFromViewport(){
         )
       : idealCenter;
 
-  return (
-    center-
-    fullViewportHeight/2
-  );
+  document.documentElement
+    .style
+    .setProperty(
+      "--auth-card-center-y",
+      `${Math.round(center)}px`
+    );
 }
 
 function followViewportWithCard(){
@@ -447,16 +238,7 @@ function finishKeyboardSession(){
 
   setIdleFields();
 
-  /*
-    Не сбрасываем позицию резко.
-    Плавно доводим карточку до центра.
-  */
-  setCardTargetShift(
-    0,
-    {
-      clearAtCenter:true
-    }
-  );
+  setCardCenterToPage();
 }
 
 function beginKeyboardDismiss(){
@@ -470,6 +252,8 @@ function beginKeyboardDismiss(){
 
   if(keyboardState!=="idle"){
     keyboardState="closing";
+
+    setCardCenterToPage();
   }
 
   blurInputs();
@@ -578,15 +362,16 @@ function settleKeyboardOpen(){
     return;
   }
 
-  followViewportWithCard();
+  /*
+    Координату определяем один раз.
+    После этого visualViewport больше
+    не управляет движением карточки.
+  */
+  setCardCenterFromViewport();
 
   keyboardOpenHeight=
     height;
 
-  /*
-    С этого момента карточка
-    полностью заморожена.
-  */
   keyboardState="open";
 }
 
@@ -644,39 +429,22 @@ function handleViewportGeometry(){
   }
 
   if(keyboardState==="opening"){
-    const keyboardDelta=
+    const keyboardVisible=
       fullViewportHeight-
-      height;
+        height>
+      KEYBOARD_OPEN_DELTA;
 
-    /*
-      Начинаем движение практически
-      сразу с первым движением клавиатуры,
-      а не ждём, пока она уже поднимется
-      на 120 px.
-    */
-    if(
-      keyboardDelta<=
-      KEYBOARD_MOVE_DELTA
-    ){
+    if(!keyboardVisible){
       return;
     }
 
     /*
-      Safari только сообщает новую цель.
+      Ждём стабильную геометрию,
+      но карточку здесь НЕ двигаем.
 
-      Никаких скачков карточки здесь нет:
-      до новой координаты её ведёт
-      отдельный requestAnimationFrame-loop.
+      Поэтому больше нет десятков
+      микрокоррекций за одну анимацию.
     */
-    followViewportWithCard();
-
-    if(
-      keyboardDelta<=
-      KEYBOARD_OPEN_DELTA
-    ){
-      return;
-    }
-
     window.clearTimeout(
       keyboardSettleTimer
     );
@@ -691,10 +459,6 @@ function handleViewportGeometry(){
   }
 
   if(keyboardState==="open"){
-    /*
-      При Email <-> Пароль карточку
-      вообще не двигаем.
-    */
     if(
       performance.now()<
       fieldSwitchGuardUntil
@@ -713,15 +477,15 @@ function handleViewportGeometry(){
     }
 
     keyboardState="closing";
+
+    /*
+      Закрытие тоже запускает
+      только одно движение.
+    */
+    setCardCenterToPage();
   }
 
   if(keyboardState==="closing"){
-    /*
-      При опускании клавиатуры работает
-      тот же плавный motion-loop.
-    */
-    followViewportWithCard();
-
     const keyboardClosed=
       fullViewportHeight-
         height<=
@@ -734,8 +498,6 @@ function handleViewportGeometry(){
 
       return;
     }
-
-    setCardTargetShift(0);
 
     window.clearTimeout(
       keyboardCloseTimer

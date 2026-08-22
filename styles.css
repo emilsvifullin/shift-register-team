@@ -2533,6 +2533,25 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
 
 /* ===== авторизация ===== */
 
+html:has(body.login-page),
+body.login-page{
+  position:fixed;
+  inset:0;
+
+  width:100%;
+  height:100%;
+
+  margin:0;
+  overflow:hidden;
+
+  overscroll-behavior:none;
+  -webkit-overflow-scrolling:auto;
+}
+
+body.login-page{
+  touch-action:none;
+}
+
 .auth-gate{
   position:fixed;
   top:0;
@@ -2542,6 +2561,8 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
   width:100%;
   height:100vh;
   height:100lvh;
+
+  overflow:hidden;
 
   z-index:200;
 

@@ -211,6 +211,20 @@ export async function startAuth({
       );
   };
 
+  const setSubmitting=value=>{
+    submit.disabled=value;
+
+    submit.textContent=
+      value
+        ? "Входим…"
+        : "Войти";
+
+    form.setAttribute(
+      "aria-busy",
+      String(value)
+    );
+  };
+
   form.addEventListener(
     "animationstart",
     event=>{
@@ -250,25 +264,46 @@ export async function startAuth({
 
       setAuthError();
 
-      submit.disabled=true;
+      email.blur();
+      password.blur();
 
-      const {
-        data,
-        error
-      }=
-        await supabaseClient
-          .auth
-          .signInWithPassword({
-            email:emailValue,
-            password:passwordValue
-          });
+      setSubmitting(true);
 
-      submit.disabled=false;
+      let data;
+      let error;
+
+      try{
+        ({
+          data,
+          error
+        }=
+          await supabaseClient
+            .auth
+            .signInWithPassword({
+              email:emailValue,
+              password:passwordValue
+            }));
+      }catch(authError){
+        console.error(
+          "Не удалось выполнить вход:",
+          authError
+        );
+
+        setSubmitting(false);
+
+        setAuthError(
+          "Не удалось выполнить вход."
+        );
+
+        return;
+      }
 
       if(
         error ||
         !data.session
       ){
+        setSubmitting(false);
+
         password.value="";
 
         setAuthError(
@@ -278,8 +313,6 @@ export async function startAuth({
         return;
       }
 
-      password.value="";
-
       await openSession(
         data.session,
         onAuthenticated,
@@ -287,6 +320,17 @@ export async function startAuth({
           freshLogin:true
         }
       );
+
+      if(
+        document.body.classList.contains(
+          "auth-authenticated"
+        )
+      ){
+        email.value="";
+        password.value="";
+      }
+
+      setSubmitting(false);
     }
   );
 

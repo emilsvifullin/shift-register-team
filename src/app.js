@@ -45,6 +45,8 @@ import {
 } from "./auth.js";
 
 const UI_KEY="shift-register-team-ui-v3";
+const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
+
 const store=createAppStorage();
 const syncChannel=("BroadcastChannel" in window)
   ? new BroadcastChannel(CHANNEL_NAME)
@@ -449,6 +451,30 @@ async function load(){
     document.body.classList.remove(
       "app-booting"
     );
+
+    if(
+      document.body.classList.contains(
+        "auth-login-entering"
+      )
+    ){
+      requestAnimationFrame(
+        ()=>{
+          document.body.classList.add(
+            "auth-login-entering-ready"
+          );
+
+          window.setTimeout(
+            ()=>{
+              document.body.classList.remove(
+                "auth-login-entering",
+                "auth-login-entering-ready"
+              );
+            },
+            360
+          );
+        }
+      );
+    }
   });
 }
 
@@ -5502,9 +5528,30 @@ startAuth({
   onAuthenticated:async({
     freshLogin
   })=>{
-    if(freshLogin){
+    const loginEntry=
+      safeSessionGet(
+        LOGIN_ENTRY_KEY
+      )==="1";
+
+    if(
+      freshLogin ||
+      loginEntry
+    ){
       tab="shifts";
-      safeSessionRemove(UI_KEY);
+
+      safeSessionRemove(
+        UI_KEY
+      );
+    }
+
+    if(loginEntry){
+      safeSessionRemove(
+        LOGIN_ENTRY_KEY
+      );
+
+      document.body.classList.add(
+        "auth-login-entering"
+      );
     }
 
     await load();

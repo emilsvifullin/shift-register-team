@@ -1,13 +1,3 @@
-document.addEventListener(
-  "touchmove",
-  event=>{
-    event.preventDefault();
-  },
-  {
-    passive:false
-  }
-);
-
 const form=
   document.getElementById(
     "authForm"
@@ -33,22 +23,10 @@ const error=
     "authError"
   );
 
-const emailField=
-  email.closest(
-    ".auth-field"
-  );
-
-const authCard=
-  document.querySelector(
-    ".auth-card"
-  );
-
-let fieldsUnlocked=false;
 let submitting=false;
 let autofillTimer=0;
+let userInteracted=false;
 let supabaseClientPromise=null;
-let cardPositionLocked=false;
-let focusOutTimer=0;
 
 function setError(message=""){
   error.textContent=
@@ -75,176 +53,43 @@ function setSubmitting(value){
   );
 }
 
-function setFieldActive(value){
-  document.body.classList.toggle(
-    "auth-field-active",
-    value
+function isAuthInput(element){
+  return (
+    element===email ||
+    element===password
   );
 }
 
-function syncVisualViewport(){
-  const viewport=
-    window.visualViewport;
-
-  const offsetTop=
-    viewport
-      ? Math.max(
-          0,
-          Math.round(
-            viewport.offsetTop
-          )
-        )
-      : 0;
-
-  document.documentElement
-    .style
-    .setProperty(
-      "--auth-visual-offset-top",
-      `${offsetTop}px`
-    );
+function updateFocusState(){
+  document.body.classList.toggle(
+    "auth-input-focused",
+    isAuthInput(
+      document.activeElement
+    )
+  );
 }
 
 function clearFieldFocus(){
+  if(isAuthInput(
+    document.activeElement
+  )){
+    document.activeElement.blur();
+  }
+
   email.blur();
   password.blur();
 
-  const active=
-    document.activeElement;
-
-  if(
-    active===email ||
-    active===password
-  ){
-    active.blur();
-  }
-
-  setFieldActive(false);
+  updateFocusState();
 }
 
-function lockFields(){
-  fieldsUnlocked=false;
-
-  email.readOnly=true;
-  password.readOnly=true;
-
-  email.tabIndex=-1;
-  password.tabIndex=-1;
-
-  clearFieldFocus();
-}
-
-function unlockFields(){
-  if(fieldsUnlocked){
-    return;
-  }
-
-  fieldsUnlocked=true;
-
-  email.readOnly=false;
-  password.readOnly=false;
-
-  email.removeAttribute(
-    "tabindex"
-  );
-
-  password.removeAttribute(
-    "tabindex"
-  );
-}
-
-function lockCardPosition(){
-  if(
-    cardPositionLocked ||
-    !authCard
-  ){
-    return;
-  }
-
-  const rect=
-    authCard.getBoundingClientRect();
-
-  document.documentElement
-    .style
-    .setProperty(
-      "--auth-card-top",
-      `${Math.round(rect.top)}px`
-    );
-
-  document.body.classList.add(
-    "auth-card-position-locked"
-  );
-
-  cardPositionLocked=true;
-
-  syncVisualViewport();
-}
-
-function resetCardPosition(){
-  cardPositionLocked=false;
-
-  document.body.classList.remove(
-    "auth-card-position-locked"
-  );
-
-  document.documentElement
-    .style
-    .removeProperty(
-      "--auth-card-top"
-    );
-
-  document.documentElement
-    .style
-    .removeProperty(
-      "--auth-visual-offset-top"
-    );
-
-  window.setTimeout(
-    ()=>{
-      requestAnimationFrame(
-        ()=>{
-          requestAnimationFrame(
-            lockCardPosition
-          );
-        }
-      );
-    },
-    280
-  );
-}
-
-emailField.addEventListener(
+form.addEventListener(
   "pointerdown",
-  unlockFields,
-  {
-    capture:true
-  }
-);
-
-emailField.addEventListener(
-  "touchstart",
-  unlockFields,
-  {
-    capture:true,
-    passive:true
-  }
-);
-
-emailField.addEventListener(
-  "mousedown",
-  unlockFields,
-  {
-    capture:true
-  }
-);
-
-document.addEventListener(
-  "keydown",
   event=>{
     if(
-      !fieldsUnlocked &&
-      event.key==="Tab"
+      event.target===email ||
+      event.target===password
     ){
-      unlockFields();
+      userInteracted=true;
     }
   },
   {
@@ -252,12 +97,39 @@ document.addEventListener(
   }
 );
 
+form.addEventListener(
+  "focusin",
+  event=>{
+    if(
+      !isAuthInput(
+        event.target
+      )
+    ){
+      return;
+    }
+
+    updateFocusState();
+  }
+);
+
+form.addEventListener(
+  "focusout",
+  ()=>{
+    window.setTimeout(
+      updateFocusState,
+      0
+    );
+  }
+);
+
 document.addEventListener(
   "pointerdown",
   event=>{
     if(
-      !fieldsUnlocked ||
-      submitting
+      submitting ||
+      !isAuthInput(
+        document.activeElement
+      )
     ){
       return;
     }
@@ -281,65 +153,9 @@ document.addEventListener(
   }
 );
 
-form.addEventListener(
-  "focusin",
-  event=>{
-    if(
-      event.target!==email &&
-      event.target!==password
-    ){
-      return;
-    }
-
-    if(!fieldsUnlocked){
-      window.setTimeout(
-        clearFieldFocus,
-        0
-      );
-
-      return;
-    }
-
-    window.clearTimeout(
-      focusOutTimer
-    );
-
-    syncVisualViewport();
-
-    setFieldActive(true);
-  }
-);
-
-form.addEventListener(
-  "focusout",
-  ()=>{
-    window.clearTimeout(
-      focusOutTimer
-    );
-
-    focusOutTimer=
-      window.setTimeout(
-        ()=>{
-          const active=
-            document.activeElement;
-
-          if(
-            active===email ||
-            active===password
-          ){
-            return;
-          }
-
-          setFieldActive(false);
-        },
-        0
-      );
-  }
-);
-
-function scheduleAutofillFinish(){
+function scheduleAutofillSubmit(){
   if(
-    !fieldsUnlocked ||
+    !userInteracted ||
     submitting
   ){
     return;
@@ -349,48 +165,14 @@ function scheduleAutofillFinish(){
     autofillTimer
   );
 
-  const emailSnapshot=
-    email.value
-      .trim();
-
-  const passwordSnapshot=
-    password.value;
-
-  if(
-    !emailSnapshot ||
-    !passwordSnapshot
-  ){
-    return;
-  }
-
   autofillTimer=
     window.setTimeout(
       ()=>{
-        if(submitting){
-          return;
-        }
-
-        const currentEmail=
-          email.value
-            .trim();
-
-        const currentPassword=
-          password.value;
-
         if(
-          !currentEmail ||
-          !currentPassword
+          submitting ||
+          !email.value.trim() ||
+          !password.value
         ){
-          return;
-        }
-
-        if(
-          currentEmail!==
-            emailSnapshot ||
-          currentPassword!==
-            passwordSnapshot
-        ){
-          scheduleAutofillFinish();
           return;
         }
 
@@ -412,10 +194,10 @@ function scheduleAutofillFinish(){
 
             submit.click();
           },
-          100
+          120
         );
       },
-      350
+      280
     );
 }
 
@@ -429,7 +211,7 @@ form.addEventListener(
       return;
     }
 
-    scheduleAutofillFinish();
+    scheduleAutofillSubmit();
   }
 );
 
@@ -437,15 +219,12 @@ form.addEventListener(
   "input",
   event=>{
     if(
-      event.inputType!==undefined &&
-      event.inputType!==null &&
-      event.inputType!==
-        "insertReplacementText"
+      event.inputType===
+        "insertReplacementText" ||
+      event.inputType===null
     ){
-      return;
+      scheduleAutofillSubmit();
     }
-
-    scheduleAutofillFinish();
   }
 );
 
@@ -461,31 +240,6 @@ function loadSupabaseLibrary(){
 
   return new Promise(
     (resolve,reject)=>{
-      const existing=
-        document.querySelector(
-          "script[data-supabase-auth]"
-        );
-
-      if(existing){
-        existing.addEventListener(
-          "load",
-          resolve,
-          {
-            once:true
-          }
-        );
-
-        existing.addEventListener(
-          "error",
-          reject,
-          {
-            once:true
-          }
-        );
-
-        return;
-      }
-
       const script=
         document.createElement(
           "script"
@@ -495,9 +249,6 @@ function loadSupabaseLibrary(){
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
       script.async=true;
-
-      script.dataset.supabaseAuth=
-        "true";
 
       script.addEventListener(
         "load",
@@ -655,6 +406,18 @@ form.addEventListener(
         return;
       }
 
+      if(
+        authError?.name===
+          "AuthRetryableFetchError" ||
+        authError?.status===0
+      ){
+        setError(
+          "Сеть не пропускает сервер авторизации."
+        );
+
+        return;
+      }
+
       setError(
         "Не удалось выполнить вход. Попробуйте ещё раз."
       );
@@ -677,55 +440,15 @@ form.addEventListener(
 window.addEventListener(
   "pageshow",
   ()=>{
-    if(submitting){
-      return;
-    }
+    userInteracted=false;
 
-    lockFields();
-
-    if(!cardPositionLocked){
-      requestAnimationFrame(
-        ()=>{
-          requestAnimationFrame(
-            lockCardPosition
-          );
-        }
-      );
-    }
-  }
-);
-
-window.addEventListener(
-  "orientationchange",
-  resetCardPosition
-);
-
-if(window.visualViewport){
-  window.visualViewport
-    .addEventListener(
-      "resize",
-      syncVisualViewport,
-      {
-        passive:true
-      }
-    );
-
-  window.visualViewport
-    .addEventListener(
-      "scroll",
-      syncVisualViewport,
-      {
-        passive:true
-      }
-    );
-}
-
-lockFields();
-
-requestAnimationFrame(
-  ()=>{
-    requestAnimationFrame(
-      lockCardPosition
+    window.setTimeout(
+      ()=>{
+        clearFieldFocus();
+      },
+      0
     );
   }
 );
+
+clearFieldFocus();

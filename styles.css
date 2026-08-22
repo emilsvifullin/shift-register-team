@@ -2674,6 +2674,9 @@ body.login-page.auth-input-focused
   background:var(--auth-input-bg);
   color:var(--ink);
 
+  direction:ltr;
+  text-align:left;
+
   font-size:16px;
   line-height:1;
 

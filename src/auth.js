@@ -274,3 +274,16 @@ export async function startAuth({
 
   showAuthGate();
 }
+
+export async function signOut(){
+  const {error}=
+    await supabaseClient
+      .auth
+      .signOut();
+
+  if(error){
+    throw error;
+  }
+
+  window.location.reload();
+}

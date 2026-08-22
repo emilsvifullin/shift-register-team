@@ -37,8 +37,8 @@ const KEYBOARD_CLOSE_START_DELTA=8;
 const KEYBOARD_CLOSED_DELTA=60;
 const KEYBOARD_SETTLE_MS=90;
 const FIELD_SWITCH_GUARD_MS=360;
-const CARD_SMOOTH_TIME_MS=120;
-const CARD_MAX_FRAME_MS=34;
+const CARD_SMOOTH_TIME_MS=220;
+const CARD_MAX_FRAME_MS=20;
 
 let submitting=false;
 let userInteracted=false;

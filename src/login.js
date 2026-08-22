@@ -31,18 +31,22 @@ const authCard=
 const visualViewport=
   window.visualViewport;
 
+const KEYBOARD_OPEN_DELTA=120;
+const KEYBOARD_CLOSED_DELTA=80;
+const KEYBOARD_OPEN_STABLE_MS=140;
+const KEYBOARD_CLOSE_STABLE_MS=240;
+const CARD_LOCK_DELAY_MS=300;
+
 let submitting=false;
 let userInteracted=false;
 let focusEnabled=false;
 
 let autofillTimer=0;
-let keyboardTimer=0;
-let keyboardLockTimer=0;
+let keyboardOpenTimer=0;
 let keyboardCloseTimer=0;
+let keyboardLockTimer=0;
 
-let keyboardOpen=false;
-let keyboardScreenCenter=null;
-let keyboardOpenHeight=null;
+let keyboardSession=false;
 
 let fullViewportHeight=
   visualViewport
@@ -111,61 +115,6 @@ function getViewportMetrics(){
   };
 }
 
-function removeKeyboardPosition({
-  animate=false
-}={}){
-  window.clearTimeout(
-    keyboardLockTimer
-  );
-
-  window.clearTimeout(
-    keyboardCloseTimer
-  );
-
-  keyboardOpen=false;
-  keyboardScreenCenter=null;
-  keyboardOpenHeight=null;
-
-  document.body.classList.remove(
-    "auth-keyboard-locked"
-  );
-
-  if(!animate){
-    document.body.classList.remove(
-      "auth-keyboard-open"
-    );
-
-    document.documentElement
-      .style
-      .removeProperty(
-        "--auth-keyboard-center-y"
-      );
-
-    return;
-  }
-
-  /*
-    Сначала возвращаем transition,
-    а уже следующим кадром отправляем
-    карточку обратно в центр страницы.
-  */
-  void authCard?.offsetHeight;
-
-  requestAnimationFrame(
-    ()=>{
-      document.body.classList.remove(
-        "auth-keyboard-open"
-      );
-
-      document.documentElement
-        .style
-        .removeProperty(
-          "--auth-keyboard-center-y"
-        );
-    }
-  );
-}
-
 function blurInputs(){
   if(
     isAuthInput(
@@ -183,7 +132,7 @@ function blurInputs(){
   );
 }
 
-function dismissInput(){
+function setIdleFields(){
   userInteracted=false;
 
   setFocusEnabled(false);
@@ -192,69 +141,263 @@ function dismissInput(){
   blurInputs();
 }
 
-function lockIdleState(){
-  dismissInput();
+function clearKeyboardTimers(){
+  window.clearTimeout(
+    keyboardOpenTimer
+  );
 
-  removeKeyboardPosition({
-    animate:false
-  });
+  window.clearTimeout(
+    keyboardCloseTimer
+  );
+
+  window.clearTimeout(
+    keyboardLockTimer
+  );
 }
 
-function unlockForUser(){
+function resetCardImmediately(){
+  clearKeyboardTimers();
+
+  keyboardSession=false;
+
+  document.body.classList.remove(
+    "auth-keyboard-open",
+    "auth-keyboard-locked"
+  );
+
+  document.documentElement
+    .style
+    .removeProperty(
+      "--auth-keyboard-center-y"
+    );
+}
+
+function returnCardToCenter(){
+  clearKeyboardTimers();
+
+  if(!keyboardSession){
+    resetCardImmediately();
+    return;
+  }
+
+  keyboardSession=false;
+
+  /*
+    Пока клавиатура закрывалась,
+    карточка оставалась полностью
+    замороженной.
+
+    Теперь возвращаем transition
+    и одним движением отправляем
+    карточку в центр страницы.
+  */
+  document.body.classList.remove(
+    "auth-keyboard-locked"
+  );
+
+  void authCard?.offsetHeight;
+
+  requestAnimationFrame(
+    ()=>{
+      document.body.classList.remove(
+        "auth-keyboard-open"
+      );
+
+      document.documentElement
+        .style
+        .removeProperty(
+          "--auth-keyboard-center-y"
+        );
+    }
+  );
+}
+
+function requestKeyboardDismiss(){
+  window.clearTimeout(
+    keyboardOpenTimer
+  );
+
+  userInteracted=false;
+
+  setFocusEnabled(false);
+
+  /*
+    Никакого изменения позиции карточки.
+    Только снимаем focus.
+
+    Карточка вернётся в центр лишь после
+    того, как visualViewport подтвердит,
+    что клавиатура полностью закрылась.
+  */
+  blurInputs();
+
+  setInputsReadonly(true);
+}
+
+function focusAuthInput(input){
+  if(!isAuthInput(input)){
+    return;
+  }
+
   userInteracted=true;
 
   setInputsReadonly(false);
   setFocusEnabled(true);
+
+  try{
+    input.focus({
+      preventScroll:true
+    });
+  }catch{
+    input.focus();
+  }
 }
 
-function setKeyboardTop(){
+function freezeCardAboveKeyboard(){
   if(
-    !keyboardOpen ||
-    keyboardScreenCenter===null
+    keyboardSession ||
+    !focusEnabled ||
+    !isAuthInput(
+      document.activeElement
+    )
   ){
     return;
   }
 
   const {
+    height,
     offsetTop
   }=
     getViewportMetrics();
 
-  /*
-    keyboardScreenCenter хранится
-    в экранных координатах.
+  if(
+    fullViewportHeight -
+      height <=
+    KEYBOARD_OPEN_DELTA
+  ){
+    return;
+  }
 
-    offsetTop компенсирует попытки
-    Safari автоматически панорамировать
-    visual viewport.
-  */
-  const layoutTop=
+  const cardHeight=
+    authCard
+      ? authCard
+          .getBoundingClientRect()
+          .height
+      : 0;
+
+  const margin=12;
+
+  const visibleTop=
+    offsetTop;
+
+  const visibleBottom=
     offsetTop +
-    keyboardScreenCenter;
+    height;
+
+  const idealCenter=
+    visibleTop +
+    height / 2;
+
+  const minimumCenter=
+    visibleTop +
+    cardHeight / 2 +
+    margin;
+
+  const maximumCenter=
+    visibleBottom -
+    cardHeight / 2 -
+    margin;
+
+  const center=
+    minimumCenter<=maximumCenter
+      ? Math.min(
+          Math.max(
+            idealCenter,
+            minimumCenter
+          ),
+          maximumCenter
+        )
+      : idealCenter;
 
   document.documentElement
     .style
     .setProperty(
       "--auth-keyboard-center-y",
-      `${Math.round(layoutTop)}px`
+      `${Math.round(center)}px`
+    );
+
+  keyboardSession=true;
+
+  document.body.classList.add(
+    "auth-keyboard-open"
+  );
+
+  window.clearTimeout(
+    keyboardLockTimer
+  );
+
+  keyboardLockTimer=
+    window.setTimeout(
+      ()=>{
+        if(!keyboardSession){
+          return;
+        }
+
+        document.body.classList.add(
+          "auth-keyboard-locked"
+        );
+      },
+      CARD_LOCK_DELAY_MS
     );
 }
 
-function syncKeyboardState(){
+function confirmKeyboardClosed(){
+  if(!keyboardSession){
+    return;
+  }
+
   const {
     height
   }=
     getViewportMetrics();
 
+  const keyboardClosed=
+    fullViewportHeight -
+      height <=
+    KEYBOARD_CLOSED_DELTA;
+
+  if(!keyboardClosed){
+    return;
+  }
+
+  fullViewportHeight=
+    Math.max(
+      fullViewportHeight,
+      height
+    );
+
   /*
-    Клавиатура ещё не была
-    зафиксирована.
+    При закрытии клавиатуры кнопкой iOS
+    input иногда формально остаётся focused.
+    Убираем этот остаточный focus только
+    после подтверждённого закрытия.
   */
-  if(!keyboardOpen){
+  setIdleFields();
+
+  returnCardToCenter();
+}
+
+function scheduleKeyboardState(){
+  const {
+    height
+  }=
+    getViewportMetrics();
+
+  if(!keyboardSession){
     const keyboardVisible=
       fullViewportHeight -
         height >
-      120;
+      KEYBOARD_OPEN_DELTA;
 
     if(
       !keyboardVisible ||
@@ -263,111 +406,43 @@ function syncKeyboardState(){
         document.activeElement
       )
     ){
+      window.clearTimeout(
+        keyboardOpenTimer
+      );
+
       return;
     }
 
-    keyboardOpen=true;
-    keyboardOpenHeight=height;
-
     /*
-      Положение карточки вычисляем
-      ОДИН РАЗ на всю клавиатурную
-      сессию.
+      Ждём окончания resize-анимации iOS,
+      затем вычисляем позицию только один раз.
     */
-    const cardHeight=
-      authCard
-        ? authCard
-            .getBoundingClientRect()
-            .height
-        : 0;
-
-    const margin=12;
-
-    const idealCenter=
-      height / 2;
-
-    const minimumCenter=
-      cardHeight / 2 +
-      margin;
-
-    const maximumCenter=
-      Math.max(
-        minimumCenter,
-        height -
-          cardHeight / 2 -
-          margin
-      );
-
-    keyboardScreenCenter=
-      Math.min(
-        Math.max(
-          idealCenter,
-          minimumCenter
-        ),
-        maximumCenter
-      );
-
-    document.body.classList.add(
-      "auth-keyboard-open"
-    );
-
-    /*
-      Единственный вызов setKeyboardTop()
-      за всю открытую клавиатуру.
-    */
-    setKeyboardTop();
-
     window.clearTimeout(
-      keyboardLockTimer
+      keyboardOpenTimer
     );
 
-    keyboardLockTimer=
+    keyboardOpenTimer=
       window.setTimeout(
-        ()=>{
-          if(!keyboardOpen){
-            return;
-          }
-
-          document.body.classList.add(
-            "auth-keyboard-locked"
-          );
-        },
-        280
+        freezeCardAboveKeyboard,
+        KEYBOARD_OPEN_STABLE_MS
       );
 
     return;
   }
 
   /*
-    Клавиатура уже открыта.
+    Во время открытой клавиатуры top карточки
+    больше никогда не пересчитывается.
 
-    Здесь НИКОГДА не меняем top
-    карточки. Email -> Пароль ->
-    Email не может сдвинуть окно.
+    resize/scroll нужны только для определения
+    окончательного закрытия клавиатуры.
   */
+  const keyboardClosed=
+    fullViewportHeight -
+      height <=
+    KEYBOARD_CLOSED_DELTA;
 
-  const inputStillFocused=
-    isAuthInput(
-      document.activeElement
-    );
-
-  const viewportExpanded=
-    keyboardOpenHeight!==null &&
-    height>=
-      keyboardOpenHeight+100;
-
-  /*
-    Обычное переключение полей.
-
-    Пока один из наших inputs
-    остаётся активным и viewport
-    не раскрылся заметно вверх,
-    вообще ничего не делаем.
-  */
-  if(
-    inputStillFocused &&
-    !viewportExpanded
-  ){
+  if(!keyboardClosed){
     window.clearTimeout(
       keyboardCloseTimer
     );
@@ -375,110 +450,15 @@ function syncKeyboardState(){
     return;
   }
 
-  /*
-    Возможное настоящее закрытие
-    клавиатуры.
-
-    Ничего не закрываем сами.
-    Просто ждём, пока Safari
-    окончательно закончит анимацию.
-  */
   window.clearTimeout(
     keyboardCloseTimer
   );
 
   keyboardCloseTimer=
     window.setTimeout(
-      ()=>{
-        if(!keyboardOpen){
-          return;
-        }
-
-        const {
-          height:currentHeight
-        }=
-          getViewportMetrics();
-
-        const stillFocused=
-          isAuthInput(
-            document.activeElement
-          );
-
-        const stillExpanded=
-          keyboardOpenHeight!==null &&
-          currentHeight>=
-            keyboardOpenHeight+100;
-
-        /*
-          Если поле снова активно,
-          а keyboard viewport снова
-          уменьшился — это было лишь
-          переключение Email/Пароль.
-        */
-        if(
-          stillFocused &&
-          !stillExpanded
-        ){
-          return;
-        }
-
-        fullViewportHeight=
-          Math.max(
-            fullViewportHeight,
-            currentHeight
-          );
-
-        /*
-          Кнопка закрытия клавиатуры
-          iOS иногда оставляет input
-          формально focused.
-
-          Blur делаем ТОЛЬКО ПОСЛЕ
-          того, как viewport уже
-          подтвердил закрытие.
-        */
-        if(stillFocused){
-          dismissInput();
-        }
-
-        /*
-          Теперь клавиатура уже
-          закончила движение.
-
-          Только теперь разрешаем
-          карточке плавно вернуться
-          в центр страницы.
-        */
-        removeKeyboardPosition({
-          animate:true
-        });
-      },
-      460
+      confirmKeyboardClosed,
+      KEYBOARD_CLOSE_STABLE_MS
     );
-}
-
-function scheduleKeyboardSync(){
-  window.clearTimeout(
-    keyboardTimer
-  );
-
-  keyboardTimer=
-    window.setTimeout(
-      syncKeyboardState,
-      90
-    );
-}
-
-function handleViewportChange(){
-  /*
-    visualViewport теперь используется
-    только для определения состояния
-    клавиатуры.
-
-    Положение уже открытой карточки
-    здесь НИКОГДА не меняется.
-  */
-  scheduleKeyboardSync();
 }
 
 document.addEventListener(
@@ -487,9 +467,7 @@ document.addEventListener(
     const target=
       event.target;
 
-    if(
-      target instanceof Element
-    ){
+    if(target instanceof Element){
       const field=
         target.closest(
           ".auth-field"
@@ -501,58 +479,35 @@ document.addEventListener(
             "input"
           );
 
-        unlockForUser();
+        if(isAuthInput(input)){
+          /*
+            Всегда берём focus под свой контроль.
+            Safari не получает возможности
+            самостоятельно панорамировать страницу.
 
-        /*
-          Первый тап оставляем браузеру:
-          он нормально открывает
-          клавиатуру и Password AutoFill.
-
-          Когда клавиатура уже открыта,
-          переключаем Email/Пароль сами
-          с preventScroll, чтобы Safari
-          не пытался дополнительно
-          панорамировать страницу.
-        */
-        if(
-          keyboardOpen &&
-          (
-            input===email ||
-            input===password
-          ) &&
-          document.activeElement!==input
-        ){
+            Первый focus и Email <-> Пароль
+            проходят через одну и ту же
+            непрерывную клавиатурную сессию.
+          */
           if(event.cancelable){
             event.preventDefault();
           }
 
-          try{
-            input.focus({
-              preventScroll:true
-            });
-          }catch{
-            input.focus();
-          }
-        }
+          focusAuthInput(
+            input
+          );
 
-        return;
+          return;
+        }
       }
     }
 
-    /*
-      Нажатие в любое место
-      вне Email/Пароля закрывает
-      клавиатуру и снимает фокус.
-
-      Нажатие с Email на Пароль
-      сюда не попадает.
-    */
     if(
       isAuthInput(
         document.activeElement
       )
     ){
-      dismissInput();
+      requestKeyboardDismiss();
     }
   },
   {
@@ -567,10 +522,49 @@ document.addEventListener(
       return;
     }
 
-    unlockForUser();
+    userInteracted=true;
+
+    setInputsReadonly(false);
+    setFocusEnabled(true);
   },
   {
     capture:true
+  }
+);
+
+email.addEventListener(
+  "keydown",
+  event=>{
+    if(event.key!=="Enter"){
+      return;
+    }
+
+    event.preventDefault();
+
+    focusAuthInput(
+      password
+    );
+  }
+);
+
+password.addEventListener(
+  "keydown",
+  event=>{
+    if(event.key!=="Enter"){
+      return;
+    }
+
+    event.preventDefault();
+
+    if(
+      typeof form.requestSubmit===
+      "function"
+    ){
+      form.requestSubmit();
+      return;
+    }
+
+    submit.click();
   }
 );
 
@@ -585,10 +579,6 @@ form.addEventListener(
       return;
     }
 
-    /*
-      Любой самопроизвольный focus
-      Safari при запуске запрещён.
-    */
     if(
       !userInteracted ||
       !focusEnabled
@@ -606,7 +596,7 @@ form.addEventListener(
       "auth-input-focused"
     );
 
-    scheduleKeyboardSync();
+    scheduleKeyboardState();
   }
 );
 
@@ -622,7 +612,7 @@ form.addEventListener(
         ){
           /*
             Email -> Пароль:
-            ничего не меняем.
+            клавиатурная сессия продолжается.
           */
           return;
         }
@@ -638,24 +628,16 @@ form.addEventListener(
 
 function releaseAutofillFocus(){
   /*
-    Password Manager может ещё
-    дописывать второе поле.
-
-    Фокус и клавиатуру закрываем,
-    но карточку не отправляем вниз
-    раньше фактического закрытия
-    клавиатуры.
+    AutoFill уже выбран пользователем.
+    Сразу убираем focus и клавиатуру,
+    но карточку не двигаем до фактического
+    завершения закрытия клавиатуры.
   */
-  setFocusEnabled(false);
-
-  blurInputs();
+  requestKeyboardDismiss();
 }
 
 function scheduleAutofillSubmit(){
-  if(
-    !userInteracted ||
-    submitting
-  ){
+  if(submitting){
     return;
   }
 
@@ -701,12 +683,6 @@ function scheduleAutofillSubmit(){
           passwordValue;
       }
 
-      /*
-        Значения должны остаться
-        одинаковыми несколько циклов,
-        чтобы не отправить форму
-        посреди работы AutoFill.
-      */
       if(stableCount>=2){
         setInputsReadonly(true);
 
@@ -753,13 +729,6 @@ form.addEventListener(
       return;
     }
 
-    /*
-      Системный Password AutoFill
-      начался.
-
-      Убираем Email highlight,
-      caret и клавиатуру сразу.
-    */
     requestAnimationFrame(
       ()=>{
         if(submitting){
@@ -776,15 +745,10 @@ form.addEventListener(
 form.addEventListener(
   "input",
   event=>{
-    /*
-      Дополнительный fallback
-      для менеджеров паролей,
-      которые сообщают AutoFill
-      через input event.
-    */
     if(
       event.inputType!==
-      "insertReplacementText"
+        "insertReplacementText" ||
+      !userInteracted
     ){
       return;
     }
@@ -898,7 +862,7 @@ form.addEventListener(
 
     setError();
 
-    dismissInput();
+    requestKeyboardDismiss();
     setSubmitting(true);
 
     let data;
@@ -1011,18 +975,28 @@ function enforceInitialIdleState(){
     return;
   }
 
-  lockIdleState();
+  setIdleFields();
+  resetCardImmediately();
+
+  const {
+    height
+  }=
+    getViewportMetrics();
+
+  fullViewportHeight=
+    Math.max(
+      fullViewportHeight,
+      height
+    );
 }
 
 /*
-  Первый idle-state выполняется
-  сразу.
-
-  readonly уже находится в HTML,
-  поэтому даже до выполнения JS
-  клавиатура открыться не должна.
+  readonly уже есть непосредственно
+  в login.html, поэтому до загрузки JS
+  Safari физически не может сам открыть
+  клавиатуру.
 */
-lockIdleState();
+enforceInitialIdleState();
 
 window.addEventListener(
   "pageshow",
@@ -1065,7 +1039,7 @@ document.addEventListener(
 if(visualViewport){
   visualViewport.addEventListener(
     "resize",
-    handleViewportChange,
+    scheduleKeyboardState,
     {
       passive:true
     }
@@ -1073,7 +1047,7 @@ if(visualViewport){
 
   visualViewport.addEventListener(
     "scroll",
-    handleViewportChange,
+    scheduleKeyboardState,
     {
       passive:true
     }
@@ -1081,7 +1055,7 @@ if(visualViewport){
 }else{
   window.addEventListener(
     "resize",
-    handleViewportChange,
+    scheduleKeyboardState,
     {
       passive:true
     }
@@ -1091,7 +1065,8 @@ if(visualViewport){
 window.addEventListener(
   "orientationchange",
   ()=>{
-    removeKeyboardPosition();
+    setIdleFields();
+    resetCardImmediately();
 
     window.setTimeout(
       ()=>{
@@ -1102,14 +1077,6 @@ window.addEventListener(
 
         fullViewportHeight=
           height;
-
-    if(
-      isAuthInput(
-        document.activeElement
-      )
-    ){
-      dismissInput();
-    }
       },
       320
     );

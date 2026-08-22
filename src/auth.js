@@ -126,7 +126,8 @@ async function getProfile(userId){
 
 async function openSession(
   session,
-  onAuthenticated
+  onAuthenticated,
+  {freshLogin=false}={}
 ){
   if(!session?.user){
     showAuthGate();
@@ -143,7 +144,8 @@ async function openSession(
 
     await onAuthenticated({
       user:session.user,
-      profile
+      profile,
+      freshLogin
     });
   }catch(error){
     console.error(
@@ -280,7 +282,10 @@ export async function startAuth({
 
       await openSession(
         data.session,
-        onAuthenticated
+        onAuthenticated,
+        {
+          freshLogin:true
+        }
       );
     }
   );

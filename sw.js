@@ -1,4 +1,4 @@
-const CACHE_NAME="sr-team-runtime-v1";
+const CACHE_NAME="sr-team-runtime-v2";
 
 const INDEX_FILE="./index.html";
 
@@ -10,6 +10,8 @@ const ASSETS=[
   "./src/config.js",
   "./src/domain.js",
   "./src/storage.js",
+  "./src/supabase.js",
+  "./src/auth.js",
   "./src/app.js",
   "./icon-192.png",
   "./icon-512.png",

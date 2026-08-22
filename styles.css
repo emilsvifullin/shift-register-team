@@ -2584,7 +2584,7 @@ body.login-page{
   position:fixed;
 
   left:50%;
-  top:28%;
+  top:35%;
 
   width:min(
     calc(100% - 40px),

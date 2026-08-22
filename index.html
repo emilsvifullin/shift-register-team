@@ -65,28 +65,44 @@
     <form
       class="auth-form"
       id="authForm"
+      autocomplete="on"
     >
-      <label class="auth-field">
+      <label
+        class="auth-field"
+        for="authEmail"
+      >
         <span>Email</span>
 
         <input
           type="email"
           id="authEmail"
+          name="username"
           autocomplete="username"
           inputmode="email"
           autocapitalize="none"
+          autocorrect="off"
           spellcheck="false"
+          dir="ltr"
+          enterkeyhint="next"
           required
         >
       </label>
 
-      <label class="auth-field">
+      <label
+        class="auth-field"
+        for="authPassword"
+      >
         <span>Пароль</span>
 
         <input
           type="password"
           id="authPassword"
+          name="password"
           autocomplete="current-password"
+          autocapitalize="none"
+          spellcheck="false"
+          dir="ltr"
+          enterkeyhint="go"
           required
         >
       </label>

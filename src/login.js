@@ -1,3 +1,13 @@
+document.addEventListener(
+  "touchmove",
+  event=>{
+    event.preventDefault();
+  },
+  {
+    passive:false
+  }
+);
+
 const form=
   document.getElementById(
     "authForm"

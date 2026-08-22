@@ -2584,11 +2584,7 @@ body.login-page{
   position:fixed;
 
   left:50%;
-  top:
-    var(
-      --auth-card-center-y,
-      50%
-    );
+  top:50%;
 
   width:min(
     calc(100% - 40px),
@@ -2608,14 +2604,22 @@ body.login-page{
       -50%,
       -50%,
       0
+    )
+    translate3d(
+      0,
+      var(
+        --auth-card-shift-y,
+        0px
+      ),
+      0
     );
 
-  transition:
-    top
-    80ms
-    cubic-bezier(.22,.61,.36,1);
+  transition:none;
 
-  will-change:top;
+  will-change:transform;
+
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
 }
 
 .auth-brand{

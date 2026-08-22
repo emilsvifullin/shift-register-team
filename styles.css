@@ -2597,11 +2597,11 @@ body.login-page{
   will-change:top;
 }
 
-body.login-page.auth-keyboard-visible
+body.login-page.auth-keyboard-open
 .auth-card{
   top:
     var(
-      --auth-visible-center-y,
+      --auth-keyboard-center-y,
       50%
     );
 }
@@ -2689,12 +2689,18 @@ body.login-page.auth-keyboard-visible
     box-shadow .18s ease;
 }
 
+body.login-page.auth-focus-enabled
 .auth-field input:focus{
   border-color:var(--gold-line);
 
   box-shadow:
     0 0 0 3px
     var(--gold-soft);
+}
+
+body.login-page:not(.auth-focus-enabled)
+.auth-field input{
+  caret-color:transparent;
 }
 
 @keyframes auth-autofill-detected{
@@ -2732,6 +2738,7 @@ body.login-page.auth-keyboard-visible
     0s;
 }
 
+body.login-page.auth-focus-enabled
 .auth-field input:-webkit-autofill:focus{
   -webkit-box-shadow:
     0 0 0 1000px

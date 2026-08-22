@@ -39,7 +39,7 @@ import {
   createAppStorage
 } from "./storage.js";
 
-const UI_KEY="shift-register-ui-v3";
+const UI_KEY="shift-register-team-ui-v3";
 const store=createAppStorage();
 const syncChannel=("BroadcastChannel" in window)
   ? new BroadcastChannel(CHANNEL_NAME)

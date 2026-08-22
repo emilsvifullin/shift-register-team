@@ -39,6 +39,10 @@ import {
   createAppStorage
 } from "./storage.js";
 
+import {
+  startAuth
+} from "./auth.js";
+
 const UI_KEY="shift-register-team-ui-v3";
 const store=createAppStorage();
 const syncChannel=("BroadcastChannel" in window)
@@ -5463,4 +5467,8 @@ window.addEventListener(
   clearTouchActive
 );
 
-load();
+startAuth({
+  onAuthenticated:async()=>{
+    await load();
+  }
+});

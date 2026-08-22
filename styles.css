@@ -2564,7 +2564,15 @@ body.login-page{
 }
 
 .auth-card{
-  width:min(100%,390px);
+  position:fixed;
+
+  left:50%;
+  top:50%;
+
+  width:min(
+    calc(100% - 40px),
+    390px
+  );
 
   padding:28px 24px 24px;
 
@@ -2574,35 +2582,28 @@ body.login-page{
   background:var(--surf);
   box-shadow:var(--shadow);
 
-  transform:translate3d(0,0,0);
+  transform:
+    translate3d(
+      -50%,
+      -50%,
+      0
+    );
 
   transition:
-    transform
+    top
     .24s
     cubic-bezier(.22,.72,.22,1);
 
-  will-change:transform;
+  will-change:top;
 }
 
-body.login-page.auth-input-focused
+body.login-page.auth-keyboard-visible
 .auth-card{
-  transform:
-    translate3d(
-      0,
-      clamp(
-        -112px,
-        -10vh,
-        -76px
-      ),
-      0
+  top:
+    var(
+      --auth-visible-center-y,
+      50%
     );
-}
-
-@media (hover:hover) and (pointer:fine){
-  body.login-page.auth-input-focused
-  .auth-card{
-    transform:none;
-  }
 }
 
 .auth-brand{

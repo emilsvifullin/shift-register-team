@@ -2535,86 +2535,36 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
 
 html:has(body.login-page),
 body.login-page{
-  position:fixed;
-  inset:0;
-
   width:100%;
   height:100%;
-
   margin:0;
+
   overflow:hidden;
-
   overscroll-behavior:none;
-  -webkit-overflow-scrolling:auto;
-}
 
-body.login-page{
-  touch-action:none;
+  background:var(--bg);
 }
 
 .auth-gate{
   position:fixed;
-  top:0;
-  left:0;
-  right:0;
-
-  width:100%;
-  height:100vh;
-  height:100lvh;
-
-  overflow:hidden;
-
+  inset:0;
   z-index:200;
 
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  display:grid;
+  place-items:center;
 
   padding:
     calc(24px + env(safe-area-inset-top))
     20px
     calc(24px + env(safe-area-inset-bottom));
 
-  background:
-    radial-gradient(
-      130% 55% at 50% -10%,
-      var(--glow) 0%,
-      var(--glow0) 60%
-    ),
-    var(--bg);
-}
+  overflow:hidden;
 
-body.login-page .auth-gate{
   background:var(--bg);
 }
 
-@media (display-mode:standalone){
-  body.login-page .auth-gate{
-    background:
-      radial-gradient(
-        130% 55% at 50% -10%,
-        var(--glow) 0%,
-        var(--glow0) 60%
-      ),
-      var(--bg);
-  }
-}
-
-body.auth-authenticated .auth-gate{
-  display:none;
-}
-
-body.auth-required > header,
-body.auth-required > main,
-body.auth-required > .bottom-controls{
-  visibility:hidden;
-  pointer-events:none;
-}
-
 .auth-card{
-  width:100%;
-  max-width:390px;
-  flex:none;
+  width:min(100%,390px);
 
   padding:28px 24px 24px;
 
@@ -2623,79 +2573,35 @@ body.auth-required > .bottom-controls{
 
   background:var(--surf);
   box-shadow:var(--shadow);
-}
 
-body.login-page.auth-card-position-locked
-.auth-gate{
-  display:block;
-}
-
-body.login-page.auth-card-position-locked
-.auth-card{
-  position:absolute;
-
-  top:var(--auth-card-top);
-  left:20px;
-  right:20px;
-
-  margin:0 auto;
-
-  transform:
-    translate3d(
-      0,
-      var(--auth-visual-offset-top, 0px),
-      0
-    );
-
-  will-change:transform;
+  transform:translate3d(0,0,0);
 
   transition:
     transform
     .24s
     cubic-bezier(.22,.72,.22,1);
+
+  will-change:transform;
 }
 
-body.login-page.auth-card-position-locked.auth-field-active
+body.login-page.auth-input-focused
 .auth-card{
   transform:
     translate3d(
       0,
-      calc(
-        var(--auth-visual-offset-top, 0px)
-        -
-        clamp(84px,10vh,108px)
+      clamp(
+        -112px,
+        -10vh,
+        -76px
       ),
       0
     );
 }
 
 @media (hover:hover) and (pointer:fine){
-  body.login-page.auth-card-position-locked.auth-field-active
+  body.login-page.auth-input-focused
   .auth-card{
-    transform:
-      translate3d(
-        0,
-        var(--auth-visual-offset-top, 0px),
-        0
-      );
-  }
-}
-
-body.login-page .auth-card{
-  animation:
-    auth-login-in
-    .22s
-    ease
-    both;
-}
-
-@keyframes auth-login-in{
-  from{
-    opacity:0;
-  }
-
-  to{
-    opacity:1;
+    transform:none;
   }
 }
 
@@ -2768,13 +2674,15 @@ body.login-page .auth-card{
   background:var(--auth-input-bg);
   color:var(--ink);
 
-  direction:ltr;
-  text-align:left;
-
   font-size:16px;
+  line-height:1;
 
   appearance:none;
   -webkit-appearance:none;
+
+  transition:
+    border-color .18s ease,
+    box-shadow .18s ease;
 }
 
 .auth-field input:focus{

@@ -26,6 +26,7 @@ const error=
 let submitting=false;
 let autofillTimer=0;
 let userInteracted=false;
+let focusAllowed=false;
 let supabaseClientPromise=null;
 
 function setError(message=""){
@@ -63,6 +64,7 @@ function isAuthInput(element){
 function updateFocusState(){
   document.body.classList.toggle(
     "auth-input-focused",
+    focusAllowed &&
     isAuthInput(
       document.activeElement
     )
@@ -70,27 +72,64 @@ function updateFocusState(){
 }
 
 function clearFieldFocus(){
-  if(isAuthInput(
-    document.activeElement
-  )){
+  focusAllowed=false;
+
+  if(
+    isAuthInput(
+      document.activeElement
+    )
+  ){
     document.activeElement.blur();
   }
 
   email.blur();
   password.blur();
 
-  updateFocusState();
+  document.body.classList.remove(
+    "auth-input-focused"
+  );
 }
 
-form.addEventListener(
+document.addEventListener(
   "pointerdown",
   event=>{
+    const target=
+      event.target;
+
     if(
-      event.target===email ||
-      event.target===password
+      target instanceof Element &&
+      target.closest(
+        ".auth-field"
+      )
     ){
       userInteracted=true;
+      focusAllowed=true;
+
+      return;
     }
+
+    if(
+      isAuthInput(
+        document.activeElement
+      )
+    ){
+      clearFieldFocus();
+    }
+  },
+  {
+    capture:true
+  }
+);
+
+document.addEventListener(
+  "keydown",
+  event=>{
+    if(event.key!=="Tab"){
+      return;
+    }
+
+    userInteracted=true;
+    focusAllowed=true;
   },
   {
     capture:true
@@ -108,6 +147,32 @@ form.addEventListener(
       return;
     }
 
+    if(
+      !focusAllowed ||
+      !userInteracted
+    ){
+      event.target.blur();
+
+      document.body.classList.remove(
+        "auth-input-focused"
+      );
+
+      requestAnimationFrame(
+        ()=>{
+          if(
+            !focusAllowed &&
+            isAuthInput(
+              document.activeElement
+            )
+          ){
+            document.activeElement.blur();
+          }
+        }
+      );
+
+      return;
+    }
+
     updateFocusState();
   }
 );
@@ -119,37 +184,6 @@ form.addEventListener(
       updateFocusState,
       0
     );
-  }
-);
-
-document.addEventListener(
-  "pointerdown",
-  event=>{
-    if(
-      submitting ||
-      !isAuthInput(
-        document.activeElement
-      )
-    ){
-      return;
-    }
-
-    const target=
-      event.target;
-
-    if(
-      target instanceof Element &&
-      target.closest(
-        ".auth-field"
-      )
-    ){
-      return;
-    }
-
-    clearFieldFocus();
-  },
-  {
-    capture:true
   }
 );
 
@@ -165,19 +199,23 @@ function scheduleAutofillSubmit(){
     autofillTimer
   );
 
-  autofillTimer=
-    window.setTimeout(
-      ()=>{
-        if(
-          submitting ||
-          !email.value.trim() ||
-          !password.value
-        ){
-          return;
-        }
+  let attempts=0;
 
-        clearFieldFocus();
+  const check=()=>{
+    if(submitting){
+      return;
+    }
 
+    const ready=
+      Boolean(
+        email.value.trim() &&
+        password.value
+      );
+
+    if(ready){
+      clearFieldFocus();
+
+      autofillTimer=
         window.setTimeout(
           ()=>{
             if(submitting){
@@ -194,11 +232,28 @@ function scheduleAutofillSubmit(){
 
             submit.click();
           },
-          120
+          80
         );
-      },
-      280
-    );
+
+      return;
+    }
+
+    attempts+=1;
+
+    if(attempts>=6){
+      return;
+    }
+
+    autofillTimer=
+      window.setTimeout(
+        check,
+        40
+      );
+  };
+
+  requestAnimationFrame(
+    check
+  );
 }
 
 form.addEventListener(
@@ -211,7 +266,31 @@ form.addEventListener(
       return;
     }
 
-    scheduleAutofillSubmit();
+    if(
+      !userInteracted ||
+      submitting
+    ){
+      return;
+    }
+
+    /*
+      Password AutoFill уже начался.
+      Сразу убираем системный фокус,
+      выделение текста и клавиатуру.
+    */
+    requestAnimationFrame(
+      ()=>{
+        if(
+          !userInteracted ||
+          submitting
+        ){
+          return;
+        }
+
+        clearFieldFocus();
+        scheduleAutofillSubmit();
+      }
+    );
   }
 );
 
@@ -441,14 +520,21 @@ window.addEventListener(
   "pageshow",
   ()=>{
     userInteracted=false;
+    focusAllowed=false;
 
-    window.setTimeout(
+    clearFieldFocus();
+
+    requestAnimationFrame(
       ()=>{
-        clearFieldFocus();
-      },
-      0
+        if(!userInteracted){
+          clearFieldFocus();
+        }
+      }
     );
   }
 );
+
+userInteracted=false;
+focusAllowed=false;
 
 clearFieldFocus();

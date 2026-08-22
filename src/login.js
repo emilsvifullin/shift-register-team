@@ -31,11 +31,13 @@ const authCard=
 const visualViewport=
   window.visualViewport;
 
+const KEYBOARD_MOVE_DELTA=6;
 const KEYBOARD_OPEN_DELTA=120;
-const KEYBOARD_CLOSE_START_DELTA=28;
-const KEYBOARD_CLOSED_DELTA=70;
-const KEYBOARD_SETTLE_MS=120;
-const FIELD_SWITCH_GUARD_MS=320;
+const KEYBOARD_CLOSE_START_DELTA=8;
+const KEYBOARD_CLOSED_DELTA=60;
+const KEYBOARD_SETTLE_MS=90;
+const FIELD_SWITCH_GUARD_MS=360;
+const CARD_FOLLOW_MS=24;
 
 let submitting=false;
 let userInteracted=false;
@@ -45,11 +47,16 @@ let autofillTimer=0;
 let keyboardSettleTimer=0;
 let keyboardCloseTimer=0;
 let fieldSwitchTimer=0;
-let viewportFrame=0;
 
 let keyboardState="idle";
 let keyboardOpenHeight=null;
 let fieldSwitchGuardUntil=0;
+
+let cardMotionFrame=0;
+let cardMotionLastTime=0;
+let cardCurrentShift=0;
+let cardTargetShift=0;
+let clearCardShiftWhenCentered=false;
 
 let fullViewportHeight=
   visualViewport
@@ -130,27 +137,168 @@ function clearKeyboardTimers(){
   window.clearTimeout(
     fieldSwitchTimer
   );
-
-  if(viewportFrame){
-    cancelAnimationFrame(
-      viewportFrame
-    );
-
-    viewportFrame=0;
-  }
 }
 
-function setCardCenterToPage(){
+function writeCardShift(value){
+  document.documentElement
+    .style
+    .setProperty(
+      "--auth-card-shift-y",
+      `${value.toFixed(2)}px`
+    );
+}
+
+function stopCardMotion({
+  reset=false
+}={}){
+  if(cardMotionFrame){
+    cancelAnimationFrame(
+      cardMotionFrame
+    );
+
+    cardMotionFrame=0;
+  }
+
+  cardMotionLastTime=0;
+
+  if(!reset){
+    return;
+  }
+
+  cardCurrentShift=0;
+  cardTargetShift=0;
+  clearCardShiftWhenCentered=false;
+
   document.documentElement
     .style
     .removeProperty(
-      "--auth-card-center-y"
+      "--auth-card-shift-y"
     );
 }
 
-function setCardCenterFromViewport(){
-  if(!authCard){
+function cardMotionStep(timestamp){
+  const elapsed=
+    cardMotionLastTime
+      ? Math.min(
+          50,
+          Math.max(
+            1,
+            timestamp-cardMotionLastTime
+          )
+        )
+      : 16.67;
+
+  cardMotionLastTime=
+    timestamp;
+
+  /*
+    Плавное движение с одинаковым
+    ощущением на 60 и 120 Гц.
+
+    visualViewport может прыгать,
+    но карточка между этими значениями
+    движется непрерывно.
+  */
+  const alpha=
+    1-
+    Math.exp(
+      -elapsed /
+      CARD_FOLLOW_MS
+    );
+
+  cardCurrentShift+=
+    (
+      cardTargetShift-
+      cardCurrentShift
+    ) * alpha;
+
+  if(
+    Math.abs(
+      cardTargetShift-
+      cardCurrentShift
+    )<0.15
+  ){
+    cardCurrentShift=
+      cardTargetShift;
+  }
+
+  writeCardShift(
+    cardCurrentShift
+  );
+
+  if(
+    cardCurrentShift===
+    cardTargetShift
+  ){
+    cardMotionFrame=0;
+    cardMotionLastTime=0;
+
+    if(
+      clearCardShiftWhenCentered &&
+      Math.abs(
+        cardCurrentShift
+      )<0.15
+    ){
+      clearCardShiftWhenCentered=false;
+
+      document.documentElement
+        .style
+        .removeProperty(
+          "--auth-card-shift-y"
+        );
+    }
+
     return;
+  }
+
+  cardMotionFrame=
+    requestAnimationFrame(
+      cardMotionStep
+    );
+}
+
+function startCardMotion(){
+  if(cardMotionFrame){
+    return;
+  }
+
+  cardMotionLastTime=0;
+
+  cardMotionFrame=
+    requestAnimationFrame(
+      cardMotionStep
+    );
+}
+
+function setCardTargetShift(
+  value,
+  {
+    clearAtCenter=false
+  }={}
+){
+  cardTargetShift=
+    Number.isFinite(value)
+      ? value
+      : 0;
+
+  clearCardShiftWhenCentered=
+    clearAtCenter &&
+    Math.abs(
+      cardTargetShift
+    )<0.15;
+
+  startCardMotion();
+}
+
+function setCardCenterToPage(){
+  stopCardMotion({
+    reset:true
+  });
+}
+
+function getCardShiftFromViewport(){
+  if(!authCard){
+    return 0;
   }
 
   const {
@@ -170,21 +318,21 @@ function setCardCenterFromViewport(){
     offsetTop;
 
   const visibleBottom=
-    offsetTop +
+    offsetTop+
     height;
 
   const idealCenter=
-    visibleTop +
-    height / 2;
+    visibleTop+
+    height/2;
 
   const minimumCenter=
-    visibleTop +
-    cardHeight / 2 +
+    visibleTop+
+    cardHeight/2+
     margin;
 
   const maximumCenter=
-    visibleBottom -
-    cardHeight / 2 -
+    visibleBottom-
+    cardHeight/2-
     margin;
 
   const center=
@@ -198,26 +346,16 @@ function setCardCenterFromViewport(){
         )
       : idealCenter;
 
-  document.documentElement
-    .style
-    .setProperty(
-      "--auth-card-center-y",
-      `${Math.round(center)}px`
-    );
+  return (
+    center-
+    fullViewportHeight/2
+  );
 }
 
-function scheduleCardCenterFromViewport(){
-  if(viewportFrame){
-    return;
-  }
-
-  viewportFrame=
-    requestAnimationFrame(
-      ()=>{
-        viewportFrame=0;
-        setCardCenterFromViewport();
-      }
-    );
+function followViewportWithCard(){
+  setCardTargetShift(
+    getCardShiftFromViewport()
+  );
 }
 
 function blurInputs(){
@@ -254,7 +392,17 @@ function finishKeyboardSession(){
   fieldSwitchGuardUntil=0;
 
   setIdleFields();
-  setCardCenterToPage();
+
+  /*
+    Не сбрасываем позицию резко.
+    Плавно доводим карточку до центра.
+  */
+  setCardTargetShift(
+    0,
+    {
+      clearAtCenter:true
+    }
+  );
 }
 
 function beginKeyboardDismiss(){
@@ -309,7 +457,7 @@ function focusAuthInput(input){
 
   if(switchingFields){
     fieldSwitchGuardUntil=
-      performance.now() +
+      performance.now()+
       FIELD_SWITCH_GUARD_MS;
   }
 
@@ -362,8 +510,8 @@ function settleKeyboardOpen(){
     getViewportMetrics();
 
   const keyboardVisible=
-    fullViewportHeight -
-      height >
+    fullViewportHeight-
+      height>
     KEYBOARD_OPEN_DELTA;
 
   if(
@@ -376,11 +524,15 @@ function settleKeyboardOpen(){
     return;
   }
 
-  setCardCenterFromViewport();
+  followViewportWithCard();
 
   keyboardOpenHeight=
     height;
 
+  /*
+    С этого момента карточка
+    полностью заморожена.
+  */
   keyboardState="open";
 }
 
@@ -398,8 +550,8 @@ function confirmKeyboardClosed(){
     getViewportMetrics();
 
   const keyboardClosed=
-    fullViewportHeight -
-      height <=
+    fullViewportHeight-
+      height<=
     KEYBOARD_CLOSED_DELTA;
 
   if(!keyboardClosed){
@@ -438,21 +590,38 @@ function handleViewportGeometry(){
   }
 
   if(keyboardState==="opening"){
-    const keyboardVisible=
-      fullViewportHeight -
-        height >
-      KEYBOARD_OPEN_DELTA;
+    const keyboardDelta=
+      fullViewportHeight-
+      height;
 
-    if(!keyboardVisible){
+    /*
+      Начинаем движение практически
+      сразу с первым движением клавиатуры,
+      а не ждём, пока она уже поднимется
+      на 120 px.
+    */
+    if(
+      keyboardDelta<=
+      KEYBOARD_MOVE_DELTA
+    ){
       return;
     }
 
     /*
-      Карточка двигается вместе
-      с реальной анимацией клавиатуры iOS.
-      Собственной CSS-анимации нет.
+      Safari только сообщает новую цель.
+
+      Никаких скачков карточки здесь нет:
+      до новой координаты её ведёт
+      отдельный requestAnimationFrame-loop.
     */
-    scheduleCardCenterFromViewport();
+    followViewportWithCard();
+
+    if(
+      keyboardDelta<=
+      KEYBOARD_OPEN_DELTA
+    ){
+      return;
+    }
 
     window.clearTimeout(
       keyboardSettleTimer
@@ -469,8 +638,8 @@ function handleViewportGeometry(){
 
   if(keyboardState==="open"){
     /*
-      Email <-> Пароль:
-      карточка заморожена.
+      При Email <-> Пароль карточку
+      вообще не двигаем.
     */
     if(
       performance.now()<
@@ -482,7 +651,7 @@ function handleViewportGeometry(){
     const startedClosing=
       keyboardOpenHeight!==null &&
       height>=
-        keyboardOpenHeight +
+        keyboardOpenHeight+
         KEYBOARD_CLOSE_START_DELTA;
 
     if(!startedClosing){
@@ -494,14 +663,14 @@ function handleViewportGeometry(){
 
   if(keyboardState==="closing"){
     /*
-      При закрытии карточка снова
-      следует за нативной клавиатурой.
+      При опускании клавиатуры работает
+      тот же плавный motion-loop.
     */
-    scheduleCardCenterFromViewport();
+    followViewportWithCard();
 
     const keyboardClosed=
-      fullViewportHeight -
-        height <=
+      fullViewportHeight-
+        height<=
       KEYBOARD_CLOSED_DELTA;
 
     if(!keyboardClosed){
@@ -512,6 +681,8 @@ function handleViewportGeometry(){
       return;
     }
 
+    setCardTargetShift(0);
+
     window.clearTimeout(
       keyboardCloseTimer
     );
@@ -519,7 +690,7 @@ function handleViewportGeometry(){
     keyboardCloseTimer=
       window.setTimeout(
         confirmKeyboardClosed,
-        60
+        70
       );
   }
 }

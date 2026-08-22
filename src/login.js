@@ -42,6 +42,7 @@ let keyboardCloseTimer=0;
 
 let keyboardOpen=false;
 let keyboardScreenCenter=null;
+let keyboardOpenHeight=null;
 
 let fullViewportHeight=
   visualViewport
@@ -123,6 +124,7 @@ function removeKeyboardPosition({
 
   keyboardOpen=false;
   keyboardScreenCenter=null;
+  keyboardOpenHeight=null;
 
   document.body.classList.remove(
     "auth-keyboard-locked"

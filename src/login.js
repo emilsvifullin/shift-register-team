@@ -37,7 +37,8 @@ const KEYBOARD_CLOSE_START_DELTA=8;
 const KEYBOARD_CLOSED_DELTA=60;
 const KEYBOARD_SETTLE_MS=90;
 const FIELD_SWITCH_GUARD_MS=360;
-const CARD_FOLLOW_MS=24;
+const CARD_SMOOTH_TIME_MS=120;
+const CARD_MAX_FRAME_MS=34;
 
 let submitting=false;
 let userInteracted=false;
@@ -56,6 +57,7 @@ let cardMotionFrame=0;
 let cardMotionLastTime=0;
 let cardCurrentShift=0;
 let cardTargetShift=0;
+let cardVelocity=0;
 let clearCardShiftWhenCentered=false;
 
 let fullViewportHeight=
@@ -160,6 +162,7 @@ function stopCardMotion({
   }
 
   cardMotionLastTime=0;
+  cardVelocity=0;
 
   if(!reset){
     return;
@@ -177,10 +180,10 @@ function stopCardMotion({
 }
 
 function cardMotionStep(timestamp){
-  const elapsed=
+  const elapsedMs=
     cardMotionLastTime
       ? Math.min(
-          50,
+          CARD_MAX_FRAME_MS,
           Math.max(
             1,
             timestamp-cardMotionLastTime
@@ -191,35 +194,85 @@ function cardMotionStep(timestamp){
   cardMotionLastTime=
     timestamp;
 
-  /*
-    Плавное движение с одинаковым
-    ощущением на 60 и 120 Гц.
+  const deltaTime=
+    elapsedMs / 1000;
 
-    visualViewport может прыгать,
-    но карточка между этими значениями
-    движется непрерывно.
+  const smoothTime=
+    CARD_SMOOTH_TIME_MS /
+    1000;
+
+  /*
+    Критически затухающая пружина.
+
+    В отличие от обычного easing,
+    скорость сохраняется между кадрами
+    и между изменениями целевой позиции.
+
+    Поэтому скачки visualViewport
+    больше не создают скачков скорости
+    самой карточки.
   */
-  const alpha=
-    1-
-    Math.exp(
-      -elapsed /
-      CARD_FOLLOW_MS
+  const omega=
+    2 / smoothTime;
+
+  const x=
+    omega *
+    deltaTime;
+
+  const decay=
+    1 /
+    (
+      1 +
+      x +
+      0.48*x*x +
+      0.235*x*x*x
     );
 
-  cardCurrentShift+=
+  const change=
+    cardCurrentShift -
+    cardTargetShift;
+
+  const temp=
     (
-      cardTargetShift-
+      cardVelocity +
+      omega*change
+    ) *
+    deltaTime;
+
+  cardVelocity=
+    (
+      cardVelocity -
+      omega*temp
+    ) *
+    decay;
+
+  cardCurrentShift=
+    cardTargetShift +
+    (
+      change +
+      temp
+    ) *
+    decay;
+
+  const distance=
+    Math.abs(
+      cardTargetShift -
       cardCurrentShift
-    ) * alpha;
+    );
+
+  const speed=
+    Math.abs(
+      cardVelocity
+    );
 
   if(
-    Math.abs(
-      cardTargetShift-
-      cardCurrentShift
-    )<0.15
+    distance<0.12 &&
+    speed<0.5
   ){
     cardCurrentShift=
       cardTargetShift;
+
+    cardVelocity=0;
   }
 
   writeCardShift(
@@ -228,7 +281,8 @@ function cardMotionStep(timestamp){
 
   if(
     cardCurrentShift===
-    cardTargetShift
+      cardTargetShift &&
+    cardVelocity===0
   ){
     cardMotionFrame=0;
     cardMotionLastTime=0;

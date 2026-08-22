@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+
+<meta name="apple-mobile-web-app-title" content="Shift Register">
+<meta name="theme-color" content="#0B0C0E" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F2F1EE" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" href="./icon-192.png">
+
+<title>Shift Register</title>
+
+<link rel="stylesheet" href="./styles.css">
+
+<link
+  rel="modulepreload"
+  href="./src/config.js"
+>
+
+<link
+  rel="modulepreload"
+  href="./src/domain.js"
+>
+
+<link
+  rel="modulepreload"
+  href="./src/storage.js"
+>
+
+<script
+  type="module"
+  src="./src/app.js"
+></script>
+</head>
+<body class="app-booting">
+
+<header>
+  <div class="nav">
+    <button id="prevM" aria-label="Назад">
+      <svg viewBox="0 0 12 16" aria-hidden="true">
+        <path d="M9 3L3 8L9 13"></path>
+      </svg>
+    </button>
+
+    <button
+      type="button"
+      class="period"
+      id="period"
+      aria-label="Выбрать месяц"
+    >—</button>
+
+    <button id="nextM" aria-label="Вперёд">
+      <svg viewBox="0 0 12 16" aria-hidden="true">
+        <path d="M3 3L9 8L3 13"></path>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<main id="app" role="tabpanel"></main>
+
+<div class="bottom-controls">
+  <nav class="tabs" role="tablist" aria-label="Разделы">
+    <button type="button" role="tab" id="tab-shifts" class="on" aria-controls="app" aria-selected="true">Смены</button>
+    <button type="button" role="tab" id="tab-stats" aria-controls="app" aria-selected="false">Итоги</button>
+    <button type="button" role="tab" id="tab-data" aria-controls="app" aria-selected="false">Данные</button>
+  </nav>
+
+  <div class="fab-slot">
+    <button
+      class="fab"
+      id="fab"
+      aria-label="Добавить смену"
+    ></button>
+  </div>
+</div>
+
+<div class="veil" id="veil" aria-hidden="true"></div>
+<div
+  class="sheet"
+  id="sheet"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="sheetTitle"
+  aria-hidden="true"
+  tabindex="-1"
+>
+  <div class="grab"></div>
+  <div class="shead">
+    <button class="lnk" id="sheetCancel">Отмена</button>
+    <div class="ttl" id="sheetTitle">Новая смена</div>
+    <button class="lnk b" id="sheetSave">Готово</button>
+  </div>
+  <div class="sbody" id="sheetBody"></div>
+</div>
+
+<div class="point-veil" id="pointVeil" aria-hidden="true"></div>
+
+<div
+  class="point-picker"
+  id="pointPicker"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="pointPickerTitle"
+  aria-hidden="true"
+>
+  <div
+    class="point-picker-handle"
+    id="pointPickerHandle"
+  >
+    <div class="point-picker-grab"></div>
+  </div>
+
+  <div class="picker-toolbar">
+    <button
+      type="button"
+      class="picker-toolbar-btn cancel"
+      id="pointCancel"
+    >
+      Отмена
+    </button>
+
+    <div
+      class="picker-toolbar-title"
+      id="pointPickerTitle"
+    >
+      Выберите пункт
+    </div>
+
+    <button
+      type="button"
+      class="picker-toolbar-btn done"
+      id="pointDone"
+    >
+      Готово
+    </button>
+  </div>
+
+  <div
+    class="point-list"
+    id="pointList"
+  ></div>
+</div>
+
+<div class="month-veil" id="monthVeil" aria-hidden="true"></div>
+
+<div
+  class="month-picker"
+  id="monthPicker"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Выбор месяца"
+  aria-hidden="true"
+>
+  <div class="month-picker-handle" id="monthPickerHandle">
+    <div class="month-picker-grab"></div>
+  </div>
+
+  <div class="picker-toolbar">
+    <button
+      type="button"
+      class="picker-toolbar-btn cancel"
+      id="monthCancel"
+    >
+      Отмена
+    </button>
+
+    <div class="picker-toolbar-title">
+      Выберите месяц
+    </div>
+
+    <button
+      type="button"
+      class="picker-toolbar-btn done"
+      id="monthDone"
+    >
+      Готово
+    </button>
+  </div>
+
+  <div class="month-picker-head">
+    <button
+      type="button"
+      class="date-calendar-nav"
+      id="monthYearPrev"
+      aria-label="Предыдущий год"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M13 4L7 10L13 16"></path>
+      </svg>
+    </button>
+
+    <div class="month-year" id="monthPickerYear"></div>
+
+    <button
+      type="button"
+      class="date-calendar-nav"
+      id="monthYearNext"
+      aria-label="Следующий год"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M7 4L13 10L7 16"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div class="month-grid" id="monthGrid"></div>
+
+  <button type="button" class="month-today" id="monthToday">
+    Текущий месяц
+  </button>
+</div>
+
+<div class="date-veil" id="dateVeil" aria-hidden="true"></div>
+
+<div
+  class="date-picker"
+  id="datePicker"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Выбор даты"
+  aria-hidden="true"
+>
+  <div class="date-picker-handle" id="datePickerHandle">
+    <div class="date-picker-grab"></div>
+  </div>
+
+  <div class="picker-toolbar">
+    <button
+      type="button"
+      class="picker-toolbar-btn cancel"
+      id="dateCancel"
+    >
+      Отмена
+    </button>
+
+    <div class="picker-toolbar-title">
+      Дата
+    </div>
+
+    <button
+      type="button"
+      class="picker-toolbar-btn done"
+      id="dateDone"
+    >
+      Готово
+    </button>
+  </div>
+
+  <div class="date-calendar-head">
+    <button
+      type="button"
+      class="date-calendar-nav"
+      id="datePrev"
+      aria-label="Предыдущий месяц"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M13 4L7 10L13 16"></path>
+      </svg>
+    </button>
+
+    <button
+      type="button"
+      class="date-calendar-title"
+      id="datePickerMonth"
+      aria-expanded="false"
+    ></button>
+
+    <button
+      type="button"
+      class="date-calendar-nav"
+      id="dateNext"
+      aria-label="Следующий месяц"
+    >
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M7 4L13 10L7 16"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div class="date-jump" id="dateJump">
+    <div class="picker-toolbar">
+      <button
+        type="button"
+        class="picker-toolbar-btn cancel"
+        id="dateJumpCancel"
+      >
+        Отмена
+      </button>
+
+      <div class="picker-toolbar-title">
+        Выберите месяц
+      </div>
+
+      <button
+        type="button"
+        class="picker-toolbar-btn done"
+        id="dateJumpDone"
+      >
+        Готово
+      </button>
+    </div>
+
+    <div class="date-jump-year">
+      <button
+        type="button"
+        class="date-calendar-nav"
+        id="dateJumpPrevYear"
+        aria-label="Предыдущий год"
+      >
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M13 4L7 10L13 16"></path>
+        </svg>
+      </button>
+
+      <div
+        class="date-jump-year-value"
+        id="dateJumpYear"
+      ></div>
+
+      <button
+        type="button"
+        class="date-calendar-nav"
+        id="dateJumpNextYear"
+        aria-label="Следующий год"
+      >
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M7 4L13 10L7 16"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div
+      class="date-jump-months"
+      id="dateJumpMonths"
+    ></div>
+
+    <button
+      type="button"
+      class="month-today"
+      id="dateJumpCurrent"
+    >
+      Текущий месяц
+    </button>
+  </div>
+
+  <div
+    class="date-jump-dismiss"
+    id="dateJumpDismiss"
+    aria-hidden="true"
+  ></div>
+
+  <div class="date-weekdays">
+    <span>Пн</span>
+    <span>Вт</span>
+    <span>Ср</span>
+    <span>Чт</span>
+    <span>Пт</span>
+    <span>Сб</span>
+    <span>Вс</span>
+  </div>
+
+  <div class="date-grid" id="dateGrid"></div>
+
+  <button type="button" class="date-today" id="dateToday">
+    Сегодня
+  </button>
+</div>
+
+<div
+  class="app-confirm"
+  id="appConfirm"
+  aria-hidden="true"
+>
+  <div
+    class="app-confirm-box"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="appConfirmTitle"
+    aria-describedby="appConfirmDetail"
+  >
+    <div class="app-confirm-text">
+      <div
+        class="app-confirm-title"
+        id="appConfirmTitle"
+      ></div>
+
+      <div
+        class="app-confirm-detail"
+        id="appConfirmDetail"
+        hidden
+      ></div>
+    </div>
+
+    <div class="app-confirm-actions">
+      <button
+        type="button"
+        class="app-confirm-btn"
+        id="appConfirmCancel"
+      >
+        Отмена
+      </button>
+
+      <button
+        type="button"
+        class="app-confirm-btn ok"
+        id="appConfirmOk"
+      >
+        Подтвердить
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+</body>
+</html>

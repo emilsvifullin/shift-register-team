@@ -2624,6 +2624,9 @@ body.auth-required > .bottom-controls{
   background:var(--tint);
   color:var(--ink);
 
+  direction:ltr;
+  text-align:left;
+
   font-size:16px;
 
   appearance:none;

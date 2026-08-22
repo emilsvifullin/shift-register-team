@@ -1,5 +1,5 @@
 const SUPABASE_URL=
-  "https://rxosovinouuonwrrzigs.supabase.co";
+  "https://shift-register-supabase.emilsvifullin.workers.dev";
 
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_f-tS0xagjlx2giW2k5u0hw_dxzEtV-v";

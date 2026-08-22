@@ -67,10 +67,6 @@ function showAuthGate(){
     "aria-hidden",
     "false"
   );
-
-  requestAnimationFrame(()=>{
-    authElements().email?.focus();
-  });
 }
 
 function prepareApp(){

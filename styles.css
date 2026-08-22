@@ -158,6 +158,23 @@ body:not(.app-booting) > .boot-cover{
   display:none;
 }
 
+body.auth-login-entering > header,
+body.auth-login-entering > main,
+body.auth-login-entering > .bottom-controls{
+  opacity:0;
+}
+
+body.auth-login-entering.auth-login-entering-ready > header,
+body.auth-login-entering.auth-login-entering-ready > main,
+body.auth-login-entering.auth-login-entering-ready > .bottom-controls{
+  opacity:1;
+
+  transition:
+    opacity
+    .30s
+    ease;
+}
+
 button,input,select{font-family:inherit}
 
 /* шапка */

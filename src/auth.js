@@ -60,6 +60,10 @@ function showAuthGate(){
   );
 
   document.body.classList.remove(
+    "auth-authenticated"
+  );
+
+  document.body.classList.remove(
     "app-booting"
   );
 
@@ -75,6 +79,10 @@ function prepareApp(){
 
   document.body.classList.add(
     "app-booting"
+  );
+
+  document.body.classList.add(
+    "auth-authenticated"
   );
 
   document.body.classList.remove(

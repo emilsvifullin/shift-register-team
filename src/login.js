@@ -67,8 +67,14 @@ function setError(message=""){
 function setSubmitting(value){
   submitting=value;
 
-  submit.disabled=
-    value;
+  submit.setAttribute(
+    "aria-disabled",
+    String(value)
+  );
+
+  if(value){
+    submit.blur();
+  }
 
   submit.textContent=
     value
@@ -502,7 +508,7 @@ submit.addEventListener(
   event=>{
     if(
       event.pointerType!=="touch" ||
-      submit.disabled
+      submitting
     ){
       return;
     }
@@ -578,7 +584,7 @@ window.addEventListener(
       isPointerInsideSubmit(
         event
       ) &&
-      !submit.disabled;
+      !submitting;
 
     try{
       submit.releasePointerCapture(
@@ -592,7 +598,9 @@ window.addEventListener(
     resetSubmitPointer();
 
     if(shouldSubmit){
-      requestAuthSubmit();
+      requestAnimationFrame(
+        requestAuthSubmit
+      );
     }
   }
 );
@@ -618,8 +626,9 @@ submit.addEventListener(
   "click",
   event=>{
     if(
+      submitting ||
       performance.now()<
-      submitTouchBlockUntil
+        submitTouchBlockUntil
     ){
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -942,6 +951,10 @@ form.addEventListener(
   "submit",
   async event=>{
     event.preventDefault();
+
+    if(submitting){
+      return;
+    }
 
     window.clearTimeout(
       autofillTimer

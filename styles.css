@@ -2789,14 +2789,16 @@ body.login-page.auth-focus-enabled
   -webkit-appearance:none;
 
   transition:
-    transform .12s ease,
-    opacity .12s ease,
+    background-color .12s ease,
+    border-color .12s ease,
+    color .12s ease,
     box-shadow .18s ease;
 }
 
 .auth-submit:active:not([aria-disabled="true"]):not(.press-cancelled){
-  transform:scale(.98);
-  opacity:.72;
+  box-shadow:
+    inset 0 0 0 999px
+    var(--gold-soft);
 }
 
 .auth-submit:focus-visible{
@@ -2806,9 +2808,8 @@ body.login-page.auth-focus-enabled
 }
 
 .auth-submit[aria-disabled="true"]{
-  opacity:.5;
+  color:var(--gold-d);
   pointer-events:none;
-  transform:none;
   box-shadow:none;
 }
 

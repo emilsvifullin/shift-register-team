@@ -41,6 +41,10 @@ let keyboardSettleTimer=0;
 let keyboardCloseTimer=0;
 let fieldSwitchTimer=0;
 
+let submitPointerId=null;
+let submitPointerCancelled=false;
+let submitPointerResetTimer=0;
+
 let keyboardState="idle";
 let keyboardOpenHeight=null;
 let fieldSwitchGuardUntil=0;
@@ -444,6 +448,153 @@ document.addEventListener(
     ){
       beginKeyboardDismiss();
     }
+  },
+  {
+    capture:true
+  }
+);
+
+function isPointerInsideSubmit(
+  event
+){
+  const rect=
+    submit.getBoundingClientRect();
+
+  return (
+    event.clientX>=rect.left &&
+    event.clientX<=rect.right &&
+    event.clientY>=rect.top &&
+    event.clientY<=rect.bottom
+  );
+}
+
+function resetSubmitPointer(){
+  submitPointerId=null;
+  submitPointerCancelled=false;
+
+  submit.classList.remove(
+    "press-cancelled"
+  );
+}
+
+submit.addEventListener(
+  "pointerdown",
+  event=>{
+    if(submit.disabled){
+      return;
+    }
+
+    window.clearTimeout(
+      submitPointerResetTimer
+    );
+
+    submitPointerId=
+      event.pointerId;
+
+    submitPointerCancelled=false;
+
+    submit.classList.remove(
+      "press-cancelled"
+    );
+  }
+);
+
+window.addEventListener(
+  "pointermove",
+  event=>{
+    if(
+      event.pointerId!==
+        submitPointerId ||
+      submitPointerCancelled
+    ){
+      return;
+    }
+
+    if(
+      isPointerInsideSubmit(
+        event
+      )
+    ){
+      return;
+    }
+
+    submitPointerCancelled=true;
+
+    submit.classList.add(
+      "press-cancelled"
+    );
+  },
+  {
+    passive:true
+  }
+);
+
+window.addEventListener(
+  "pointerup",
+  event=>{
+    if(
+      event.pointerId!==
+      submitPointerId
+    ){
+      return;
+    }
+
+    submitPointerId=null;
+
+    submitPointerResetTimer=
+      window.setTimeout(
+        resetSubmitPointer,
+        0
+      );
+  },
+  {
+    passive:true
+  }
+);
+
+window.addEventListener(
+  "pointercancel",
+  event=>{
+    if(
+      event.pointerId!==
+      submitPointerId
+    ){
+      return;
+    }
+
+    submitPointerCancelled=true;
+
+    submit.classList.add(
+      "press-cancelled"
+    );
+
+    submitPointerId=null;
+
+    submitPointerResetTimer=
+      window.setTimeout(
+        resetSubmitPointer,
+        0
+      );
+  },
+  {
+    passive:true
+  }
+);
+
+submit.addEventListener(
+  "click",
+  event=>{
+    if(
+      !submitPointerCancelled ||
+      event.detail===0
+    ){
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    resetSubmitPointer();
   },
   {
     capture:true

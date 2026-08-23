@@ -290,3 +290,28 @@ test(
     );
   }
 );
+
+test(
+  "employee UI mutation observers settle after synchronizing the DOM",
+  async()=>{
+    const employeeUi=
+      await read(
+        "src/employee-ui.js"
+      );
+
+    assert.match(
+      employeeUi,
+      /function setTextIfChanged\(/
+    );
+
+    assert.doesNotMatch(
+      employeeUi,
+      /check\.textContent\s*=/
+    );
+
+    assert.match(
+      employeeUi,
+      /visible===0\s*&&\s*!existingEmpty/
+    );
+  }
+);

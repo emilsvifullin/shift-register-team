@@ -48,6 +48,18 @@ let employeeListSyncQueued=false;
 let manageBackSwipe=null;
 let suppressManageBackClickUntil=0;
 
+function setTextIfChanged(
+  element,
+  value
+){
+  if(
+    element &&
+    element.textContent!==value
+  ){
+    element.textContent=value;
+  }
+}
+
 function cleanAccountLabel(value){
   return String(value || "")
     .replace(
@@ -111,8 +123,10 @@ function updateAccountButton(){
     );
 
   if(select && value){
-    value.textContent=
-      accountLabel(select);
+    setTextIfChanged(
+      value,
+      accountLabel(select)
+    );
   }
 }
 
@@ -687,8 +701,10 @@ function syncPointChecks(){
       );
 
     if(check){
-      check.textContent=
-        selected ? "✓" : "";
+      setTextIfChanged(
+        check,
+        selected ? "✓" : ""
+      );
     }
   });
 }
@@ -826,7 +842,10 @@ function updateFilterLabel(){
     filterBaseLabel();
 
   if(committedPointFilter===null){
-    value.textContent=base;
+    setTextIfChanged(
+      value,
+      base
+    );
     return;
   }
 
@@ -836,27 +855,33 @@ function updateFilterLabel(){
     );
 
   if(!ids.length){
-    value.textContent=
-      base+" · 0 ПВЗ";
+    setTextIfChanged(
+      value,
+      base+" · 0 ПВЗ"
+    );
     return;
   }
 
   if(ids.length===1){
-    value.textContent=
+    setTextIfChanged(
+      value,
       base+
       " · "+
       (
         pointNames.get(ids[0]) ||
         "1 ПВЗ"
-      );
+      )
+    );
     return;
   }
 
-  value.textContent=
+  setTextIfChanged(
+    value,
     base+
     " · "+
     ids.length+
-    " ПВЗ";
+    " ПВЗ"
+  );
 }
 
 function applyPointFilter(){
@@ -878,11 +903,10 @@ function applyPointFilter(){
       )
     );
 
-  list
-    .querySelector(
+  const existingEmpty=
+    list.querySelector(
       ".employee-extra-filter-empty"
-    )
-    ?.remove();
+    );
 
   if(
     committedPointFilter===null ||
@@ -893,6 +917,8 @@ function applyPointFilter(){
         "display"
       );
     });
+
+    existingEmpty?.remove();
 
     return;
   }
@@ -921,7 +947,11 @@ function applyPointFilter(){
     }
   });
 
-  if(rows.length && visible===0){
+  if(
+    rows.length &&
+    visible===0 &&
+    !existingEmpty
+  ){
     const card=
       list.querySelector(
         ".card"
@@ -940,6 +970,14 @@ function applyPointFilter(){
 
       card.appendChild(empty);
     }
+  }else if(
+    existingEmpty &&
+    (
+      !rows.length ||
+      visible>0
+    )
+  ){
+    existingEmpty.remove();
   }
 }
 

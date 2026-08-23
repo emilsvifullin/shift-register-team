@@ -45,7 +45,7 @@ export async function loadAdminTeamData(){
       supabaseClient
         .from("points")
         .select(
-          "id, code, name, active, sort_order"
+          "id, code, name, active, pricing_type, fixed_rate, advance_enabled, sort_order"
         )
         .order(
           "sort_order",

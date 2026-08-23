@@ -43,7 +43,7 @@ let fieldSwitchTimer=0;
 
 let submitPointerId=null;
 let submitPointerCancelled=false;
-let submitPointerResetTimer=0;
+let submitTouchBlockUntil=0;
 
 let keyboardState="idle";
 let keyboardOpenHeight=null;
@@ -477,25 +477,55 @@ function resetSubmitPointer(){
   );
 }
 
+function requestAuthSubmit(){
+  if(
+    typeof form.requestSubmit===
+    "function"
+  ){
+    form.requestSubmit();
+    return;
+  }
+
+  form.dispatchEvent(
+    new Event(
+      "submit",
+      {
+        bubbles:true,
+        cancelable:true
+      }
+    )
+  );
+}
+
 submit.addEventListener(
   "pointerdown",
   event=>{
-    if(submit.disabled){
+    if(
+      event.pointerType!=="touch" ||
+      submit.disabled
+    ){
       return;
     }
 
-    window.clearTimeout(
-      submitPointerResetTimer
-    );
+    event.preventDefault();
 
     submitPointerId=
       event.pointerId;
 
     submitPointerCancelled=false;
 
+    submitTouchBlockUntil=
+      performance.now()+1000;
+
     submit.classList.remove(
       "press-cancelled"
     );
+
+    try{
+      submit.setPointerCapture(
+        event.pointerId
+      );
+    }catch{}
   }
 );
 
@@ -503,6 +533,7 @@ window.addEventListener(
   "pointermove",
   event=>{
     if(
+      event.pointerType!=="touch" ||
       event.pointerId!==
         submitPointerId ||
       submitPointerCancelled
@@ -533,22 +564,36 @@ window.addEventListener(
   "pointerup",
   event=>{
     if(
+      event.pointerType!=="touch" ||
       event.pointerId!==
-      submitPointerId
+        submitPointerId
     ){
       return;
     }
 
-    submitPointerId=null;
+    event.preventDefault();
 
-    submitPointerResetTimer=
-      window.setTimeout(
-        resetSubmitPointer,
-        0
+    const shouldSubmit=
+      !submitPointerCancelled &&
+      isPointerInsideSubmit(
+        event
+      ) &&
+      !submit.disabled;
+
+    try{
+      submit.releasePointerCapture(
+        event.pointerId
       );
-  },
-  {
-    passive:true
+    }catch{}
+
+    submitTouchBlockUntil=
+      performance.now()+1000;
+
+    resetSubmitPointer();
+
+    if(shouldSubmit){
+      requestAuthSubmit();
+    }
   }
 );
 
@@ -562,22 +607,10 @@ window.addEventListener(
       return;
     }
 
-    submitPointerCancelled=true;
+    submitTouchBlockUntil=
+      performance.now()+1000;
 
-    submit.classList.add(
-      "press-cancelled"
-    );
-
-    submitPointerId=null;
-
-    submitPointerResetTimer=
-      window.setTimeout(
-        resetSubmitPointer,
-        0
-      );
-  },
-  {
-    passive:true
+    resetSubmitPointer();
   }
 );
 
@@ -585,19 +618,15 @@ submit.addEventListener(
   "click",
   event=>{
     if(
-      !submitPointerCancelled ||
-      event.detail===0
+      performance.now()<
+      submitTouchBlockUntil
     ){
+      event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
 
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
-    resetSubmitPointer();
-  },
-  {
-    capture:true
+    requestAuthSubmit();
   }
 );
 

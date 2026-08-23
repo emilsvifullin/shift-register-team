@@ -1070,14 +1070,14 @@ nav.tabs button.on{
 
 .employee-help{
   margin:
-    8px
+    7px
     4px
     0;
 
   color:var(--ink3);
 
-  font-size:11px;
-  line-height:1.4;
+  font-size:10.5px;
+  line-height:1.35;
 }
 
 .employee-points{
@@ -1159,41 +1159,6 @@ nav.tabs button.on{
 
 .employee-point.touch-active{
   background:var(--tint);
-}
-
-.employee-save{
-  width:100%;
-  min-height:48px;
-
-  margin-top:16px;
-
-  border:1px solid var(--gold-line);
-  border-radius:14px;
-
-  background:var(--gold-soft);
-  color:var(--gold);
-
-  font-size:14px;
-  font-weight:600;
-
-  cursor:pointer;
-
-  appearance:none;
-  -webkit-appearance:none;
-
-  transition:
-    opacity .12s ease,
-    box-shadow .16s ease;
-}
-
-.employee-save:disabled{
-  opacity:.55;
-  cursor:default;
-}
-
-.employee-save.touch-active:not(:disabled){
-  opacity:.68;
-  box-shadow:none !important;
 }
 
 @media (max-width:430px){
@@ -1329,6 +1294,12 @@ body.sheet-open{
 .shead .ttl{flex:1;text-align:center;font-size:11px;font-weight:700;letter-spacing:.19em;text-transform:uppercase}
 .lnk{background:none;border:none;padding:0;font-size:14.5px;color:var(--ink2);cursor:pointer}
 .lnk.b{color:var(--gold);font-weight:600}
+
+.lnk:disabled{
+  opacity:.45;
+  cursor:default;
+}
+
 .sbody{padding:4px 16px 0;max-width:620px;margin:0 auto}
 
 /* поля */

@@ -1,5 +1,5 @@
 const SUPABASE_URL=
-  "https://shift-register-supabase.emilsvifullin.workers.dev";
+  "https://shift-register-supabase-proxy.vercel.app";
 
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_f-tS0xagjlx2giW2k5u0hw_dxzEtV-v";

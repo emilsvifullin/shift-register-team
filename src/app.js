@@ -1804,7 +1804,11 @@ function employeeAvailableAccounts(){
     });
 }
 
-function viewEmployeeEditor(){
+function drawEmployeeSheet(){
+  if(!employeeDraft){
+    return;
+  }
+
   const selectedPoints=
     new Set(
       employeeDraft.pointIds
@@ -1868,116 +1872,90 @@ function viewEmployeeEditor(){
       })
       .join("");
 
-  return `
-    ${manageBackButton(
-      "employeeBack",
-      "Сотрудники"
-    )}
-
-    <div class="ml">
-      Сотрудник
-    </div>
-
-    <div class="card employee-editor">
-      <label class="row">
-        <div class="t">
-          ФИО
-        </div>
-
-        <input
-          type="text"
-          id="employeeName"
-          autocomplete="off"
-          value="${esc(employeeDraft.fullName)}"
-          placeholder="Имя сотрудника"
-        >
-      </label>
-
-      <label class="row">
-        <div class="t">
-          Начало работы
-        </div>
-
-        <input
-          type="date"
-          id="employeeHiredAt"
-          value="${esc(employeeDraft.hiredAt || "")}"
-        >
-      </label>
-    </div>
-
-    <div class="ml">
-      Статус
-    </div>
-
-    <div class="card segbox">
-      <div class="seg">
-        <button
-          type="button"
-          data-employee-status="active"
-          class="${employeeDraft.status==="active" ? "on" : ""}"
-        >
-          Активен
-        </button>
-
-        <button
-          type="button"
-          data-employee-status="inactive"
-          class="${employeeDraft.status==="inactive" ? "on" : ""}"
-        >
-          Неактивен
-        </button>
+  document
+    .getElementById(
+      "employeeSheetBody"
+    )
+    .innerHTML=`
+      <div class="ml">
+        Сотрудник
       </div>
-    </div>
 
-    <div class="ml">
-      Аккаунт
-    </div>
+      <div class="card employee-editor">
+        <label class="row">
+          <div class="t">
+            ФИО
+          </div>
 
-    <div class="card employee-editor">
-      <label class="row">
-        <div class="t">
-          Вход
+          <input
+            type="text"
+            id="employeeName"
+            autocomplete="off"
+            value="${esc(employeeDraft.fullName)}"
+            aria-label="ФИО сотрудника"
+          >
+        </label>
+      </div>
+
+      <div class="ml">
+        Статус
+      </div>
+
+      <div class="card segbox">
+        <div class="seg">
+          <button
+            type="button"
+            data-employee-status="active"
+            class="${employeeDraft.status==="active" ? "on" : ""}"
+          >
+            Активен
+          </button>
+
+          <button
+            type="button"
+            data-employee-status="inactive"
+            class="${employeeDraft.status==="inactive" ? "on" : ""}"
+          >
+            Неактивен
+          </button>
         </div>
+      </div>
 
-        <select
-          id="employeeAccount"
-          aria-label="Аккаунт сотрудника"
-        >
-          <option value="">
-            Не привязан
-          </option>
+      <div class="ml">
+        Аккаунт
+      </div>
 
-          ${accountOptions}
-        </select>
-      </label>
-    </div>
+      <div class="card employee-editor">
+        <label class="row">
+          <div class="t">
+            Вход
+          </div>
 
-    <div class="employee-help">
-      Аккаунт нужен для входа сотрудника и просмотра только своих смен и начислений.
-    </div>
+          <select
+            id="employeeAccount"
+            aria-label="Аккаунт сотрудника"
+          >
+            <option value="">
+              Не привязан
+            </option>
 
-    <div class="ml">
-      Пункты выдачи
-    </div>
+            ${accountOptions}
+          </select>
+        </label>
+      </div>
 
-    <div class="card employee-points">
-      ${pointRows}
-    </div>
+      <div class="employee-help">
+        Для входа и просмотра своих смен.
+      </div>
 
-    <button
-      type="button"
-      class="employee-save"
-      id="employeeSave"
-      ${employeeSaving ? "disabled" : ""}
-    >
-      ${
-        employeeSaving
-          ? "Сохраняем…"
-          : "Сохранить"
-      }
-    </button>
-  `;
+      <div class="ml">
+        Пункты выдачи
+      </div>
+
+      <div class="card employee-points">
+        ${pointRows}
+      </div>
+    `;
 }
 
 function employeeSaveError(
@@ -2196,33 +2174,235 @@ function openEmployeeEditor(
     return;
   }
 
-  animateManageView(
-    ()=>{
-      employeeDraft=
-        nextDraft;
+  const sheet=
+    employeeSheetElement;
 
-      setPageScrollTop(0);
-      render();
-    },
-    1
+  const veil=
+    document.getElementById(
+      "employeeVeil"
+    );
+
+  employeeSheetPreviousFocus=
+    document.activeElement;
+
+  employeeDraft=
+    nextDraft;
+
+  employeeSaving=false;
+
+  document
+    .getElementById(
+      "employeeSheetTitle"
+    )
+    .textContent=
+      employeeId
+        ? "Сотрудник"
+        : "Новый сотрудник";
+
+  const saveButton=
+    document.getElementById(
+      "employeeSheetSave"
+    );
+
+  saveButton.disabled=false;
+
+  drawEmployeeSheet();
+
+  sheet.style.display="block";
+  sheet.style.removeProperty("transition");
+  sheet.style.removeProperty("--sheet-drag");
+
+  sheet.classList.remove("on");
+
+  sheet.setAttribute(
+    "aria-hidden",
+    "false"
   );
+
+  veil.setAttribute(
+    "aria-hidden",
+    "false"
+  );
+
+  setBackgroundInert(true);
+
+  void sheet.offsetHeight;
+
+  document.body.classList.add(
+    "sheet-open"
+  );
+
+  veil.classList.add(
+    "on"
+  );
+
+  sheet.classList.add(
+    "on"
+  );
+
+  requestAnimationFrame(()=>{
+    sheet.scrollTop=0;
+
+    sheet.focus({
+      preventScroll:true
+    });
+  });
 }
 
 function closeEmployeeEditor(){
-  if(!employeeDraft){
+  const sheet=
+    employeeSheetElement;
+
+  if(
+    !sheet.classList.contains(
+      "on"
+    )
+  ){
     return;
   }
 
-  animateManageView(
-    ()=>{
-      employeeDraft=null;
-      employeeSaving=false;
+  const veil=
+    document.getElementById(
+      "employeeVeil"
+    );
 
-      setPageScrollTop(0);
-      render();
-    },
-    -1
+  veil.classList.remove(
+    "on"
   );
+
+  veil.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  sheet.classList.remove(
+    "on"
+  );
+
+  sheet.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  document.body.classList.remove(
+    "sheet-open"
+  );
+
+  employeeDraft=null;
+  employeeSaving=false;
+
+  if(!activeModal()){
+    setBackgroundInert(false);
+  }
+
+  const previousFocus=
+    employeeSheetPreviousFocus;
+
+  employeeSheetPreviousFocus=null;
+
+  setTimeout(()=>{
+    if(
+      previousFocus &&
+      document.contains(
+        previousFocus
+      )
+    ){
+      previousFocus.focus();
+    }
+  },100);
+}
+
+async function saveEmployeeDraft(){
+  if(
+    !employeeDraft ||
+    employeeSaving
+  ){
+    return;
+  }
+
+  const name=
+    employeeDraft.fullName
+      .trim();
+
+  if(!name){
+    toast(
+      "Укажите ФИО сотрудника",
+      3000
+    );
+
+    document
+      .getElementById(
+        "employeeName"
+      )
+      ?.focus();
+
+    return;
+  }
+
+  const saveButton=
+    document.getElementById(
+      "employeeSheetSave"
+    );
+
+  employeeSaving=true;
+  saveButton.disabled=true;
+
+  try{
+    const employeeId=
+      await saveAdminEmployee({
+        id:employeeDraft.id,
+        fullName:name,
+        status:
+          employeeDraft.status,
+        hiredAt:
+          employeeDraft.hiredAt ||
+          null,
+        userId:
+          employeeDraft.userId ||
+          null,
+        pointIds:
+          employeeDraft.pointIds
+      });
+
+    employeeDraft.id=
+      employeeId;
+
+    const refreshed=
+      await refreshTeamData({
+        renderAfter:false
+      });
+
+    if(!refreshed){
+      employeeSaving=false;
+      saveButton.disabled=false;
+
+      toast(
+        "Сотрудник сохранён, но список не удалось обновить",
+        4000
+      );
+
+      return;
+    }
+
+    employeeSaving=false;
+
+    closeEmployeeEditor();
+    render();
+
+    toast(
+      "Сотрудник сохранён"
+    );
+  }catch(error){
+    employeeSaving=false;
+    saveButton.disabled=false;
+
+    toast(
+      employeeSaveError(
+        error
+      ),
+      4000
+    );
+  }
 }
 
 function viewManage(){
@@ -5784,6 +5964,132 @@ document.getElementById("dateDone").onclick=()=>{
   selectDate(datePickerValue);
 };
 
+document
+  .getElementById(
+    "employeeVeil"
+  )
+  .onclick=
+    closeEmployeeEditor;
+
+document
+  .getElementById(
+    "employeeSheetCancel"
+  )
+  .onclick=
+    closeEmployeeEditor;
+
+document
+  .getElementById(
+    "employeeSheetSave"
+  )
+  .onclick=
+    saveEmployeeDraft;
+
+employeeSheetElement.addEventListener(
+  "click",
+  event=>{
+    const button=
+      event.target.closest(
+        "button"
+      );
+
+    if(
+      !button ||
+      !employeeDraft
+    ){
+      return;
+    }
+
+    if(
+      button.dataset.employeeStatus
+    ){
+      employeeDraft.status=
+        button.dataset.employeeStatus;
+
+      employeeSheetElement
+        .querySelectorAll(
+          "[data-employee-status]"
+        )
+        .forEach(item=>{
+          item.classList.toggle(
+            "on",
+            item.dataset.employeeStatus===
+              employeeDraft.status
+          );
+        });
+
+      return;
+    }
+
+    if(
+      button.dataset.employeePoint
+    ){
+      const pointId=
+        button.dataset.employeePoint;
+
+      const selected=
+        employeeDraft.pointIds
+          .includes(pointId);
+
+      employeeDraft.pointIds=
+        selected
+          ? employeeDraft.pointIds
+              .filter(
+                id=>
+                  id!==pointId
+              )
+          : [
+              ...employeeDraft.pointIds,
+              pointId
+            ];
+
+      button.classList.toggle(
+        "on",
+        !selected
+      );
+
+      const check=
+        button.querySelector(
+          ".employee-point-check"
+        );
+
+      if(check){
+        check.textContent=
+          selected
+            ? ""
+            : "✓";
+      }
+    }
+  }
+);
+
+bindBottomSheetDismiss({
+  element:
+    employeeSheetElement,
+
+  dragProperty:
+    "--sheet-drag",
+
+  close:
+    closeEmployeeEditor,
+
+  canStart:target=>{
+    if(
+      target instanceof Element &&
+      target.closest(
+        ".grab,.shead"
+      )
+    ){
+      return true;
+    }
+
+    return (
+      employeeSheetElement
+        .scrollTop<=0
+    );
+  }
+});
+
 const shiftSheet=
   document.getElementById("sheet");
 
@@ -6159,11 +6465,6 @@ function updateEmployeeDraftField(
       target.value;
   }
 
-  if(target.id==="employeeHiredAt"){
-    employeeDraft.hiredAt=
-      target.value;
-  }
-
   if(target.id==="employeeAccount"){
     employeeDraft.userId=
       target.value ||
@@ -6171,7 +6472,7 @@ function updateEmployeeDraftField(
   }
 }
 
-app.addEventListener(
+employeeSheetElement.addEventListener(
   "input",
   event=>{
     updateEmployeeDraftField(
@@ -6180,7 +6481,7 @@ app.addEventListener(
   }
 );
 
-app.addEventListener(
+employeeSheetElement.addEventListener(
   "change",
   event=>{
     updateEmployeeDraftField(

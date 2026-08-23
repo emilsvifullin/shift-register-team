@@ -45,6 +45,7 @@ import {
 } from "./auth.js";
 
 import {
+  deleteAdminEmployee,
   loadAdminTeamData,
   saveAdminEmployee
 } from "./team.js";
@@ -105,6 +106,7 @@ let teamDataError=null;
 
 let employeeDraft=null;
 let employeeSaving=false;
+let employeeSheetMode="create";
 let employeeSheetPreviousFocus=null;
 
 let employeeSearchQuery="";
@@ -1963,17 +1965,13 @@ function viewEmployees(){
 
     <div class="card employee-editor">
       <label class="row">
-        <div class="t">
-          Поиск
-        </div>
-
         <input
           type="search"
           id="employeeSearch"
           autocomplete="off"
           spellcheck="false"
           value="${esc(employeeSearchQuery)}"
-          placeholder="ФИО или ПВЗ"
+          placeholder="Поиск"
           aria-label="Поиск сотрудников"
         >
       </label>

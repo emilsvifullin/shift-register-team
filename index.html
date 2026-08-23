@@ -10,6 +10,44 @@
 <meta name="apple-mobile-web-app-title" content="Shift Register">
 <meta name="theme-color" content="#0B0C0E" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#F2F1EE" media="(prefers-color-scheme: light)">
+
+<style>
+html,
+body{
+  width:100%;
+  height:100%;
+  margin:0;
+  background:#0B0C0E;
+}
+
+body{
+  background:
+    radial-gradient(
+      130% 55% at 50% -10%,
+      rgba(30,32,36,.48) 0%,
+      rgba(11,12,14,0) 60%
+    ),
+    #0B0C0E;
+}
+
+@media (prefers-color-scheme: light){
+  html,
+  body{
+    background:#F2F1EE;
+  }
+
+  body{
+    background:
+      radial-gradient(
+        130% 55% at 50% -10%,
+        rgba(255,255,255,.55) 0%,
+        rgba(242,241,238,0) 60%
+      ),
+      #F2F1EE;
+  }
+}
+</style>
+
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="icon" href="./icon-192.png">

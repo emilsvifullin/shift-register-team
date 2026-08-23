@@ -44,6 +44,11 @@ import {
   startAuth
 } from "./auth.js";
 
+import {
+  loadAdminTeamData,
+  saveAdminEmployee
+} from "./team.js";
+
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
 
@@ -87,10 +92,80 @@ let isAdmin=false;
 let manageSection="home";
 let manageTransitionRunning=false;
 
+let teamData={
+  employees:[],
+  points:[],
+  employeePoints:[],
+  accounts:[]
+};
+
+let teamDataLoaded=false;
+let teamDataLoading=false;
+let teamDataError=null;
+
+let employeeDraft=null;
+let employeeSaving=false;
+
 function availableTabs(){
   return isAdmin
     ? ADMIN_TABS
     : BASE_TABS;
+}
+
+function renderWhenReady(){
+  if(
+    tabTransitionRunning ||
+    monthTransitionRunning ||
+    manageTransitionRunning
+  ){
+    window.setTimeout(
+      renderWhenReady,
+      60
+    );
+
+    return;
+  }
+
+  render();
+}
+
+async function refreshTeamData({
+  renderAfter=true
+}={}){
+  if(
+    !isAdmin ||
+    teamDataLoading
+  ){
+    return false;
+  }
+
+  teamDataLoading=true;
+  teamDataError=null;
+
+  try{
+    teamData=
+      await loadAdminTeamData();
+
+    teamDataLoaded=true;
+
+    return true;
+  }catch(error){
+    teamDataError=
+      error instanceof Error
+        ? error.message
+        : "Не удалось загрузить данные";
+
+    return false;
+  }finally{
+    teamDataLoading=false;
+
+    if(
+      renderAfter &&
+      tab==="manage"
+    ){
+      renderWhenReady();
+    }
+  }
 }
 
 function safeSessionGet(key){
@@ -1435,15 +1510,15 @@ function viewData(){
   `;
 }
 
-function viewManageSection(
-  title,
-  detail
+function manageBackButton(
+  id="manageBack",
+  label="Управление"
 ){
   return `
     <button
       type="button"
       class="manage-back"
-      id="manageBack"
+      id="${id}"
     >
       <svg
         viewBox="0 0 12 16"
@@ -1452,8 +1527,17 @@ function viewManageSection(
         <path d="M9 3L3 8L9 13"></path>
       </svg>
 
-      <span>Управление</span>
+      <span>${esc(label)}</span>
     </button>
+  `;
+}
+
+function viewManageSection(
+  title,
+  detail
+){
+  return `
+    ${manageBackButton()}
 
     <div class="ml">
       ${esc(title)}
@@ -1473,12 +1557,670 @@ function viewManageSection(
   `;
 }
 
+function employeePointIds(
+  employeeId
+){
+  return teamData
+    .employeePoints
+    .filter(
+      item=>
+        item.employee_id===
+        employeeId &&
+        item.active!==false
+    )
+    .map(
+      item=>
+        item.point_id
+    );
+}
+
+function employeeAccount(
+  employee
+){
+  if(!employee.user_id){
+    return null;
+  }
+
+  return teamData
+    .accounts
+    .find(
+      account=>
+        account.user_id===
+        employee.user_id
+    ) || null;
+}
+
+function employeePointsLabel(
+  employeeId
+){
+  const ids=
+    new Set(
+      employeePointIds(
+        employeeId
+      )
+    );
+
+  const names=
+    teamData
+      .points
+      .filter(
+        point=>
+          ids.has(point.id)
+      )
+      .map(
+        point=>
+          point.name
+      );
+
+  if(!names.length){
+    return "ПВЗ не назначены";
+  }
+
+  if(names.length===1){
+    return names[0];
+  }
+
+  return (
+    names[0]+
+    " · ещё "+
+    (names.length-1)
+  );
+}
+
+function viewEmployees(){
+  if(employeeDraft){
+    return viewEmployeeEditor();
+  }
+
+  if(teamDataLoading && !teamDataLoaded){
+    return `
+      ${manageBackButton()}
+
+      <div class="ml">
+        Сотрудники
+      </div>
+
+      <div class="card">
+        <div class="manage-loading">
+          Загрузка сотрудников…
+        </div>
+      </div>
+    `;
+  }
+
+  if(teamDataError && !teamDataLoaded){
+    return `
+      ${manageBackButton()}
+
+      <div class="ml">
+        Сотрудники
+      </div>
+
+      <div class="card">
+        <div class="manage-placeholder">
+          <div class="manage-placeholder-title">
+            Не удалось загрузить сотрудников
+          </div>
+
+          <div class="manage-placeholder-detail">
+            ${esc(teamDataError)}
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        class="manage-add"
+        id="employeeRetry"
+      >
+        Повторить
+      </button>
+    `;
+  }
+
+  const rows=
+    teamData.employees
+      .map(employee=>{
+        const account=
+          employeeAccount(
+            employee
+          );
+
+        const inactive=
+          employee.status===
+          "inactive";
+
+        return `
+          <button
+            type="button"
+            class="manage-row employee-row"
+            data-employee-id="${esc(employee.id)}"
+          >
+            <span class="manage-row-copy">
+              <span class="employee-title-line">
+                <span class="manage-row-title">
+                  ${esc(employee.full_name)}
+                </span>
+
+                ${
+                  inactive
+                    ? `
+                      <span class="employee-state">
+                        Неактивен
+                      </span>
+                    `
+                    : ""
+                }
+              </span>
+
+              <span class="manage-row-detail">
+                ${esc(
+                  employeePointsLabel(
+                    employee.id
+                  )
+                )}
+              </span>
+
+              <span class="employee-account-label">
+                ${
+                  account?.email
+                    ? esc(account.email)
+                    : "Аккаунт не привязан"
+                }
+              </span>
+            </span>
+
+            <span
+              class="manage-chevron"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 12 16">
+                <path d="M3 3L9 8L3 13"></path>
+              </svg>
+            </span>
+          </button>
+        `;
+      })
+      .join("");
+
+  return `
+    ${manageBackButton()}
+
+    <div class="ml">
+      Сотрудники
+    </div>
+
+    <button
+      type="button"
+      class="manage-add"
+      id="employeeAdd"
+    >
+      <span
+        class="manage-add-plus"
+        aria-hidden="true"
+      ></span>
+
+      Добавить сотрудника
+    </button>
+
+    <div class="ml">
+      Список
+    </div>
+
+    ${
+      rows
+        ? `
+          <div class="card manage-menu">
+            ${rows}
+          </div>
+        `
+        : `
+          <div class="card">
+            <div class="employee-empty">
+              Сотрудников пока нет.
+            </div>
+          </div>
+        `
+    }
+  `;
+}
+
+function employeeAvailableAccounts(){
+  return teamData
+    .accounts
+    .filter(account=>{
+      return (
+        !account.employee_id ||
+        account.employee_id===
+          employeeDraft.id
+      );
+    });
+}
+
+function viewEmployeeEditor(){
+  const selectedPoints=
+    new Set(
+      employeeDraft.pointIds
+    );
+
+  const accountOptions=
+    employeeAvailableAccounts()
+      .map(account=>{
+        const selected=
+          account.user_id===
+          employeeDraft.userId;
+
+        const roleLabel=
+          account.role==="admin"
+            ? " · администратор"
+            : "";
+
+        return `
+          <option
+            value="${esc(account.user_id)}"
+            ${selected ? "selected" : ""}
+          >
+            ${esc(account.email+roleLabel)}
+          </option>
+        `;
+      })
+      .join("");
+
+  const pointRows=
+    teamData
+      .points
+      .filter(
+        point=>
+          point.active ||
+          selectedPoints.has(point.id)
+      )
+      .map(point=>{
+        const selected=
+          selectedPoints.has(
+            point.id
+          );
+
+        return `
+          <button
+            type="button"
+            class="employee-point ${selected ? "on" : ""}"
+            data-employee-point="${esc(point.id)}"
+          >
+            <span
+              class="employee-point-check"
+              aria-hidden="true"
+            >
+              ${selected ? "✓" : ""}
+            </span>
+
+            <span class="employee-point-name">
+              ${esc(point.name)}
+            </span>
+          </button>
+        `;
+      })
+      .join("");
+
+  return `
+    ${manageBackButton(
+      "employeeBack",
+      "Сотрудники"
+    )}
+
+    <div class="ml">
+      Сотрудник
+    </div>
+
+    <div class="card employee-editor">
+      <label class="row">
+        <div class="t">
+          ФИО
+        </div>
+
+        <input
+          type="text"
+          id="employeeName"
+          autocomplete="off"
+          value="${esc(employeeDraft.fullName)}"
+          placeholder="Имя сотрудника"
+        >
+      </label>
+
+      <label class="row">
+        <div class="t">
+          Начало работы
+        </div>
+
+        <input
+          type="date"
+          id="employeeHiredAt"
+          value="${esc(employeeDraft.hiredAt || "")}"
+        >
+      </label>
+    </div>
+
+    <div class="ml">
+      Статус
+    </div>
+
+    <div class="card segbox">
+      <div class="seg">
+        <button
+          type="button"
+          data-employee-status="active"
+          class="${employeeDraft.status==="active" ? "on" : ""}"
+        >
+          Активен
+        </button>
+
+        <button
+          type="button"
+          data-employee-status="inactive"
+          class="${employeeDraft.status==="inactive" ? "on" : ""}"
+        >
+          Неактивен
+        </button>
+      </div>
+    </div>
+
+    <div class="ml">
+      Аккаунт
+    </div>
+
+    <div class="card employee-editor">
+      <label class="row">
+        <div class="t">
+          Вход
+        </div>
+
+        <select
+          id="employeeAccount"
+          aria-label="Аккаунт сотрудника"
+        >
+          <option value="">
+            Не привязан
+          </option>
+
+          ${accountOptions}
+        </select>
+      </label>
+    </div>
+
+    <div class="employee-help">
+      Аккаунт нужен для входа сотрудника и просмотра только своих смен и начислений.
+    </div>
+
+    <div class="ml">
+      Пункты выдачи
+    </div>
+
+    <div class="card employee-points">
+      ${pointRows}
+    </div>
+
+    <button
+      type="button"
+      class="employee-save"
+      id="employeeSave"
+      ${employeeSaving ? "disabled" : ""}
+    >
+      ${
+        employeeSaving
+          ? "Сохраняем…"
+          : "Сохранить"
+      }
+    </button>
+  `;
+}
+
+function employeeSaveError(
+  error
+){
+  const message=
+    error instanceof Error
+      ? error.message
+      : String(error || "");
+
+  if(
+    message.includes(
+      "account_already_linked"
+    )
+  ){
+    return "Этот аккаунт уже привязан к другому сотруднику";
+  }
+
+  if(
+    message.includes(
+      "account_profile_not_found"
+    )
+  ){
+    return "Для выбранного аккаунта не найден профиль";
+  }
+
+  if(
+    message.includes(
+      "employee_not_found"
+    )
+  ){
+    return "Сотрудник больше не существует";
+  }
+
+  return (
+    message ||
+    "Не удалось сохранить сотрудника"
+  );
+}
+
+function createEmployeeDraft(
+  employeeId=null
+){
+  if(!employeeId){
+    return {
+      id:null,
+      fullName:"",
+      status:"active",
+      hiredAt:"",
+      userId:null,
+      pointIds:[]
+    };
+  }
+
+  const employee=
+    teamData.employees.find(
+      item=>
+        item.id===
+        employeeId
+    );
+
+  if(!employee){
+    return null;
+  }
+
+  return {
+    id:employee.id,
+    fullName:employee.full_name,
+    status:employee.status,
+    hiredAt:employee.hired_at || "",
+    userId:employee.user_id || null,
+    pointIds:
+      employeePointIds(
+        employee.id
+      )
+  };
+}
+
+function animateManageView(
+  apply,
+  direction=1
+){
+  if(
+    manageTransitionRunning ||
+    tabTransitionRunning ||
+    monthTransitionRunning
+  ){
+    return;
+  }
+
+  if(
+    prefersReducedMotion() ||
+    typeof app.animate!=="function"
+  ){
+    apply();
+    return;
+  }
+
+  manageTransitionRunning=true;
+
+  const oldApp=
+    makeMonthTransitionGhost(
+      app,
+      19
+    );
+
+  app.style.opacity="0";
+
+  const oldX=
+    direction>0
+      ? -20
+      : 20;
+
+  const newX=
+    -oldX;
+
+  let animations=[];
+
+  try{
+    apply();
+
+    const options={
+      duration:260,
+      easing:
+        "cubic-bezier(.22,.72,.22,1)",
+      fill:"both"
+    };
+
+    animations=[
+      oldApp.animate(
+        [
+          {
+            opacity:1,
+            transform:
+              "translate3d(0,0,0)"
+          },
+          {
+            opacity:0,
+            transform:
+              `translate3d(${oldX}px,0,0)`
+          }
+        ],
+        options
+      ),
+
+      app.animate(
+        [
+          {
+            opacity:0,
+            transform:
+              `translate3d(${newX}px,0,0)`
+          },
+          {
+            opacity:1,
+            transform:
+              "translate3d(0,0,0)"
+          }
+        ],
+        options
+      )
+    ];
+
+    app.style.removeProperty(
+      "opacity"
+    );
+
+    Promise.allSettled(
+      animations.map(
+        animation=>
+          animation.finished
+      )
+    ).finally(()=>{
+      animations.forEach(
+        animation=>
+          animation.cancel()
+      );
+
+      oldApp.remove();
+
+      app.style.removeProperty(
+        "opacity"
+      );
+
+      manageTransitionRunning=false;
+    });
+  }catch{
+    animations.forEach(
+      animation=>
+        animation.cancel()
+    );
+
+    oldApp.remove();
+
+    app.style.removeProperty(
+      "opacity"
+    );
+
+    manageTransitionRunning=false;
+  }
+}
+
+function openEmployeeEditor(
+  employeeId=null
+){
+  const nextDraft=
+    createEmployeeDraft(
+      employeeId
+    );
+
+  if(!nextDraft){
+    toast(
+      "Сотрудник не найден",
+      3000
+    );
+
+    return;
+  }
+
+  animateManageView(
+    ()=>{
+      employeeDraft=
+        nextDraft;
+
+      setPageScrollTop(0);
+      render();
+    },
+    1
+  );
+}
+
+function closeEmployeeEditor(){
+  if(!employeeDraft){
+    return;
+  }
+
+  animateManageView(
+    ()=>{
+      employeeDraft=null;
+      employeeSaving=false;
+
+      setPageScrollTop(0);
+      render();
+    },
+    -1
+  );
+}
+
 function viewManage(){
   if(manageSection==="employees"){
-    return viewManageSection(
-      "Сотрудники",
-      "Здесь будет список сотрудников, их аккаунты, статусы и назначенные пункты."
-    );
+    return viewEmployees();
   }
 
   if(manageSection==="points"){
@@ -1583,6 +2325,44 @@ function viewManage(){
       </button>
     </div>
   `;
+}
+
+function changeManageSection(
+  nextSection,
+  direction=1
+){
+  if(
+    !isAdmin ||
+    tab!=="manage" ||
+    !MANAGE_SECTIONS.includes(
+      nextSection
+    ) ||
+    nextSection===manageSection
+  ){
+    return;
+  }
+
+  animateManageView(
+    ()=>{
+      manageSection=
+        nextSection;
+
+      employeeDraft=null;
+      employeeSaving=false;
+
+      setPageScrollTop(0);
+      render();
+
+      if(
+        nextSection==="employees" &&
+        !teamDataLoaded &&
+        !teamDataLoading
+      ){
+        void refreshTeamData();
+      }
+    },
+    direction
+  );
 }
 
 function changeManageSection(
@@ -5494,6 +6274,51 @@ sheetBody.addEventListener("click",e=>{
   moveFieldCaretToEnd(e.target);
 });
 
+function updateEmployeeDraftField(
+  target
+){
+  if(
+    !employeeDraft ||
+    !(target instanceof HTMLElement)
+  ){
+    return;
+  }
+
+  if(target.id==="employeeName"){
+    employeeDraft.fullName=
+      target.value;
+  }
+
+  if(target.id==="employeeHiredAt"){
+    employeeDraft.hiredAt=
+      target.value;
+  }
+
+  if(target.id==="employeeAccount"){
+    employeeDraft.userId=
+      target.value ||
+      null;
+  }
+}
+
+app.addEventListener(
+  "input",
+  event=>{
+    updateEmployeeDraftField(
+      event.target
+    );
+  }
+);
+
+app.addEventListener(
+  "change",
+  event=>{
+    updateEmployeeDraftField(
+      event.target
+    );
+  }
+);
+
 app.addEventListener("click",async event=>{
   const row=event.target.closest("[data-edit]");
   if(row){
@@ -5503,6 +6328,193 @@ app.addEventListener("click",async event=>{
 
   const button=event.target.closest("button");
   if(!button) return;
+
+  if(
+    button.id==="employeeRetry"
+  ){
+    await refreshTeamData();
+    return;
+  }
+
+  if(
+    button.id==="employeeAdd" &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    openEmployeeEditor();
+    return;
+  }
+
+  if(
+    button.dataset.employeeId &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    openEmployeeEditor(
+      button.dataset.employeeId
+    );
+
+    return;
+  }
+
+  if(
+    button.id==="employeeBack" &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    closeEmployeeEditor();
+    return;
+  }
+
+  if(
+    button.dataset.employeeStatus &&
+    employeeDraft
+  ){
+    employeeDraft.status=
+      button.dataset.employeeStatus;
+
+    app
+      .querySelectorAll(
+        "[data-employee-status]"
+      )
+      .forEach(item=>{
+        item.classList.toggle(
+          "on",
+          item.dataset.employeeStatus===
+            employeeDraft.status
+        );
+      });
+
+    return;
+  }
+
+  if(
+    button.dataset.employeePoint &&
+    employeeDraft
+  ){
+    const pointId=
+      button.dataset.employeePoint;
+
+    const selected=
+      employeeDraft.pointIds
+        .includes(pointId);
+
+    employeeDraft.pointIds=
+      selected
+        ? employeeDraft.pointIds
+            .filter(
+              id=>
+                id!==pointId
+            )
+        : [
+            ...employeeDraft.pointIds,
+            pointId
+          ];
+
+    button.classList.toggle(
+      "on",
+      !selected
+    );
+
+    const check=
+      button.querySelector(
+        ".employee-point-check"
+      );
+
+    if(check){
+      check.textContent=
+        selected
+          ? ""
+          : "✓";
+    }
+
+    return;
+  }
+
+  if(
+    button.id==="employeeSave" &&
+    employeeDraft
+  ){
+    const name=
+      employeeDraft.fullName
+        .trim();
+
+    if(!name){
+      toast(
+        "Укажите имя сотрудника",
+        3000
+      );
+
+      document
+        .getElementById(
+          "employeeName"
+        )
+        ?.focus();
+
+      return;
+    }
+
+    employeeSaving=true;
+    render();
+
+    try{
+      const employeeId=
+        await saveAdminEmployee({
+          id:employeeDraft.id,
+          fullName:name,
+          status:
+            employeeDraft.status,
+          hiredAt:
+            employeeDraft.hiredAt ||
+            null,
+          userId:
+            employeeDraft.userId ||
+            null,
+          pointIds:
+            employeeDraft.pointIds
+        });
+
+      employeeDraft.id=
+        employeeId;
+
+      const refreshed=
+        await refreshTeamData({
+          renderAfter:false
+        });
+
+      if(!refreshed){
+        employeeSaving=false;
+        render();
+
+        toast(
+          "Сотрудник сохранён, но список не удалось обновить",
+          4000
+        );
+
+        return;
+      }
+
+      employeeSaving=false;
+
+      closeEmployeeEditor();
+
+      toast(
+        "Сотрудник сохранён"
+      );
+    }catch(error){
+      employeeSaving=false;
+      render();
+
+      toast(
+        employeeSaveError(
+          error
+        ),
+        4000
+      );
+    }
+
+    return;
+  }
 
   if(
     button.dataset.manageSection &&
@@ -5984,5 +6996,9 @@ startAuth({
     }
 
     await load();
+
+    if(isAdmin){
+      void refreshTeamData();
+    }
   }
 });

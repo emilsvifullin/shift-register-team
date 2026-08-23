@@ -19,6 +19,16 @@
   >
 
   <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app; object-src 'none'; base-uri 'self'; form-action 'self'"
+  >
+
+  <meta
+    name="apple-mobile-web-app-title"
+    content="Shift Register"
+  >
+
+  <meta
     name="theme-color"
     content="#0B0C0E"
     media="(prefers-color-scheme: dark)"
@@ -28,6 +38,21 @@
     name="theme-color"
     content="#F2F1EE"
     media="(prefers-color-scheme: light)"
+  >
+
+  <link
+    rel="manifest"
+    href="./manifest.webmanifest"
+  >
+
+  <link
+    rel="apple-touch-icon"
+    href="./icon-192.png"
+  >
+
+  <link
+    rel="icon"
+    href="./icon-192.png"
   >
 
   <title>Shift Register</title>

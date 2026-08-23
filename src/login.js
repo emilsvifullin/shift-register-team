@@ -421,49 +421,36 @@ document.addEventListener(
     const target=
       event.target;
 
-    if(target instanceof Element){
-      const field=
-        target.closest(
-          ".auth-field"
-        );
-
-      if(field){
-        const input=
-          field.querySelector(
+    const input=
+      target instanceof Element
+        ? target.closest(
             "input"
-          );
+          )
+        : null;
 
-        if(isAuthInput(input)){
-          if(
-            event.pointerType===
-            "touch"
-          ){
-            if(event.cancelable){
-              event.preventDefault();
-            }
-
-            focusAuthInput(
-              input
-            );
-          }else{
-            userInteracted=true;
-
-            setInputsReadonly(false);
-            setFocusEnabled(true);
-          }
-
-          return;
+    if(isAuthInput(input)){
+      if(
+        event.pointerType===
+        "touch"
+      ){
+        if(event.cancelable){
+          event.preventDefault();
         }
+
+        focusAuthInput(
+          input
+        );
+      }else{
+        userInteracted=true;
+
+        setInputsReadonly(false);
+        setFocusEnabled(true);
       }
+
+      return;
     }
 
-    if(
-      isAuthInput(
-        document.activeElement
-      )
-    ){
-      beginKeyboardDismiss();
-    }
+    beginKeyboardDismiss();
   },
   {
     capture:true

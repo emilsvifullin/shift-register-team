@@ -2787,6 +2787,7 @@ body.login-page.auth-focus-enabled
 
   appearance:none;
   -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
 
   transition:
     transform .12s ease,

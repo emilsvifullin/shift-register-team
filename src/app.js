@@ -47,6 +47,24 @@ import {
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
 
+const BASE_TABS=Object.freeze([
+  "shifts",
+  "stats",
+  "data"
+]);
+
+const ADMIN_TABS=Object.freeze([
+  ...BASE_TABS,
+  "manage"
+]);
+
+const MANAGE_SECTIONS=Object.freeze([
+  "home",
+  "employees",
+  "points",
+  "tariffs"
+]);
+
 const store=createAppStorage();
 const syncChannel=("BroadcastChannel" in window)
   ? new BroadcastChannel(CHANNEL_NAME)
@@ -65,6 +83,15 @@ let sheetPreviousFocus=null;
 let pointPreviousFocus=null;
 let monthPreviousFocus=null;
 let datePreviousFocus=null;
+let isAdmin=false;
+let manageSection="home";
+let manageTransitionRunning=false;
+
+function availableTabs(){
+  return isAdmin
+    ? ADMIN_TABS
+    : BASE_TABS;
+}
 
 function safeSessionGet(key){
   try{return sessionStorage.getItem(key);}catch{return null;}
@@ -120,12 +147,13 @@ function validMonthCursor(value){
 function sanitizeUIState(value){
   if(!isPlainObject(value)) return {};
   return {
-    tab:["shifts","stats","data"].includes(value.tab) ? value.tab : "shifts",
+    tab:ADMIN_TABS.includes(value.tab) ? value.tab : "shifts",
     cursor:validMonthCursor(value.cursor) ? value.cursor : ymOf(new Date()),
     scrollY:Number.isFinite(Number(value.scrollY)) ? Math.max(0,Number(value.scrollY)) : 0,
     sheetOpen:value.sheetOpen===true,
     sheetScrollTop:Number.isFinite(Number(value.sheetScrollTop)) ? Math.max(0,Number(value.sheetScrollTop)) : 0,
-    draft:isPlainObject(value.draft) ? value.draft : null
+    draft:isPlainObject(value.draft) ? value.draft : null,
+    manageSection:MANAGE_SECTIONS.includes(value.manageSection) ? value.manageSection : "home"
   };
 }
 
@@ -151,7 +179,8 @@ function saveUIState(){
       scrollY:pageScrollTop(),
       sheetOpen,
       sheetScrollTop:sheetOpen && sheet ? sheet.scrollTop : 0,
-      draft:sheetOpen ? draft : null
+      draft:sheetOpen ? draft : null,
+      manageSection
     }));
   }catch{}
 }
@@ -165,6 +194,7 @@ function loadUIState(){
 const savedUI=loadUIState();
 tab=savedUI.tab || "shifts";
 cursor=savedUI.cursor || ymOf(new Date());
+manageSection=savedUI.manageSection || "home";
 
 /* ========== утилиты ========== */
 function ymOf(d){
@@ -583,17 +613,47 @@ function shouldShowFab(ym=cursor){
 function render(){
   saveUIState();
 
+  if(
+    !isAdmin &&
+    tab==="manage"
+  ){
+    tab="shifts";
+    manageSection="home";
+  }
+
   if(loadError) tab="data";
 
-  const period=document.getElementById("period");
-  period.textContent=tab==="data" ? "Данные" : ymLabel(cursor);
-  period.classList.toggle("clickable",tab!=="data");
+  const monthTab=
+    ["shifts","stats"]
+      .includes(tab);
 
-  document.getElementById("prevM").disabled=tab!=="data" && cursor===`${MIN_YEAR}-01`;
-  document.getElementById("nextM").disabled=tab!=="data" && cursor===`${MAX_YEAR}-12`;
+  const period=document.getElementById("period");
+
+  period.textContent=
+    tab==="data"
+      ? "Данные"
+      : tab==="manage"
+        ? "Управление"
+        : ymLabel(cursor);
+
+  period.classList.toggle(
+    "clickable",
+    monthTab
+  );
+
+  document.getElementById("prevM").disabled=
+    !monthTab ||
+    cursor===`${MIN_YEAR}-01`;
+
+  document.getElementById("nextM").disabled=
+    !monthTab ||
+    cursor===`${MAX_YEAR}-12`;
 
   document.querySelectorAll("#prevM,#nextM").forEach(button=>{
-    button.classList.toggle("is-hidden",tab==="data");
+    button.classList.toggle(
+      "is-hidden",
+      !monthTab
+    );
   });
 
   const showFab=shouldShowFab(cursor);
@@ -603,12 +663,45 @@ function render(){
   bottomControls.classList.toggle("has-fab",showFab);
   fab.classList.toggle("is-hidden",!showFab);
 
-  ["shifts","stats","data"].forEach(name=>{
+  const manageTab=
+    document.getElementById(
+      "tab-manage"
+    );
+
+  manageTab.hidden=
+    !isAdmin;
+
+  if(!isAdmin){
+    manageTab.classList.remove(
+      "on"
+    );
+
+    manageTab.setAttribute(
+      "aria-selected",
+      "false"
+    );
+
+    manageTab.tabIndex=-1;
+  }
+
+  availableTabs().forEach(name=>{
     const button=document.getElementById("tab-"+name);
     const selected=name===tab;
-    button.classList.toggle("on",selected);
-    button.setAttribute("aria-selected",String(selected));
-    button.tabIndex=selected ? 0 : -1;
+
+    button.classList.toggle(
+      "on",
+      selected
+    );
+
+    button.setAttribute(
+      "aria-selected",
+      String(selected)
+    );
+
+    button.tabIndex=
+      selected
+        ? 0
+        : -1;
   });
 
   app.classList.toggle(
@@ -621,7 +714,9 @@ function render(){
       ? viewShifts()
       : tab==="stats"
         ? viewStats()
-        : viewData();
+        : tab==="manage"
+          ? viewManage()
+          : viewData();
 
   requestAnimationFrame(
     fitShiftWindow
@@ -1338,6 +1433,293 @@ function viewData(){
       <div>Разработчик: emilsvifullin</div>
     </div>
   `;
+}
+
+function viewManageSection(
+  title,
+  detail
+){
+  return `
+    <button
+      type="button"
+      class="manage-back"
+      id="manageBack"
+    >
+      <svg
+        viewBox="0 0 12 16"
+        aria-hidden="true"
+      >
+        <path d="M9 3L3 8L9 13"></path>
+      </svg>
+
+      <span>Управление</span>
+    </button>
+
+    <div class="ml">
+      ${esc(title)}
+    </div>
+
+    <div class="card">
+      <div class="manage-placeholder">
+        <div class="manage-placeholder-title">
+          ${esc(title)}
+        </div>
+
+        <div class="manage-placeholder-detail">
+          ${esc(detail)}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function viewManage(){
+  if(manageSection==="employees"){
+    return viewManageSection(
+      "Сотрудники",
+      "Здесь будет список сотрудников, их аккаунты, статусы и назначенные пункты."
+    );
+  }
+
+  if(manageSection==="points"){
+    return viewManageSection(
+      "Пункты выдачи",
+      "Здесь будут пункты, их активность и выбранная система оплаты."
+    );
+  }
+
+  if(manageSection==="tariffs"){
+    return viewManageSection(
+      "Тарифы",
+      "Здесь будут действующие ставки и история изменений тарифов."
+    );
+  }
+
+  return `
+    <div class="ml">
+      Команда
+    </div>
+
+    <div class="card manage-menu">
+      <button
+        type="button"
+        class="manage-row"
+        data-manage-section="employees"
+      >
+        <span class="manage-row-copy">
+          <span class="manage-row-title">
+            Сотрудники
+          </span>
+
+          <span class="manage-row-detail">
+            Аккаунты, статусы и назначенные ПВЗ
+          </span>
+        </span>
+
+        <span
+          class="manage-chevron"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 12 16">
+            <path d="M3 3L9 8L3 13"></path>
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <div class="ml">
+      Пункты и расчёт
+    </div>
+
+    <div class="card manage-menu">
+      <button
+        type="button"
+        class="manage-row"
+        data-manage-section="points"
+      >
+        <span class="manage-row-copy">
+          <span class="manage-row-title">
+            Пункты выдачи
+          </span>
+
+          <span class="manage-row-detail">
+            Пункты, активность и система оплаты
+          </span>
+        </span>
+
+        <span
+          class="manage-chevron"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 12 16">
+            <path d="M3 3L9 8L3 13"></path>
+          </svg>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="manage-row"
+        data-manage-section="tariffs"
+      >
+        <span class="manage-row-copy">
+          <span class="manage-row-title">
+            Тарифы
+          </span>
+
+          <span class="manage-row-detail">
+            Действующие ставки и история изменений
+          </span>
+        </span>
+
+        <span
+          class="manage-chevron"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 12 16">
+            <path d="M3 3L9 8L3 13"></path>
+          </svg>
+        </span>
+      </button>
+    </div>
+  `;
+}
+
+function changeManageSection(
+  nextSection,
+  direction=1
+){
+  if(
+    !isAdmin ||
+    tab!=="manage" ||
+    !MANAGE_SECTIONS.includes(
+      nextSection
+    ) ||
+    nextSection===manageSection ||
+    manageTransitionRunning ||
+    tabTransitionRunning ||
+    monthTransitionRunning
+  ){
+    return;
+  }
+
+  const apply=()=>{
+    manageSection=
+      nextSection;
+
+    setPageScrollTop(0);
+    render();
+  };
+
+  if(
+    prefersReducedMotion() ||
+    typeof app.animate!=="function"
+  ){
+    apply();
+    return;
+  }
+
+  manageTransitionRunning=true;
+
+  const oldApp=
+    makeMonthTransitionGhost(
+      app,
+      19
+    );
+
+  app.style.opacity="0";
+
+  const oldX=
+    direction>0
+      ? -20
+      : 20;
+
+  const newX=
+    -oldX;
+
+  let animations=[];
+
+  try{
+    apply();
+
+    const options={
+      duration:260,
+      easing:
+        "cubic-bezier(.22,.72,.22,1)",
+      fill:"both"
+    };
+
+    animations=[
+      oldApp.animate(
+        [
+          {
+            opacity:1,
+            transform:
+              "translate3d(0,0,0)"
+          },
+          {
+            opacity:0,
+            transform:
+              `translate3d(${oldX}px,0,0)`
+          }
+        ],
+        options
+      ),
+
+      app.animate(
+        [
+          {
+            opacity:0,
+            transform:
+              `translate3d(${newX}px,0,0)`
+          },
+          {
+            opacity:1,
+            transform:
+              "translate3d(0,0,0)"
+          }
+        ],
+        options
+      )
+    ];
+
+    app.style.removeProperty(
+      "opacity"
+    );
+
+    Promise.allSettled(
+      animations.map(
+        animation=>
+          animation.finished
+      )
+    ).finally(()=>{
+      animations.forEach(
+        animation=>
+          animation.cancel()
+      );
+
+      oldApp.remove();
+
+      app.style.removeProperty(
+        "opacity"
+      );
+
+      manageTransitionRunning=false;
+    });
+  }catch{
+    animations.forEach(
+      animation=>
+        animation.cancel()
+    );
+
+    oldApp.remove();
+
+    app.style.removeProperty(
+      "opacity"
+    );
+
+    manageTransitionRunning=false;
+  }
 }
 
 /* ========== форма ========== */
@@ -2303,7 +2685,7 @@ function drawMonthPicker(){
 
 function openMonthPicker(){
   if(
-    tab==="data" ||
+    !["shifts","stats"].includes(tab) ||
     document.body.classList.contains("sheet-open") ||
     document.body.classList.contains("point-picker-open")
   ) return;
@@ -2475,7 +2857,8 @@ function changeMonth(
   if(
     nextCursor===cursor ||
     monthTransitionRunning ||
-    tabTransitionRunning
+    tabTransitionRunning ||
+    manageTransitionRunning
   ){
     return;
   }
@@ -4215,12 +4598,6 @@ document.addEventListener(
   true
 );
 
-const TAB_ORDER=[
-  "shifts",
-  "stats",
-  "data"
-];
-
 function changeTab(
   nextTab,
   {
@@ -4228,8 +4605,11 @@ function changeTab(
     focus=false
   }={}
 ){
+  const tabOrder=
+    availableTabs();
+
   if(
-    !TAB_ORDER.includes(nextTab)
+    !tabOrder.includes(nextTab)
   ){
     return;
   }
@@ -4250,16 +4630,17 @@ function changeTab(
 
   if(
     tabTransitionRunning ||
-    monthTransitionRunning
+    monthTransitionRunning ||
+    manageTransitionRunning
   ){
     return;
   }
 
   const currentIndex=
-    TAB_ORDER.indexOf(tab);
+    tabOrder.indexOf(tab);
 
   const nextIndex=
-    TAB_ORDER.indexOf(nextTab);
+    tabOrder.indexOf(nextTab);
 
   const resolvedDirection=
     direction ??
@@ -4356,7 +4737,7 @@ function changeTab(
     });
 }
 
-TAB_ORDER.forEach(name=>{
+ADMIN_TABS.forEach(name=>{
   const button=
     document.getElementById(
       "tab-"+name
@@ -4380,8 +4761,11 @@ TAB_ORDER.forEach(name=>{
 
       e.preventDefault();
 
+      const tabOrder=
+        availableTabs();
+
       const current=
-        TAB_ORDER.indexOf(tab);
+        tabOrder.indexOf(tab);
 
       const direction=
         e.key==="ArrowRight"
@@ -4389,13 +4773,13 @@ TAB_ORDER.forEach(name=>{
           : -1;
 
       const next=
-        TAB_ORDER[
+        tabOrder[
           (
             current+
             direction+
-            TAB_ORDER.length
+            tabOrder.length
           )%
-          TAB_ORDER.length
+          tabOrder.length
         ];
 
       changeTab(
@@ -5120,6 +5504,32 @@ app.addEventListener("click",async event=>{
   const button=event.target.closest("button");
   if(!button) return;
 
+  if(
+    button.dataset.manageSection &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    changeManageSection(
+      button.dataset.manageSection,
+      1
+    );
+
+    return;
+  }
+
+  if(
+    button.id==="manageBack" &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    changeManageSection(
+      "home",
+      -1
+    );
+
+    return;
+  }
+
   if(button.id==="emptyAdd"){
     openSheet(null);
     return;
@@ -5526,8 +5936,26 @@ window.addEventListener(
 
 startAuth({
   onAuthenticated:async({
-    freshLogin
+    freshLogin,
+    profile
   })=>{
+    isAdmin=
+      profile.role==="admin";
+
+    document
+      .getElementById(
+        "tab-manage"
+      )
+      .hidden=!isAdmin;
+
+    if(
+      !isAdmin &&
+      tab==="manage"
+    ){
+      tab="shifts";
+      manageSection="home";
+    }
+
     const loginEntry=
       safeSessionGet(
         LOGIN_ENTRY_KEY
@@ -5538,6 +5966,7 @@ startAuth({
       loginEntry
     ){
       tab="shifts";
+      manageSection="home";
 
       safeSessionRemove(
         UI_KEY

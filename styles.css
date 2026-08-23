@@ -755,6 +755,211 @@ nav.tabs button.on{
   transform:translate(-50%,-50%) rotate(90deg);
 }
 
+.tab-label-short{
+  display:none;
+}
+
+/* управление */
+.manage-menu{
+  overflow:hidden;
+}
+
+.manage-row{
+  width:100%;
+  min-height:66px;
+  padding:13px 16px;
+
+  display:flex;
+  align-items:center;
+  gap:14px;
+
+  border:0;
+  border-top:1px solid var(--line);
+
+  background:transparent;
+  color:var(--ink);
+
+  text-align:left;
+  cursor:pointer;
+
+  appearance:none;
+  -webkit-appearance:none;
+
+  transition:
+    background-color .16s ease,
+    box-shadow .16s ease,
+    opacity .12s ease;
+}
+
+.manage-row:first-child{
+  border-top:0;
+}
+
+.manage-row-copy{
+  flex:1;
+  min-width:0;
+
+  display:grid;
+  gap:3px;
+}
+
+.manage-row-title{
+  font-size:15px;
+  font-weight:500;
+  line-height:1.25;
+  letter-spacing:-.15px;
+}
+
+.manage-row-detail{
+  overflow:hidden;
+
+  color:var(--ink2);
+
+  font-size:12px;
+  line-height:1.35;
+
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.manage-chevron{
+  width:20px;
+  height:28px;
+  flex:none;
+
+  display:grid;
+  place-items:center;
+
+  color:var(--ink3);
+}
+
+.manage-chevron svg{
+  width:8px;
+  height:14px;
+
+  display:block;
+
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.manage-back{
+  min-height:36px;
+  margin:
+    2px
+    0
+    8px
+    -4px;
+
+  padding:
+    0
+    8px
+    0
+    4px;
+
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+
+  border:0;
+  border-radius:10px;
+
+  background:transparent;
+  color:var(--ink2);
+
+  font-size:13px;
+  font-weight:500;
+
+  cursor:pointer;
+
+  appearance:none;
+  -webkit-appearance:none;
+
+  transition:
+    opacity .12s ease,
+    background-color .16s ease;
+}
+
+.manage-back svg{
+  width:8px;
+  height:14px;
+
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.5;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.manage-placeholder{
+  padding:20px 18px;
+}
+
+.manage-placeholder-title{
+  color:var(--ink);
+
+  font-size:15px;
+  font-weight:500;
+  line-height:1.35;
+}
+
+.manage-placeholder-detail{
+  margin-top:5px;
+
+  color:var(--ink2);
+
+  font-size:12.5px;
+  line-height:1.45;
+}
+
+.manage-row.touch-active{
+  box-shadow:
+    inset 0 0 0 999px
+    var(--tint) !important;
+}
+
+.manage-back.touch-active{
+  opacity:.58;
+  box-shadow:none !important;
+}
+
+@media (max-width:430px){
+  .bottom-controls.has-fab{
+    gap:14px;
+  }
+
+  nav.tabs button{
+    padding:
+      8px
+      12px;
+  }
+}
+
+@media (max-width:360px){
+  .bottom-controls.has-fab{
+    gap:10px;
+  }
+
+  nav.tabs button{
+    padding:
+      8px
+      9px;
+
+    font-size:12px;
+  }
+
+  .tab-label-full{
+    display:none;
+  }
+
+  .tab-label-short{
+    display:inline;
+  }
+}
+
 /* шторка */
 .veil{
   position:fixed;

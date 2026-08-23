@@ -121,6 +121,7 @@ test(
         "src/config.js",
         "src/domain.js",
         "src/storage.js",
+        "src/team.js",
         "src/supabase.js",
         "src/auth.js",
         "src/login.js",

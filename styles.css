@@ -2658,9 +2658,13 @@ body.login-page{
 
   font-size:12px;
   font-weight:500;
+
+  pointer-events:none;
 }
 
 .auth-field input{
+  pointer-events:auto;
+
   --auth-input-bg:
     color-mix(
       in srgb,

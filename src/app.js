@@ -2397,6 +2397,143 @@ function drawEmployeeSheet(){
     return;
   }
 
+  const body=
+    document.getElementById(
+      "employeeSheetBody"
+    );
+
+  if(employeeSheetMode==="view"){
+    const employee=
+      teamData.employees.find(
+        item=>
+          item.id===
+          employeeDraft.id
+      );
+
+    if(!employee){
+      body.innerHTML=`
+        <div class="card">
+          <div class="employee-empty">
+            Сотрудник не найден.
+          </div>
+        </div>
+      `;
+
+      return;
+    }
+
+    const account=
+      employeeAccount(
+        employee
+      );
+
+    const pointNames=
+      employeePointNames(
+        employee.id
+      );
+
+    const pointRows=
+      pointNames.length
+        ? pointNames
+            .map(name=>`
+              <div class="row">
+                <div class="l">
+                  <div class="t">
+                    ${esc(name)}
+                  </div>
+                </div>
+              </div>
+            `)
+            .join("")
+        : `
+            <div class="row">
+              <div class="l">
+                <div class="t">
+                  ПВЗ не назначены
+                </div>
+              </div>
+            </div>
+          `;
+
+    body.innerHTML=`
+      <div class="ml">
+        Сотрудник
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div class="l">
+            <div class="t">
+              ${esc(employee.full_name)}
+            </div>
+
+            <div class="s">
+              ФИО
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="l">
+            <div class="t">
+              ${
+                employee.status==="active"
+                  ? "Активен"
+                  : "В архиве"
+              }
+            </div>
+
+            <div class="s">
+              Статус
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="l">
+            <div class="t">
+              ${
+                account?.email
+                  ? esc(account.email)
+                  : "Не привязан"
+              }
+            </div>
+
+            <div class="s">
+              Аккаунт
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml">
+        Пункты выдачи
+      </div>
+
+      <div class="card">
+        ${pointRows}
+      </div>
+
+      <button
+        type="button"
+        class="btn warn"
+        id="employeeDelete"
+      >
+        Удалить сотрудника
+      </button>
+
+      <div
+        class="sheet-spacer"
+        aria-hidden="true"
+      ></div>
+    `;
+
+    return;
+  }
+
+  const isCreate=
+    employeeSheetMode==="create";
+
   const selectedPoints=
     new Set(
       employeeDraft.pointIds
@@ -2460,90 +2597,92 @@ function drawEmployeeSheet(){
       })
       .join("");
 
-  document
-    .getElementById(
-      "employeeSheetBody"
-    )
-    .innerHTML=`
-      <div class="ml">
-        Сотрудник
-      </div>
+  body.innerHTML=`
+    <div class="ml">
+      Сотрудник
+    </div>
 
-      <div class="card employee-editor">
-        <label class="row">
-          <div class="t">
-            ФИО
-          </div>
-
-          <input
-            type="text"
-            id="employeeName"
-            autocomplete="off"
-            value="${esc(employeeDraft.fullName)}"
-            aria-label="ФИО сотрудника"
-          >
-        </label>
-      </div>
-
-      <div class="ml">
-        Статус
-      </div>
-
-      <div class="card segbox">
-        <div class="seg">
-          <button
-            type="button"
-            data-employee-status="active"
-            class="${employeeDraft.status==="active" ? "on" : ""}"
-          >
-            Активен
-          </button>
-
-          <button
-            type="button"
-            data-employee-status="inactive"
-            class="${employeeDraft.status==="inactive" ? "on" : ""}"
-          >
-            В архиве
-          </button>
+    <div class="card employee-editor">
+      <label class="row">
+        <div class="t">
+          ФИО
         </div>
-      </div>
 
-      <div class="ml">
-        Аккаунт
-      </div>
+        <input
+          type="text"
+          id="employeeName"
+          autocomplete="off"
+          value="${esc(employeeDraft.fullName)}"
+          aria-label="ФИО сотрудника"
+        >
+      </label>
+    </div>
 
-      <div class="card employee-editor">
-        <label class="row">
-          <div class="t">
-            Вход
+    ${
+      isCreate
+        ? ""
+        : `
+          <div class="ml">
+            Статус
           </div>
 
-          <select
-            id="employeeAccount"
-            aria-label="Аккаунт сотрудника"
-          >
-            <option value="">
-              Не привязан
-            </option>
+          <div class="card segbox">
+            <div class="seg">
+              <button
+                type="button"
+                data-employee-status="active"
+                class="${employeeDraft.status==="active" ? "on" : ""}"
+              >
+                Активен
+              </button>
 
-            ${accountOptions}
-          </select>
-        </label>
-      </div>
+              <button
+                type="button"
+                data-employee-status="inactive"
+                class="${employeeDraft.status==="inactive" ? "on" : ""}"
+              >
+                В архиве
+              </button>
+            </div>
+          </div>
+        `
+    }
 
-      <div class="employee-help">
-        Для входа и просмотра своих смен.
-      </div>
+    <div class="ml">
+      Аккаунт
+    </div>
 
-      <div class="ml">
-        Пункты выдачи
-      </div>
+    <div class="card employee-editor">
+      <label class="row">
+        <div class="t">
+          Вход
+        </div>
 
-      <div class="card employee-points">
-        ${pointRows}
-      </div>
-    `;
+        <select
+          id="employeeAccount"
+          aria-label="Аккаунт сотрудника"
+        >
+          <option value="">
+            Не привязан
+          </option>
+
+          ${accountOptions}
+        </select>
+      </label>
+    </div>
+
+    <div class="employee-help">
+      Для входа и просмотра своих смен.
+    </div>
+
+    <div class="ml">
+      Пункты выдачи
+    </div>
+
+    <div class="card employee-points">
+      ${pointRows}
+    </div>
+  `;
 }
 
 function employeeSaveError(
@@ -2745,6 +2884,158 @@ function animateManageView(
   }
 }
 
+function syncEmployeeSheetHeader(){
+  const title=
+    document.getElementById(
+      "employeeSheetTitle"
+    );
+
+  const cancelButton=
+    document.getElementById(
+      "employeeSheetCancel"
+    );
+
+  const actionButton=
+    document.getElementById(
+      "employeeSheetSave"
+    );
+
+  if(employeeSheetMode==="create"){
+    title.textContent=
+      "Новый сотрудник";
+
+    cancelButton.textContent=
+      "Отмена";
+
+    actionButton.textContent=
+      "Готово";
+
+    actionButton.disabled=
+      employeeSaving;
+
+    return;
+  }
+
+  if(employeeSheetMode==="view"){
+    title.textContent=
+      "Сотрудник";
+
+    cancelButton.textContent=
+      "Закрыть";
+
+    actionButton.textContent=
+      "Изменить";
+
+    actionButton.disabled=false;
+
+    return;
+  }
+
+  title.textContent=
+    "Редактирование";
+
+  cancelButton.textContent=
+    "Назад";
+
+  actionButton.textContent=
+    "Готово";
+
+  actionButton.disabled=
+    employeeSaving;
+}
+
+function showEmployeeView(
+  employeeId
+){
+  const nextDraft=
+    createEmployeeDraft(
+      employeeId
+    );
+
+  if(!nextDraft){
+    toast(
+      "Сотрудник не найден",
+      3000
+    );
+
+    closeEmployeeEditor();
+
+    return;
+  }
+
+  employeeDraft=
+    nextDraft;
+
+  employeeSheetMode=
+    "view";
+
+  employeeSaving=false;
+
+  syncEmployeeSheetHeader();
+  drawEmployeeSheet();
+
+  employeeSheetElement
+    .scrollTop=0;
+}
+
+function startEmployeeEdit(){
+  if(!employeeDraft?.id){
+    return;
+  }
+
+  const nextDraft=
+    createEmployeeDraft(
+      employeeDraft.id
+    );
+
+  if(!nextDraft){
+    toast(
+      "Сотрудник не найден",
+      3000
+    );
+
+    return;
+  }
+
+  employeeDraft=
+    nextDraft;
+
+  employeeSheetMode=
+    "edit";
+
+  employeeSaving=false;
+
+  syncEmployeeSheetHeader();
+  drawEmployeeSheet();
+
+  employeeSheetElement
+    .scrollTop=0;
+}
+
+function cancelEmployeeSheet(){
+  if(
+    employeeSheetMode==="edit" &&
+    employeeDraft?.id
+  ){
+    showEmployeeView(
+      employeeDraft.id
+    );
+
+    return;
+  }
+
+  closeEmployeeEditor();
+}
+
+function employeeSheetPrimaryAction(){
+  if(employeeSheetMode==="view"){
+    startEmployeeEdit();
+    return;
+  }
+
+  void saveEmployeeDraft();
+}
+
 function openEmployeeEditor(
   employeeId=null
 ){
@@ -2776,24 +3067,14 @@ function openEmployeeEditor(
   employeeDraft=
     nextDraft;
 
+  employeeSheetMode=
+    employeeId
+      ? "view"
+      : "create";
+
   employeeSaving=false;
 
-  document
-    .getElementById(
-      "employeeSheetTitle"
-    )
-    .textContent=
-      employeeId
-        ? "Сотрудник"
-        : "Новый сотрудник";
-
-  const saveButton=
-    document.getElementById(
-      "employeeSheetSave"
-    );
-
-  saveButton.disabled=false;
-
+  syncEmployeeSheetHeader();
   drawEmployeeSheet();
 
   sheet.style.display="block";
@@ -2878,6 +3159,7 @@ function closeEmployeeEditor(){
 
   employeeDraft=null;
   employeeSaving=false;
+  employeeSheetMode="create";
 
   if(!activeModal()){
     setBackgroundInert(false);
@@ -2903,7 +3185,8 @@ function closeEmployeeEditor(){
 async function saveEmployeeDraft(){
   if(
     !employeeDraft ||
-    employeeSaving
+    employeeSaving ||
+    employeeSheetMode==="view"
   ){
     return;
   }
@@ -2926,6 +3209,11 @@ async function saveEmployeeDraft(){
 
     return;
   }
+
+  const wasExisting=
+    Boolean(
+      employeeDraft.id
+    );
 
   const saveButton=
     document.getElementById(
@@ -2974,6 +3262,20 @@ async function saveEmployeeDraft(){
 
     employeeSaving=false;
 
+    if(wasExisting){
+      updateEmployeeList();
+
+      showEmployeeView(
+        employeeId
+      );
+
+      toast(
+        "Сотрудник сохранён"
+      );
+
+      return;
+    }
+
     closeEmployeeEditor();
     render();
 
@@ -2989,6 +3291,108 @@ async function saveEmployeeDraft(){
         error
       ),
       4000
+    );
+  }
+}
+
+function employeeDeleteError(
+  error
+){
+  const message=
+    error instanceof Error
+      ? error.message
+      : String(
+          error || ""
+        );
+
+  if(
+    message.includes(
+      "employee_has_history"
+    ) ||
+    message.includes(
+      "shifts_employee_id_fkey"
+    )
+  ){
+    return (
+      "У сотрудника есть история смен. "+
+      "Переведите его в архив."
+    );
+  }
+
+  if(
+    message.includes(
+      "employee_not_found"
+    )
+  ){
+    return "Сотрудник больше не существует";
+  }
+
+  return (
+    message ||
+    "Не удалось удалить сотрудника"
+  );
+}
+
+async function deleteEmployeeDraft(){
+  if(
+    !employeeDraft?.id ||
+    employeeSheetMode!=="view"
+  ){
+    return;
+  }
+
+  const employeeId=
+    employeeDraft.id;
+
+  const confirmed=
+    await appConfirm(
+      "Удалить сотрудника?",
+      {
+        okText:"Удалить",
+        danger:true,
+        detail:
+          "Удаление возможно только если у сотрудника нет истории смен."
+      }
+    );
+
+  if(!confirmed){
+    return;
+  }
+
+  try{
+    await deleteAdminEmployee(
+      employeeId
+    );
+
+    const refreshed=
+      await refreshTeamData({
+        renderAfter:false
+      });
+
+    closeEmployeeEditor();
+
+    if(!refreshed){
+      render();
+
+      toast(
+        "Сотрудник удалён, но список не удалось обновить",
+        4000
+      );
+
+      return;
+    }
+
+    render();
+
+    toast(
+      "Сотрудник удалён"
+    );
+  }catch(error){
+    toast(
+      employeeDeleteError(
+        error
+      ),
+      4200
     );
   }
 }
@@ -6566,14 +6970,14 @@ document
     "employeeSheetCancel"
   )
   .onclick=
-    closeEmployeeEditor;
+    cancelEmployeeSheet;
 
 document
   .getElementById(
     "employeeSheetSave"
   )
   .onclick=
-    saveEmployeeDraft;
+    employeeSheetPrimaryAction;
 
 document
   .getElementById(
@@ -6664,6 +7068,14 @@ employeeSheetElement.addEventListener(
       !button ||
       !employeeDraft
     ){
+      return;
+    }
+
+    if(
+      button.id===
+      "employeeDelete"
+    ){
+      void deleteEmployeeDraft();
       return;
     }
 

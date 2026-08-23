@@ -2775,6 +2775,7 @@ body.login-page.auth-focus-enabled
 
   border:1px solid var(--gold-line);
   border-radius:14px;
+  outline:0;
 
   background:var(--gold-soft);
   color:var(--gold);
@@ -2786,6 +2787,22 @@ body.login-page.auth-focus-enabled
 
   appearance:none;
   -webkit-appearance:none;
+
+  transition:
+    transform .12s ease,
+    opacity .12s ease,
+    box-shadow .18s ease;
+}
+
+.auth-submit:active:not(:disabled){
+  transform:scale(.98);
+  opacity:.72;
+}
+
+.auth-submit:focus-visible{
+  box-shadow:
+    0 0 0 3px
+    var(--gold-soft);
 }
 
 .auth-submit:disabled{

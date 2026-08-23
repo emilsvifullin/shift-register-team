@@ -434,13 +434,23 @@ document.addEventListener(
           );
 
         if(isAuthInput(input)){
-          if(event.cancelable){
-            event.preventDefault();
-          }
+          if(
+            event.pointerType===
+            "touch"
+          ){
+            if(event.cancelable){
+              event.preventDefault();
+            }
 
-          focusAuthInput(
-            input
-          );
+            focusAuthInput(
+              input
+            );
+          }else{
+            userInteracted=true;
+
+            setInputsReadonly(false);
+            setFocusEnabled(true);
+          }
 
           return;
         }

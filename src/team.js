@@ -130,3 +130,21 @@ export async function saveAdminEmployee({
     "Не удалось сохранить сотрудника"
   );
 }
+
+export async function deleteAdminEmployee(
+  id
+){
+  const result=
+    await supabaseClient
+      .rpc(
+        "admin_delete_employee",
+        {
+          p_employee_id:id
+        }
+      );
+
+  return resultData(
+    result,
+    "Не удалось удалить сотрудника"
+  );
+}

@@ -1062,6 +1062,15 @@ nav.tabs button.on{
   min-width:0;
 }
 
+#employeeSearch{
+  direction:ltr;
+  text-align:left;
+}
+
+#employeeSearch:focus::placeholder{
+  color:transparent;
+}
+
 .employee-editor select{
   direction:ltr;
   text-align:right;

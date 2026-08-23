@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v50";
+  "sr-team-runtime-v51";
 
 const INDEX_FILE=
   "./index.html";
@@ -18,6 +18,7 @@ const ASSETS=[
   "./src/auth.js",
   "./src/login.js",
   "./src/app.js",
+  "./src/employee-ui.js",
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"

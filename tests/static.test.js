@@ -253,6 +253,11 @@ test(
         "src/team.js"
       );
 
+    const employeeAuth=
+      await read(
+        "supabase/functions/admin-employee-auth/index.ts"
+      );
+
     assert.match(
       loginHtml,
       /Телефон или email/
@@ -265,7 +270,22 @@ test(
 
     assert.match(
       login,
-      /normalizePhone/
+      /phoneAuthEmail/
+    );
+
+    assert.match(
+      employeeAuth,
+      /phone\.shift-register\.example\.com/
+    );
+
+    assert.match(
+      employeeAuth,
+      /email_confirm:true/
+    );
+
+    assert.doesNotMatch(
+      employeeAuth,
+      /phone_confirm:true/
     );
 
     assert.match(

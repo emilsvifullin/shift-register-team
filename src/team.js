@@ -233,15 +233,33 @@ export async function loadAdminTeamData(){
       loadShiftRows()
     ]);
 
+  const employees=
+    resultData(
+      employeesResult,
+      "Не удалось загрузить сотрудников"
+    ) || [];
+
+  const accounts=
+    resultData(
+      accountsResult,
+      "Не удалось загрузить аккаунты"
+    ) || [];
+
+  const employeesById=
+    new Map(
+      employees.map(
+        employee=>[
+          employee.id,
+          employee
+        ]
+      )
+    );
+
   return {
     linked:true,
     employee:null,
 
-    employees:
-      resultData(
-        employeesResult,
-        "Не удалось загрузить сотрудников"
-      ) || [],
+    employees,
 
     points:
       resultData(
@@ -256,10 +274,23 @@ export async function loadAdminTeamData(){
       ) || [],
 
     accounts:
-      resultData(
-        accountsResult,
-        "Не удалось загрузить аккаунты"
-      ) || [],
+      accounts.map(account=>{
+        const employee=
+          employeesById.get(
+            account.employee_id
+          );
+
+        if(!employee?.phone){
+          return account;
+        }
+
+        return {
+          ...account,
+          login:employee.phone,
+          phone:employee.phone,
+          email:null
+        };
+      }),
 
     tariffs:
       resultData(

@@ -38,6 +38,15 @@ function validPhone(value:unknown){
     /^\+[1-9]\d{7,14}$/.test(value);
 }
 
+function phoneAuthEmail(
+  phone:string
+){
+  return (
+    `${phone.slice(1)}`+
+    "@phone.shift-register.example.com"
+  );
+}
+
 Deno.serve(async request=>{
   if(request.method==="OPTIONS"){
     return new Response(
@@ -147,6 +156,10 @@ Deno.serve(async request=>{
 
   const employeeId=payload.employeeId;
   const phone=payload.phone;
+  const email=
+    typeof phone==="string"
+      ? phoneAuthEmail(phone)
+      : "";
   const password=
     typeof payload.password==="string"
       ? payload.password
@@ -203,8 +216,8 @@ Deno.serve(async request=>{
     }
 
     const updatePayload:Record<string,unknown>={
-      phone,
-      phone_confirm:true,
+      email,
+      email_confirm:true,
       app_metadata:{
         ...existingUser.user.app_metadata,
         role:"employee"
@@ -245,9 +258,9 @@ Deno.serve(async request=>{
       error:createError
     }=await adminClient.auth.admin
       .createUser({
-        phone,
+        email,
         password,
-        phone_confirm:true,
+        email_confirm:true,
         app_metadata:{
           role:"employee"
         }

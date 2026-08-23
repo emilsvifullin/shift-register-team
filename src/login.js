@@ -1,5 +1,5 @@
 import {
-  normalizePhone
+  phoneAuthEmail
 } from "./phone.js";
 
 const form=
@@ -988,7 +988,7 @@ form.addEventListener(
               password:passwordValue
             }
           : {
-              phone:normalizePhone(
+              email:phoneAuthEmail(
                 loginValue
               ),
               password:passwordValue

@@ -105,6 +105,12 @@ let teamDataError=null;
 
 let employeeDraft=null;
 let employeeSaving=false;
+let employeeSheetPreviousFocus=null;
+
+const employeeSheetElement=
+  document.getElementById(
+    "employeeSheet"
+  );
 
 function availableTabs(){
   return isAdmin
@@ -397,7 +403,7 @@ function focusableElements(container){
 }
 
 function activeModal(){
-  const ids=["appConfirm","datePicker","pointPicker","monthPicker","sheet"];
+  const ids=["appConfirm","datePicker","pointPicker","monthPicker","employeeSheet","sheet"];
   return ids.map(id=>document.getElementById(id)).find(element=>
     element && (element.classList.contains("on") || element.getAttribute("aria-hidden")==="false")
   ) || null;
@@ -490,6 +496,7 @@ document.addEventListener("keydown",event=>{
   if(document.getElementById("datePicker").classList.contains("on")) return closeDatePicker();
   if(document.getElementById("pointPicker").classList.contains("on")) return closePointPicker();
   if(document.getElementById("monthPicker").classList.contains("on")) return closeMonthPicker();
+  if(document.getElementById("employeeSheet").classList.contains("on")) return closeEmployeeEditor();
   if(document.getElementById("sheet").classList.contains("on")) return closeSheet();
 });
 
@@ -1628,7 +1635,7 @@ function employeePointsLabel(
 }
 
 function viewEmployees(){
-  if(employeeDraft){
+  if(teamDataLoading && !teamDataLoaded){
     return viewEmployeeEditor();
   }
 

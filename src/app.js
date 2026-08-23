@@ -8,25 +8,17 @@ import {
   MIN_YEAR,
   MONTHS,
   MONTHS_G,
-  POINTS,
   RULES_VERSION,
-  WD,
-  isFixedPoint
+  WD
 } from "./config.js";
 
 import {
   DataValidationError,
   calc as domainCalc,
-  createBackupEnvelope,
-  createShiftId,
   inMonth as domainInMonth,
   isPlainObject,
   isValidDateString,
-  normalizeDraftForSave,
-  parseBackupJson,
-  payouts as domainPayouts,
-  pricingDriversEqual,
-  snapshotPricing
+  payouts as domainPayouts
 } from "./domain.js";
 
 import {
@@ -34,7 +26,6 @@ import {
   CHANNEL_NAME,
   DB_KEY,
   LEGACY_DB_KEY,
-  StorageConflictError,
   StorageCorruptError,
   createAppStorage
 } from "./storage.js";
@@ -45,10 +36,36 @@ import {
 } from "./auth.js";
 
 import {
+  normalizePhone,
+  optionalPhone,
+  phoneLabel
+} from "./phone.js";
+
+import {
+  addAdminTariff,
   deleteAdminEmployee,
-  loadAdminTeamData,
-  saveAdminEmployee
+  deleteAdminShift,
+  importAdminLegacyShifts,
+  loadTeamData,
+  saveAdminEmployee,
+  saveAdminEmployeeAuth,
+  saveAdminPoint,
+  saveAdminShift,
+  subscribeTeamChanges
 } from "./team.js";
+
+import {
+  calculateBaseAmount,
+  createPricingSnapshot,
+  createTeamId,
+  legacyShiftPayload,
+  normalizeShkTiers,
+  tariffForDate
+} from "./team-domain.js";
+
+import {
+  initEmployeeUi
+} from "./employee-ui.js";
 
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
@@ -77,19 +94,26 @@ const syncChannel=("BroadcastChannel" in window)
   : null;
 
 let shifts=[];
+let legacyShifts=[];
 let tab="shifts";
 let cursor=ymOf(new Date());
 let draft=null;
-let storageOk=true;
 let storageRevision=null;
 let loadError=null;
-let hasBackup=false;
-let syncConflict=false;
 let sheetPreviousFocus=null;
 let pointPreviousFocus=null;
 let monthPreviousFocus=null;
 let datePreviousFocus=null;
 let isAdmin=false;
+let currentUser=null;
+let currentProfile=null;
+let employeeLinked=true;
+let serverConnected=false;
+let serverDataError=null;
+let realtimeStatus="connecting";
+let realtimeStop=null;
+let realtimeRefreshTimer=0;
+let automaticRefreshTimer=0;
 let manageSection="home";
 let manageTransitionRunning=false;
 
@@ -97,7 +121,11 @@ let teamData={
   employees:[],
   points:[],
   employeePoints:[],
-  accounts:[]
+  accounts:[],
+  tariffs:[],
+  shifts:[],
+  employee:null,
+  linked:true
 };
 
 let teamDataLoaded=false;
@@ -111,9 +139,17 @@ let employeeSheetPreviousFocus=null;
 
 let employeeSearchQuery="";
 let employeeStatusFilter="active";
-let employeePointFilter="";
+let employeePointFilter=null;
 let employeeFilterDraft=null;
 let employeeFilterSheetPreviousFocus=null;
+let legacyMigrationEmployeeId="";
+let legacyMigrationRunning=false;
+let legacyMigrationProgress="";
+let statsEmployeeId="";
+let manageEditorKind=null;
+let manageEditorDraft=null;
+let manageEditorSaving=false;
+let manageEditorPreviousFocus=null;
 
 const employeeSheetElement=
   document.getElementById(
@@ -123,6 +159,11 @@ const employeeSheetElement=
 const employeeFilterSheetElement=
   document.getElementById(
     "employeeFilterSheet"
+  );
+
+const manageEditorSheetElement=
+  document.getElementById(
+    "manageEditorSheet"
   );
 
 function availableTabs(){
@@ -152,7 +193,7 @@ async function refreshTeamData({
   renderAfter=true
 }={}){
   if(
-    !isAdmin ||
+    !currentUser ||
     teamDataLoading
   ){
     return false;
@@ -160,12 +201,38 @@ async function refreshTeamData({
 
   teamDataLoading=true;
   teamDataError=null;
+  serverDataError=null;
 
   try{
     teamData=
-      await loadAdminTeamData();
+      await loadTeamData({
+        role:currentProfile.role,
+        userId:currentUser.id
+      });
+
+    shifts=teamData.shifts;
+    employeeLinked=
+      teamData.linked!==false;
+    serverConnected=true;
 
     teamDataLoaded=true;
+
+    if(
+      isAdmin &&
+      !teamData.employees.some(
+        employee=>
+          employee.id===
+          statsEmployeeId
+      )
+    ){
+      statsEmployeeId=
+        teamData.employees.find(
+          employee=>
+            employee.status==="active"
+        )?.id ||
+        teamData.employees[0]?.id ||
+        "";
+    }
 
     return true;
   }catch(error){
@@ -174,17 +241,86 @@ async function refreshTeamData({
         ? error.message
         : "Не удалось загрузить данные";
 
+    serverDataError=
+      teamDataError;
+    serverConnected=false;
+
     return false;
   }finally{
     teamDataLoading=false;
 
     if(
-      renderAfter &&
-      tab==="manage"
+      renderAfter
     ){
       renderWhenReady();
     }
   }
+}
+
+async function startAutomaticSync(){
+  realtimeStop?.();
+  realtimeStop=null;
+
+  window.clearInterval(
+    automaticRefreshTimer
+  );
+
+  realtimeStatus="connecting";
+
+  try{
+    realtimeStop=
+      await subscribeTeamChanges({
+      role:currentProfile.role,
+      onChange:()=>{
+        window.clearTimeout(
+          realtimeRefreshTimer
+        );
+
+        realtimeRefreshTimer=
+          window.setTimeout(
+            ()=>{
+              void refreshTeamData();
+            },
+            180
+          );
+      },
+      onStatus:status=>{
+        realtimeStatus=
+          status==="SUBSCRIBED"
+            ? "connected"
+            : [
+                "CHANNEL_ERROR",
+                "TIMED_OUT",
+                "CLOSED"
+              ].includes(status)
+              ? "polling"
+              : "connecting";
+
+        if(tab==="data"){
+          renderWhenReady();
+        }
+      }
+      });
+  }catch{
+    realtimeStatus="polling";
+  }
+
+  automaticRefreshTimer=
+    window.setInterval(
+      ()=>{
+        if(
+          document.visibilityState===
+            "visible" &&
+          navigator.onLine
+        ){
+          void refreshTeamData({
+            renderAfter:
+              tab==="data"
+          });
+        }
+      },
+      30000
+    );
 }
 
 function safeSessionGet(key){
@@ -398,12 +534,19 @@ function extraPartialShortWord(n){
 }
 
 function calc(shift){return domainCalc(shift);}
-function inMonth(ym){return domainInMonth(shifts,ym);}
-function payouts(ym){
-  const result=domainPayouts(ym,shifts,{today:localYMD()});
+function inMonth(
+  ym,
+  source=shifts
+){
+  return domainInMonth(source,ym);
+}
+function payouts(
+  ym,
+  source=shifts
+){
+  const result=domainPayouts(ym,source,{today:localYMD()});
   return {...result,nextYm:shiftMonth(ym,1)};
 }
-const FIXED_POINTS={has:value=>isFixedPoint(value)};
 
 let appConfirmResolve=null;
 let appConfirmPreviousFocus=null;
@@ -416,7 +559,7 @@ function focusableElements(container){
 }
 
 function activeModal(){
-  const ids=["appConfirm","datePicker","pointPicker","monthPicker","employeeFilterSheet","employeeSheet","sheet"];
+  const ids=["appConfirm","datePicker","pointPicker","monthPicker","manageEditorSheet","employeeFilterSheet","employeeSheet","sheet"];
   return ids.map(id=>document.getElementById(id)).find(element=>
     element && (element.classList.contains("on") || element.getAttribute("aria-hidden")==="false")
   ) || null;
@@ -509,6 +652,7 @@ document.addEventListener("keydown",event=>{
   if(document.getElementById("datePicker").classList.contains("on")) return closeDatePicker();
   if(document.getElementById("pointPicker").classList.contains("on")) return closePointPicker();
   if(document.getElementById("monthPicker").classList.contains("on")) return closeMonthPicker();
+  if(document.getElementById("manageEditorSheet").classList.contains("on")) return closeManageEditor();
   if(document.getElementById("employeeFilterSheet").classList.contains("on")) return closeEmployeeFilterSheet();
   if(document.getElementById("employeeSheet").classList.contains("on")) return closeEmployeeEditor();
   if(document.getElementById("sheet").classList.contains("on")) return closeSheet();
@@ -518,24 +662,22 @@ function isRecoverableDraft(value){
   return isPlainObject(value) &&
     typeof value.id==="string" &&
     isValidDateString(value.date) &&
-    POINTS.includes(value.point) &&
+    typeof value.employeeId==="string" &&
+    typeof value.dbPointId==="string" &&
     ["main","extra"].includes(value.type) &&
     typeof value.partial==="boolean";
 }
 
-function announceRevision(revision){
-  try{syncChannel?.postMessage({type:"revision",revision});}catch{}
-}
-
 async function loadFromStorage({notify=false}={}){
   const result=await store.load();
-  shifts=result.shifts;
+  legacyShifts=result.shifts;
   storageRevision=result.revision;
-  hasBackup=result.hasBackup;
-  storageOk=true;
   loadError=null;
-  syncConflict=false;
-  if(notify) toast("Данные обновлены из другой вкладки");
+  if(notify){
+    toast(
+      "Локальная резервная копия обновлена"
+    );
+  }
   return result;
 }
 
@@ -546,11 +688,13 @@ async function load(){
     await loadFromStorage();
   }catch(error){
     loadError=error;
-    storageOk=false;
-    shifts=[];
+    legacyShifts=[];
     storageRevision=null;
-    try{hasBackup=Boolean(store.getBackupRaw());}catch{hasBackup=false;}
   }
+
+  await refreshTeamData({
+    renderAfter:false
+  });
 
   render();
 
@@ -558,7 +702,8 @@ async function load(){
     pendingUI.draft;
 
   if(
-    !loadError &&
+    isAdmin &&
+    !serverDataError &&
     pendingUI.sheetOpen===true &&
     isRecoverableDraft(savedDraft)
   ){
@@ -604,36 +749,46 @@ async function load(){
   });
 }
 
-async function save(nextShifts=shifts){
-  if(loadError){
-    toast("Сначала восстановите или замените повреждённые данные",3500);
-    return false;
-  }
-
-  try{
-    const result=await store.save(nextShifts,{expectedRevision:storageRevision});
-    storageRevision=result.revision;
-    hasBackup=result.hasBackup;
-    storageOk=true;
-    syncConflict=false;
-    announceRevision(storageRevision);
-    return true;
-  }catch(error){
-    storageOk=false;
-    if(error instanceof StorageConflictError){
-      syncConflict=true;
-      toast("Данные изменились в другой вкладке. Обновите данные перед сохранением.",4200);
-    }else{
-      toast("Не удалось сохранить данные",3200);
-      console.error(error);
-    }
-    return false;
-  }
-}
-
 function exportEnvelopeJson(){
   return JSON.stringify(
-    createBackupEnvelope(shifts,{revision:storageRevision}),
+    {
+      format:
+        "shift-register-server-backup",
+      version:1,
+      exportedAt:
+        new Date().toISOString(),
+      shifts,
+      points:
+        isAdmin
+          ? teamData.points
+          : undefined,
+      tariffs:
+        isAdmin
+          ? teamData.tariffs
+          : undefined,
+      employees:
+        isAdmin
+          ? teamData.employees
+          : undefined,
+      employeePoints:
+        isAdmin
+          ? teamData.employeePoints
+          : undefined
+    },
+    null,
+    2
+  );
+}
+
+function exportLegacyJson(){
+  return JSON.stringify(
+    {
+      format:
+        "shift-register-backup",
+      schemaVersion:3,
+      revision:storageRevision,
+      shifts:legacyShifts
+    },
     null,
     2
   );
@@ -651,33 +806,15 @@ function downloadText(text,filename,type="application/json"){
   setTimeout(()=>URL.revokeObjectURL(url),0);
 }
 
-async function copyText(text){
-  if(!navigator.clipboard?.writeText) return false;
-  try{
-    await navigator.clipboard.writeText(text);
-    return true;
-  }catch{
-    return false;
-  }
-}
-
 function backupFilename(){
   return `shift-register-${localYMD()}-v${APP_VERSION}.json`;
 }
 
 function handleExternalRevision(){
-  if(draft || document.body.classList.contains("sheet-open")){
-    syncConflict=true;
-    storageOk=false;
-    toast("Данные изменены в другой вкладке. Закройте форму и обновите данные.",4200);
-    return;
-  }
-
   loadFromStorage({notify:true})
     .then(render)
     .catch(error=>{
       loadError=error;
-      storageOk=false;
       render();
     });
 }
@@ -698,11 +835,19 @@ syncChannel?.addEventListener("message",event=>{
 /* ========== экраны ========== */
 const app = document.getElementById("app");
 
+const employeeUi=
+  initEmployeeUi({
+    app,
+    employeeSheet:
+      employeeSheetElement
+  });
+
 function shouldShowFab(ym=cursor){
   return (
+    isAdmin &&
     tab==="shifts" &&
     inMonth(ym).length>0 &&
-    !loadError
+    !serverDataError
   );
 }
 
@@ -716,8 +861,6 @@ function render(){
     tab="shifts";
     manageSection="home";
   }
-
-  if(loadError) tab="data";
 
   const monthTab=
     ["shifts","stats"]
@@ -919,7 +1062,69 @@ function fitShiftWindow(){
     `${targetHeight}px`;
 }
 
+function serverStateCard(){
+  if(
+    teamDataLoading &&
+    !teamDataLoaded
+  ){
+    return `
+      <div class="ml">Синхронизация</div>
+      <div class="card">
+        <div class="manage-loading">
+          Загрузка данных…
+        </div>
+      </div>
+    `;
+  }
+
+  if(serverDataError){
+    return `
+      <div class="ml">Синхронизация</div>
+      <div class="card">
+        <div class="manage-placeholder">
+          <div class="manage-placeholder-title">
+            Не удалось загрузить данные
+          </div>
+          <div class="manage-placeholder-detail">
+            ${esc(serverDataError)}
+          </div>
+        </div>
+      </div>
+      <button type="button" class="manage-add" id="serverRetry">
+        Повторить
+      </button>
+    `;
+  }
+
+  if(
+    !isAdmin &&
+    !employeeLinked
+  ){
+    return `
+      <div class="ml">Аккаунт</div>
+      <div class="card">
+        <div class="manage-placeholder">
+          <div class="manage-placeholder-title">
+            Аккаунт не привязан к сотруднику
+          </div>
+          <div class="manage-placeholder-detail">
+            Обратитесь к администратору, чтобы он выбрал этот аккаунт в карточке сотрудника.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return "";
+}
+
 function viewShifts(){
+  const state=serverStateCard();
+
+  if(state){
+    return state;
+  }
+
   const list=inMonth(cursor);
 
   if(!list.length){
@@ -928,10 +1133,12 @@ function viewShifts(){
       <div class="card">
         <div class="empty">
           <div>В этом месяце смен пока нет.</div>
-          <button type="button" class="empty-add" id="emptyAdd">
-            <span class="empty-add-plus" aria-hidden="true"></span>
-            Добавить смену
-          </button>
+          ${isAdmin ? `
+            <button type="button" class="empty-add" id="emptyAdd">
+              <span class="empty-add-plus" aria-hidden="true"></span>
+              Добавить смену
+            </button>
+          ` : ""}
         </div>
       </div>
     `;
@@ -997,7 +1204,7 @@ function viewShifts(){
           <span class="p">${esc(shift.point)}</span>
 
           <span class="meta">
-            <span>${shkLabel} · ${nf(result.rate)} ₽</span>
+            <span>${shkLabel} · ${nf(result.rate)} ₽${isAdmin ? ` · ${esc(shift.employeeName)}` : ""}</span>
             ${tags.join("")}
           </span>
         </span>
@@ -1014,14 +1221,44 @@ function viewShifts(){
 }
 
 function viewStats(){
+  const state=serverStateCard();
+
+  if(state){
+    return state;
+  }
+
+  const selectedEmployee=
+    isAdmin
+      ? teamData.employees.find(
+          employee=>
+            employee.id===
+            statsEmployeeId
+        ) || null
+      : teamData.employee;
+
+  const statsShifts=
+    selectedEmployee
+      ? shifts.filter(
+          shift=>
+            shift.employeeId===
+            selectedEmployee.id
+        )
+      : [];
+
   const payout=
-    payouts(cursor);
+    payouts(
+      cursor,
+      statsShifts
+    );
 
   const aggregate=
     payout.all;
 
   const monthShifts=
-    inMonth(cursor);
+    inMonth(
+      cursor,
+      statsShifts
+    );
 
   const today=
     localYMD();
@@ -1295,7 +1532,34 @@ function viewStats(){
       })
       .join("");
 
+  const employeePicker=
+    isAdmin
+      ? `
+        <div class="ml">Сотрудник</div>
+        <div class="card employee-editor">
+          <label class="row">
+            <div class="t">Итоги</div>
+            <select
+              id="statsEmployee"
+              aria-label="Сотрудник для итогов"
+            >
+              ${teamData.employees.map(employee=>`
+                <option
+                  value="${esc(employee.id)}"
+                  ${employee.id===statsEmployeeId ? "selected" : ""}
+                >
+                  ${esc(employee.full_name)}${employee.status==="inactive" ? " · архив" : ""}
+                </option>
+              `).join("")}
+            </select>
+          </label>
+        </div>
+      `
+      : "";
+
   return `
+    ${employeePicker}
+
     <div class="card">
       <div class="hero">
         <div class="k">
@@ -1450,79 +1714,163 @@ function viewStats(){
 }
 
 function viewData(){
-  let title;
-  let detail;
-  let statusClass="";
+  const title=serverConnected
+    ? realtimeStatus==="connected"
+      ? "Синхронизация в реальном времени"
+      : "Автосинхронизация включена"
+    : "Нет соединения с сервером";
 
-  if(loadError){
-    title="Ошибка данных";
-    detail="Можно восстановить сохранённую копию или заменить данные.";
-    statusClass="off";
-  }else if(syncConflict){
-    title="Конфликт изменений";
-    detail="Обновите данные перед следующей записью.";
-    statusClass="off";
-  }else if(store.mode==="memory"){
-    title="Временное хранение";
-    detail=`${shiftsWord(shifts.length)} · только до закрытия страницы`;
-    statusClass="off";
-  }else if(!storageOk){
-    title="Ошибка сохранения";
-    detail="Последнее изменение не сохранено.";
-    statusClass="off";
-  }else{
-    title="Данные сохранены";
-    detail="";
+  const detail=serverDataError ||
+    (
+      serverConnected
+        ? realtimeStatus==="connected"
+          ? "Изменения Supabase появляются автоматически на всех устройствах."
+          : "Приложение автоматически проверяет изменения; ручное обновление не требуется."
+        : "Проверьте подключение и повторите загрузку."
+    );
+
+  const employees=
+    teamData.employees || [];
+
+  if(
+    !legacyMigrationEmployeeId &&
+    employees.length
+  ){
+    legacyMigrationEmployeeId=
+      employees.find(
+        employee=>
+          employee.status==="active"
+      )?.id ||
+      employees[0].id;
   }
 
-  const recoveryActions=loadError
-    ? `
-      <button class="btn" id="doRawExport">Скачать исходные данные</button>
-      ${hasBackup?`<button class="btn gold" id="doRestoreBackup">Восстановить исправную копию</button>`:""}
+  const employeeOptions=
+    employees
+      .map(employee=>`
+        <option
+          value="${esc(employee.id)}"
+          ${employee.id===legacyMigrationEmployeeId ? "selected" : ""}
+        >
+          ${esc(employee.full_name)}${employee.status==="inactive" ? " · архив" : ""}
+        </option>
+      `)
+      .join("");
 
-      <div class="ml">Резервная копия</div>
-      <textarea id="dataImportInput" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Вставьте исправную копию сюда"></textarea>
-      <button class="btn gold" id="doImport">Заменить данные</button>
-    `
-    : syncConflict
-      ? `<button class="btn gold" id="doReloadData">Обновить данные</button>`
+  const legacySection=
+    isAdmin &&
+    (
+      legacyShifts.length ||
+      loadError
+    )
+      ? `
+        <div class="ml">Локальные смены</div>
+        <div class="card">
+          <div class="row">
+            <div class="l">
+              <div class="t">
+                ${loadError ? "Локальная копия повреждена" : shiftsWord(legacyShifts.length)}
+              </div>
+              <div class="s">
+                Источник не будет удалён автоматически
+              </div>
+            </div>
+          </div>
+
+          ${loadError ? "" : `
+            <label class="row">
+              <div class="t">Сотрудник</div>
+              <select
+                id="legacyEmployee"
+                aria-label="Сотрудник для локальных смен"
+                ${legacyMigrationRunning ? "disabled" : ""}
+              >
+                ${employeeOptions}
+              </select>
+            </label>
+          `}
+        </div>
+
+        <button class="btn" id="doLegacyExport">
+          Скачать локальную копию
+        </button>
+
+        ${loadError ? `
+          <button class="btn" id="doRawExport">
+            Скачать исходные данные
+          </button>
+        ` : `
+          <button
+            class="btn gold"
+            id="doLegacyMigrate"
+            ${!employees.length || legacyMigrationRunning ? "disabled" : ""}
+          >
+            ${legacyMigrationRunning ? "Импортируем…" : "Перенести в Supabase"}
+          </button>
+        `}
+
+        ${legacyMigrationProgress ? `
+          <div class="manage-loading">
+            ${esc(legacyMigrationProgress)}
+          </div>
+        ` : ""}
+      `
       : "";
 
-  const backupAction=hasBackup && !loadError
-    ? `<button class="btn" id="doRestoreBackup">Восстановить предыдущую версию</button>`
-    : "";
-
   return `
-    <div class="ml">Хранилище</div>
+    <div class="ml">Синхронизация</div>
     <div class="data-status">
-      <div class="dot ${statusClass}"></div>
+      <div class="dot ${serverConnected ? "" : "off"}"></div>
       <div class="data-status-copy">
         <div class="data-status-title">
-          ${esc(title)}${!detail?`: <span class="data-status-count">${esc(shiftsWord(shifts.length))}</span>`:""}
+          ${esc(title)}
         </div>
-        ${detail?`<div class="data-status-detail">${esc(detail)}</div>`:""}
+        <div class="data-status-detail">
+          ${esc(detail)}
+        </div>
       </div>
     </div>
 
-    ${recoveryActions}
-
-    ${loadError?"":`
-      <div class="ml">Резервная копия</div>
-      <button class="btn gold" id="doExport">Скачать копию</button>
-      <button class="btn" id="doImportToggle">Загрузить копию</button>
-
-      <div id="dataImportPanel" hidden>
-        <textarea id="dataImportInput" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Вставьте резервную копию сюда"></textarea>
-        <button class="btn gold" id="doImport">Загрузить</button>
-      </div>
-
-      ${backupAction}
-
-      <button class="btn warn" id="doWipe">Удалить все смены</button>
-
-      <div class="ml">Аккаунт</div>
-      <button class="btn" id="doSignOut">Выйти</button>
+    ${serverConnected ? "" : `
+      <button class="btn" id="serverRetry">
+        Повторить подключение
+      </button>
     `}
+
+    ${isAdmin ? `
+      <div class="ml">Резервная копия</div>
+      <div class="card">
+        <div class="row">
+          <div class="l">
+            <div class="t">Копия данных</div>
+            <div class="s">Файл нужен только для ручного архива и восстановления вне приложения.</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn gold" id="doExport">
+        Скачать резервную копию
+      </button>
+    ` : ""}
+
+    ${legacySection}
+
+    <div class="ml">Аккаунт</div>
+    <div class="card">
+      <div class="row">
+        <div class="l">
+          <div class="t" dir="ltr">
+            ${esc(
+              currentUser?.phone ||
+              currentUser?.email ||
+              "Аккаунт"
+            )}
+          </div>
+          <div class="s">
+            ${isAdmin ? "Администратор" : "Сотрудник"}
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="btn" id="doSignOut">Выйти</button>
 
     <div class="developer-credit">
       <div>Версия: Shift Register ${APP_VERSION}</div>
@@ -1699,15 +2047,23 @@ function filteredEmployees(){
         return false;
       }
 
-      if(
-        employeePointFilter &&
-        !employeePointIds(
-          employee.id
-        ).includes(
-          employeePointFilter
-        )
-      ){
-        return false;
+      if(employeePointFilter){
+        const assigned=
+          employeePointIds(
+            employee.id
+          );
+
+        if(
+          !employeePointFilter
+            .some(
+              pointId=>
+                assigned.includes(
+                  pointId
+                )
+            )
+        ){
+          return false;
+        }
       }
 
       if(!query){
@@ -1788,8 +2144,8 @@ function employeeRowHTML(
 
         <span class="employee-account-label">
           ${
-            account?.email
-              ? esc(account.email)
+            account?.login
+              ? esc(account.login)
               : "Аккаунт не привязан"
           }
         </span>
@@ -1874,21 +2230,24 @@ function employeeFilterLabel(){
     return statusLabel;
   }
 
-  const point=
-    teamData.points.find(
-      item=>
-        item.id===
-        employeePointFilter
-    );
+  if(employeePointFilter.length===1){
+    const point=
+      teamData.points.find(
+        item=>
+          item.id===
+          employeePointFilter[0]
+      );
 
-  if(!point){
-    return statusLabel;
+    return point
+      ? statusLabel+" · "+point.name
+      : statusLabel;
   }
 
   return (
     statusLabel+
     " · "+
-    point.name
+    employeePointFilter.length+
+    " ПВЗ"
   );
 }
 
@@ -2021,8 +2380,14 @@ function drawEmployeeFilterSheet(){
     ]
       .map(point=>{
         const selected=
-          point.id===
-          employeeFilterDraft.pointId;
+          !point.id
+            ? employeeFilterDraft
+                .pointIds===null
+            : employeeFilterDraft
+                .pointIds===null ||
+              employeeFilterDraft
+                .pointIds
+                .includes(point.id);
 
         return `
           <button
@@ -2120,8 +2485,10 @@ function openEmployeeFilterSheet(){
   employeeFilterDraft={
     status:
       employeeStatusFilter,
-    pointId:
+    pointIds:
       employeePointFilter
+        ? [...employeePointFilter]
+        : null
   };
 
   drawEmployeeFilterSheet();
@@ -2238,7 +2605,9 @@ function applyEmployeeFilter(){
     employeeFilterDraft.status;
 
   employeePointFilter=
-    employeeFilterDraft.pointId;
+    employeeFilterDraft.pointIds===null
+      ? null
+      : [...employeeFilterDraft.pointIds];
 
   closeEmployeeFilterSheet();
   render();
@@ -2247,29 +2616,61 @@ function applyEmployeeFilter(){
 function pointPricingLabel(
   point
 ){
-  if(
-    point.pricing_type===
-    "fixed"
-  ){
-    if(
-      point.fixed_rate===null ||
-      point.fixed_rate===undefined ||
-      point.fixed_rate===""
-    ){
-      return "Фикс";
-    }
-
-    return (
-      "Фикс · "+
-      money(
-        point.fixed_rate
-      )
+  const tariff=
+    tariffForDate(
+      teamData.tariffs,
+      point.id,
+      localYMD()
     );
+
+  if(!tariff){
+    return "Тариф не задан";
   }
 
+  const label=
+    tariff.pricing_type===
+    "fixed"
+      ? "Фикс · "+
+        money(tariff.fixed_rate)
+      : "По ШК";
+
   return point.advance_enabled
-    ? "По ШК · авансовый ПВЗ"
-    : "По ШК";
+    ? label+" · авансовый ПВЗ"
+    : label;
+}
+
+function pointTariffs(pointId){
+  return teamData.tariffs
+    .filter(
+      tariff=>
+        tariff.point_id===pointId
+    )
+    .sort((first,second)=>
+      second.effective_from
+        .localeCompare(
+          first.effective_from
+        )
+    );
+}
+
+function tariffLabel(tariff){
+  if(!tariff){
+    return "Тариф не задан";
+  }
+
+  if(tariff.pricing_type==="fixed"){
+    return "Фикс · "+
+      money(tariff.fixed_rate);
+  }
+
+  return "По ШК · "+
+    tariff.shk_tiers
+      .map(tier=>
+        tier.up_to===null
+          ? `от ${money(tier.rate)}`
+          : `до ${nf(tier.up_to)} — ${money(tier.rate)}`
+      )
+      .join(" · ");
 }
 
 function viewPoints(){
@@ -2326,31 +2727,25 @@ function viewPoints(){
           point.active===false;
 
         return `
-          <div class="row">
-            <div class="l">
-              <div class="t">
+          <button
+            type="button"
+            class="manage-row"
+            data-point-id="${esc(point.id)}"
+          >
+            <span class="manage-row-copy">
+              <span class="manage-row-title">
                 ${esc(point.name)}
-              </div>
-
-              <div class="s">
-                ${esc(
-                  pointPricingLabel(
-                    point
-                  )
-                )}
-              </div>
-            </div>
-
-            ${
-              inactive
-                ? `
-                  <div class="v neg">
-                    Неактивен
-                  </div>
-                `
-                : ""
-            }
-          </div>
+              </span>
+              <span class="manage-row-detail">
+                ${esc(pointPricingLabel(point))}${inactive ? " · В архиве" : ""}
+              </span>
+            </span>
+            <span class="manage-chevron" aria-hidden="true">
+              <svg viewBox="0 0 12 16">
+                <path d="M3 3L9 8L3 13"></path>
+              </svg>
+            </span>
+          </button>
         `;
       })
       .join("");
@@ -2362,10 +2757,19 @@ function viewPoints(){
       Пункты выдачи
     </div>
 
+    <button
+      type="button"
+      class="manage-add"
+      id="pointAdd"
+    >
+      <span class="manage-add-plus" aria-hidden="true"></span>
+      Добавить ПВЗ
+    </button>
+
     ${
       rows
         ? `
-          <div class="card">
+          <div class="card manage-menu">
             ${rows}
           </div>
         `
@@ -2380,14 +2784,592 @@ function viewPoints(){
   `;
 }
 
+function viewTariffs(){
+  if(teamDataLoading && !teamDataLoaded){
+    return `
+      ${manageBackButton()}
+      <div class="ml">Тарифы</div>
+      <div class="card">
+        <div class="manage-loading">Загрузка тарифов…</div>
+      </div>
+    `;
+  }
+
+  if(teamDataError && !teamDataLoaded){
+    return `
+      ${manageBackButton()}
+      <div class="ml">Тарифы</div>
+      <div class="card">
+        <div class="manage-placeholder">
+          <div class="manage-placeholder-title">Не удалось загрузить тарифы</div>
+          <div class="manage-placeholder-detail">${esc(teamDataError)}</div>
+        </div>
+      </div>
+      <button type="button" class="manage-add" id="tariffRetry">Повторить</button>
+    `;
+  }
+
+  const rows=teamData.points
+    .map(point=>{
+      const current=
+        tariffForDate(
+          teamData.tariffs,
+          point.id,
+          localYMD()
+        );
+
+      const future=
+        pointTariffs(point.id)
+          .filter(
+            tariff=>
+              tariff.effective_from>
+              localYMD()
+          )
+          .at(-1);
+
+      return `
+        <button
+          type="button"
+          class="manage-row"
+          data-tariff-point-id="${esc(point.id)}"
+        >
+          <span class="manage-row-copy">
+            <span class="manage-row-title">${esc(point.name)}</span>
+            <span class="manage-row-detail">
+              ${esc(tariffLabel(current))}${current ? ` · с ${esc(dateLabel(current.effective_from))}` : ""}${future ? ` · новая с ${esc(dateLabel(future.effective_from))}` : ""}
+            </span>
+          </span>
+          <span class="manage-chevron" aria-hidden="true">
+            <svg viewBox="0 0 12 16">
+              <path d="M3 3L9 8L3 13"></path>
+            </svg>
+          </span>
+        </button>
+      `;
+    })
+    .join("");
+
+  return `
+    ${manageBackButton()}
+    <div class="ml">Тарифы</div>
+    <div class="card manage-menu">
+      ${rows || `<div class="employee-empty">Пунктов пока нет.</div>`}
+    </div>
+  `;
+}
+
+function defaultTariffTiers(){
+  const existing=
+    teamData.tariffs.find(
+      tariff=>
+        tariff.pricing_type===
+        "shk_tiers"
+    )?.shk_tiers;
+
+  return (existing || [
+    {up_to:350,rate:3000},
+    {up_to:450,rate:3500},
+    {up_to:550,rate:4500},
+    {up_to:650,rate:5500},
+    {up_to:null,rate:6500}
+  ]).map(tier=>({...tier}));
+}
+
+function readManageEditor(){
+  if(!manageEditorDraft){
+    return;
+  }
+
+  const value=id=>
+    document.getElementById(id)
+      ?.value ?? "";
+
+  if(manageEditorKind==="point"){
+    manageEditorDraft.name=
+      value("managePointName");
+    manageEditorDraft.sortOrder=
+      value("managePointSort");
+  }
+
+  if(
+    manageEditorKind==="tariff" ||
+    manageEditorDraft.isNew
+  ){
+    if(
+      document.getElementById(
+        "manageFixedRate"
+      )
+    ){
+      manageEditorDraft.fixedRate=
+        value("manageFixedRate");
+    }
+
+    document
+      .querySelectorAll(
+        "[data-tier-index]"
+      )
+      .forEach(row=>{
+        const index=Number(
+          row.dataset.tierIndex
+        );
+
+        const limit=
+          row.querySelector(
+            "[data-tier-limit]"
+          );
+
+        const rate=
+          row.querySelector(
+            "[data-tier-rate]"
+          );
+
+        if(limit){
+          manageEditorDraft
+            .tiers[index]
+            .up_to=limit.value;
+        }
+
+        if(rate){
+          manageEditorDraft
+            .tiers[index]
+            .rate=rate.value;
+        }
+      });
+  }
+}
+
+function tierEditorHTML(tiers){
+  return tiers.map((tier,index)=>{
+    const final=index===tiers.length-1;
+
+    return `
+      <div class="row tariff-tier" data-tier-index="${index}">
+        <div class="tariff-tier-fields">
+          ${final ? `
+            <label>
+              <span class="s">ШК</span>
+              <span class="tariff-tier-open">Без верхней границы</span>
+            </label>
+          ` : `
+            <label>
+              <span class="s">ШК до</span>
+              <input type="number" inputmode="numeric" data-tier-limit value="${esc(tier.up_to)}" min="1" step="1">
+            </label>
+          `}
+          <label>
+            <span class="s">Ставка</span>
+            <input type="text" inputmode="decimal" data-tier-rate value="${esc(tier.rate)}">
+          </label>
+        </div>
+        ${!final && tiers.length>2 ? `
+          <button type="button" class="tariff-tier-remove" data-tier-remove="${index}" aria-label="Удалить границу">×</button>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
+}
+
+function drawManageEditor(){
+  if(!manageEditorDraft){
+    return;
+  }
+
+  const body=
+    document.getElementById(
+      "manageEditorBody"
+    );
+
+  if(manageEditorKind==="point"){
+    body.innerHTML=`
+      <div class="ml">Пункт выдачи</div>
+      <div class="card employee-editor">
+        <label class="row">
+          <div class="t">Название</div>
+          <input type="text" id="managePointName" value="${esc(manageEditorDraft.name)}" autocomplete="off">
+        </label>
+        <label class="row">
+          <div class="t">Порядок</div>
+          <input type="number" id="managePointSort" value="${esc(manageEditorDraft.sortOrder)}" min="1" step="1" inputmode="numeric">
+        </label>
+      </div>
+
+      <div class="ml">Статус</div>
+      <div class="card segbox"><div class="seg">
+        <button type="button" data-point-active="1" class="${manageEditorDraft.active ? "on" : ""}">Активен</button>
+        <button type="button" data-point-active="0" class="${!manageEditorDraft.active ? "on" : ""}">В архиве</button>
+      </div></div>
+
+      <div class="ml">Аванс</div>
+      <div class="card segbox"><div class="seg">
+        <button type="button" data-point-advance="1" class="${manageEditorDraft.advanceEnabled ? "on" : ""}">Включён</button>
+        <button type="button" data-point-advance="0" class="${!manageEditorDraft.advanceEnabled ? "on" : ""}">Выключен</button>
+      </div></div>
+
+      ${manageEditorDraft.isNew ? `
+        <div class="ml">Система оплаты</div>
+        <div class="card segbox"><div class="seg">
+          <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
+          <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
+        </div></div>
+        ${tariffDraftFields()}
+      ` : `
+        <div class="ml">Текущая система оплаты</div>
+        <div class="card"><div class="row"><div class="l">
+          <div class="t">${esc(pointPricingLabel(manageEditorDraft.point))}</div>
+          <div class="s">Ставки изменяются в разделе «Тарифы»</div>
+        </div></div></div>
+      `}
+      <div class="sheet-spacer" aria-hidden="true"></div>
+    `;
+    return;
+  }
+
+  const history=pointTariffs(
+    manageEditorDraft.point.id
+  ).map(tariff=>`
+    <div class="row">
+      <div class="l">
+        <div class="t">${esc(tariffLabel(tariff))}</div>
+        <div class="s">с ${esc(dateLabel(tariff.effective_from))}</div>
+      </div>
+    </div>
+  `).join("");
+
+  body.innerHTML=`
+    <div class="ml">${esc(manageEditorDraft.point.name)}</div>
+    <div class="card">
+      ${history || `<div class="employee-empty">История пуста.</div>`}
+    </div>
+    <div class="ml">Новый тариф</div>
+    <div class="card segbox"><div class="seg">
+      <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
+      <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
+    </div></div>
+    ${tariffDraftFields()}
+    <div class="sheet-spacer" aria-hidden="true"></div>
+  `;
+}
+
+function tariffDraftFields(){
+  return `
+    <div class="card employee-editor">
+      <button
+        type="button"
+        class="row point-row"
+        id="manageTariffDateOpen"
+      >
+        <div class="t">Действует с</div>
+        <div class="point-value">
+          ${esc(dateLabel(manageEditorDraft.effectiveFrom))}
+        </div>
+      </button>
+      ${manageEditorDraft.pricingType==="fixed" ? `
+        <label class="row">
+          <div class="t">Ставка</div>
+          <input type="text" inputmode="decimal" id="manageFixedRate" value="${esc(manageEditorDraft.fixedRate)}">
+        </label>
+      ` : ""}
+    </div>
+    ${manageEditorDraft.pricingType==="shk_tiers" ? `
+      <div class="ml">Границы и ставки</div>
+      <div class="card tariff-tiers">
+        ${tierEditorHTML(manageEditorDraft.tiers)}
+      </div>
+      <button type="button" class="btn" id="tierAdd">Добавить границу</button>
+    ` : ""}
+  `;
+}
+
+function openManageEditor(kind,id=null){
+  if(!isAdmin){
+    return;
+  }
+
+  manageEditorKind=kind;
+  manageEditorPreviousFocus=
+    document.activeElement;
+
+  if(kind==="point"){
+    const point=teamData.points.find(
+      item=>item.id===id
+    );
+
+    manageEditorDraft=point
+      ? {
+          id:point.id,
+          point,
+          isNew:false,
+          name:point.name,
+          sortOrder:point.sort_order || 1,
+          active:point.active!==false,
+          advanceEnabled:point.advance_enabled===true
+        }
+      : {
+          id:null,
+          point:null,
+          isNew:true,
+          name:"",
+          sortOrder:
+            Math.max(
+              0,
+              ...teamData.points.map(
+                item=>Number(item.sort_order) || 0
+              )
+            )+1,
+          active:true,
+          advanceEnabled:false,
+          pricingType:"fixed",
+          fixedRate:3000,
+          tiers:defaultTariffTiers(),
+          effectiveFrom:localYMD()
+        };
+  }else{
+    const point=teamData.points.find(
+      item=>item.id===id
+    );
+
+    if(!point){
+      return;
+    }
+
+    const current=
+      tariffForDate(
+        teamData.tariffs,
+        point.id,
+        localYMD()
+      );
+
+    manageEditorDraft={
+      point,
+      pricingType:
+        current?.pricing_type ||
+        "fixed",
+      fixedRate:
+        current?.fixed_rate ||
+        3000,
+      tiers:
+        current?.shk_tiers
+          ? current.shk_tiers.map(
+              tier=>({...tier})
+            )
+          : defaultTariffTiers(),
+      effectiveFrom:localYMD()
+    };
+  }
+
+  document.getElementById(
+    "manageEditorTitle"
+  ).textContent=
+    kind==="point"
+      ? manageEditorDraft.isNew
+        ? "Новый ПВЗ"
+        : "Пункт выдачи"
+      : "Тарифы";
+
+  drawManageEditor();
+
+  const veil=document.getElementById(
+    "manageEditorVeil"
+  );
+
+  manageEditorSheetElement.style.display="block";
+  manageEditorSheetElement.classList.remove("on");
+  manageEditorSheetElement.setAttribute("aria-hidden","false");
+  veil.setAttribute("aria-hidden","false");
+  setBackgroundInert(true);
+  void manageEditorSheetElement.offsetHeight;
+  document.body.classList.add("sheet-open");
+  veil.classList.add("on");
+  manageEditorSheetElement.classList.add("on");
+  requestAnimationFrame(()=>manageEditorSheetElement.focus({preventScroll:true}));
+}
+
+function closeManageEditor(){
+  if(!manageEditorSheetElement.classList.contains("on")){
+    return;
+  }
+
+  const veil=document.getElementById("manageEditorVeil");
+  veil.classList.remove("on");
+  veil.setAttribute("aria-hidden","true");
+  manageEditorSheetElement.classList.remove("on");
+  manageEditorSheetElement.setAttribute("aria-hidden","true");
+  document.body.classList.remove("sheet-open");
+  manageEditorDraft=null;
+  manageEditorKind=null;
+  if(!activeModal()) setBackgroundInert(false);
+
+  const previous=manageEditorPreviousFocus;
+  manageEditorPreviousFocus=null;
+  setTimeout(()=>{
+    if(previous && document.contains(previous)) previous.focus();
+    if(!manageEditorSheetElement.classList.contains("on")) manageEditorSheetElement.style.display="none";
+  },100);
+}
+
+async function saveManageEditor(){
+  if(!manageEditorDraft || manageEditorSaving){
+    return;
+  }
+
+  readManageEditor();
+
+  let tiers=null;
+  const editorKind=
+    manageEditorKind;
+
+  try{
+    if(
+      manageEditorKind==="point"
+    ){
+      if(!manageEditorDraft.name.trim()){
+        throw new Error("Введите название ПВЗ");
+      }
+
+      const sortOrder=
+        Number(
+          manageEditorDraft.sortOrder
+        );
+
+      if(
+        !Number.isSafeInteger(sortOrder) ||
+        sortOrder<=0 ||
+        sortOrder>1000000
+      ){
+        throw new Error(
+          "Порядок должен быть целым числом от 1 до 1 000 000"
+        );
+      }
+
+      manageEditorDraft.sortOrder=
+        sortOrder;
+    }
+
+    if(
+      manageEditorKind==="tariff" ||
+      manageEditorDraft.isNew
+    ){
+      if(
+        !isValidDateString(
+          manageEditorDraft.effectiveFrom
+        )
+      ){
+        throw new Error(
+          `Выберите дату с ${MIN_YEAR} по ${MAX_YEAR} год`
+        );
+      }
+
+      if(
+        manageEditorDraft.pricingType===
+        "fixed"
+      ){
+        const rateError=
+          validateMoneyField(
+            manageEditorDraft.fixedRate,
+            "Ставка",
+            {
+              allowEmpty:false,
+              max:MAX_MONEY
+            }
+          );
+
+        if(
+          rateError ||
+          Number(
+            String(
+              manageEditorDraft.fixedRate
+            ).replace(",",".")
+          )<=0
+        ){
+          throw new Error(
+            rateError ||
+            "Ставка должна быть больше 0"
+          );
+        }
+
+        manageEditorDraft.fixedRate=
+          Number(
+            String(
+              manageEditorDraft.fixedRate
+            ).replace(",",".")
+          );
+      }
+    }
+
+    if(
+      manageEditorDraft.pricingType===
+      "shk_tiers"
+    ){
+      tiers=normalizeShkTiers(
+        manageEditorDraft.tiers
+      );
+    }
+
+    manageEditorSaving=true;
+    document.getElementById("manageEditorSave").disabled=true;
+
+    if(manageEditorKind==="point"){
+      await saveAdminPoint({
+        id:manageEditorDraft.id,
+        name:manageEditorDraft.name,
+        sortOrder:manageEditorDraft.sortOrder,
+        active:manageEditorDraft.active,
+        advanceEnabled:manageEditorDraft.advanceEnabled,
+        pricingType:manageEditorDraft.isNew
+          ? manageEditorDraft.pricingType
+          : null,
+        fixedRate:manageEditorDraft.isNew && manageEditorDraft.pricingType==="fixed"
+          ? manageEditorDraft.fixedRate
+          : null,
+        shkTiers:manageEditorDraft.isNew && manageEditorDraft.pricingType==="shk_tiers"
+          ? tiers
+          : null,
+        effectiveFrom:manageEditorDraft.isNew
+          ? manageEditorDraft.effectiveFrom
+          : null
+      });
+    }else{
+      await addAdminTariff({
+        pointId:manageEditorDraft.point.id,
+        effectiveFrom:manageEditorDraft.effectiveFrom,
+        pricingType:manageEditorDraft.pricingType,
+        fixedRate:manageEditorDraft.pricingType==="fixed"
+          ? manageEditorDraft.fixedRate
+          : null,
+        shkTiers:manageEditorDraft.pricingType==="shk_tiers"
+          ? tiers
+          : null
+      });
+    }
+
+    closeManageEditor();
+    await refreshTeamData();
+    toast(editorKind==="tariff" ? "Тариф добавлен" : "ПВЗ сохранён");
+  }catch(error){
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Не удалось сохранить",
+      4200
+    );
+  }finally{
+    manageEditorSaving=false;
+    const button=document.getElementById("manageEditorSave");
+    if(button) button.disabled=false;
+  }
+}
+
 function employeeAvailableAccounts(){
   return teamData
     .accounts
     .filter(account=>{
       return (
-        !account.employee_id ||
-        account.employee_id===
-          employeeDraft.id
+        account.role==="employee" &&
+        (
+          !account.employee_id ||
+          account.employee_id===
+            employeeDraft.id
+        )
       );
     });
 }
@@ -2493,8 +3475,8 @@ function drawEmployeeSheet(){
           <div class="l">
             <div class="t">
               ${
-                account?.email
-                  ? esc(account.email)
+                account?.login
+                  ? esc(account.login)
                   : "Не привязан"
               }
             </div>
@@ -2502,6 +3484,39 @@ function drawEmployeeSheet(){
             <div class="s">
               Аккаунт
             </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="l">
+            <div class="t" dir="ltr">
+              ${esc(phoneLabel(employee.phone || "Не указан"))}
+            </div>
+            <div class="s">Основной телефон</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml">Реквизиты для переводов</div>
+      <div class="card">
+        <div class="row">
+          <div class="l">
+            <div class="t" dir="ltr">
+              ${esc(phoneLabel(employee.transfer_phone || employee.phone || "Не указан"))}
+            </div>
+            <div class="s">Телефон для перевода</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="l">
+            <div class="t">${esc(employee.transfer_bank || "Не указан")}</div>
+            <div class="s">Банк</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="l">
+            <div class="t">${esc(employee.transfer_recipient || "Не указан")}</div>
+            <div class="s">Получатель</div>
           </div>
         </div>
       </div>
@@ -2556,7 +3571,7 @@ function drawEmployeeSheet(){
             value="${esc(account.user_id)}"
             ${selected ? "selected" : ""}
           >
-            ${esc(account.email+roleLabel)}
+            ${esc((account.login || account.phone || account.email)+roleLabel)}
           </option>
         `;
       })
@@ -2616,6 +3631,56 @@ function drawEmployeeSheet(){
           aria-label="ФИО сотрудника"
         >
       </label>
+
+      <label class="row">
+        <div class="t">Телефон</div>
+        <input
+          type="tel"
+          id="employeePhone"
+          inputmode="tel"
+          autocomplete="tel"
+          dir="ltr"
+          value="${esc(employeeDraft.phone)}"
+          placeholder="+7 999 123-45-67"
+          aria-label="Телефон сотрудника"
+        >
+      </label>
+    </div>
+
+    <div class="ml">Реквизиты для переводов</div>
+    <div class="card employee-editor">
+      <label class="row">
+        <div class="t">Телефон</div>
+        <input
+          type="tel"
+          id="employeeTransferPhone"
+          inputmode="tel"
+          autocomplete="off"
+          dir="ltr"
+          value="${esc(employeeDraft.transferPhone)}"
+          placeholder="Если отличается"
+        >
+      </label>
+      <label class="row">
+        <div class="t">Банк</div>
+        <input
+          type="text"
+          id="employeeTransferBank"
+          autocomplete="off"
+          value="${esc(employeeDraft.transferBank)}"
+          placeholder="Например, СБП"
+        >
+      </label>
+      <label class="row">
+        <div class="t">Получатель</div>
+        <input
+          type="text"
+          id="employeeTransferRecipient"
+          autocomplete="off"
+          value="${esc(employeeDraft.transferRecipient)}"
+          placeholder="ФИО получателя"
+        >
+      </label>
     </div>
 
     ${
@@ -2672,7 +3737,26 @@ function drawEmployeeSheet(){
     </div>
 
     <div class="employee-help">
-      Для входа и просмотра своих смен.
+      Можно привязать существующий аккаунт или создать телефонный вход паролем ниже.
+    </div>
+
+    <div class="card employee-editor employee-password-card">
+      <label class="row">
+        <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
+        <input
+          type="password"
+          id="employeePassword"
+          autocomplete="new-password"
+          value=""
+          placeholder="${employeeDraft.userId ? "Не менять" : "Необязательно"}"
+        >
+      </label>
+    </div>
+
+    <div class="employee-help">
+      ${employeeDraft.userId
+        ? "Телефон аккаунта обновится автоматически. Пароль можно оставить пустым."
+        : "Если задать пароль, приложение создаст подтверждённый аккаунт с телефоном сотрудника. Публичной регистрации нет."}
     </div>
 
     <div class="ml">
@@ -2683,6 +3767,9 @@ function drawEmployeeSheet(){
       ${pointRows}
     </div>
   `;
+
+  employeeUi
+    .enhanceAccountField();
 }
 
 function employeeSaveError(
@@ -2717,6 +3804,42 @@ function employeeSaveError(
     return "Сотрудник больше не существует";
   }
 
+  if(
+    message.includes(
+      "employees_phone_uidx"
+    ) ||
+    message.includes(
+      "duplicate key"
+    ) ||
+    message.includes(
+      "user_already_exists"
+    ) ||
+    message.includes(
+      "phone_exists"
+    )
+  ){
+    return "Этот номер уже используется другим сотрудником или аккаунтом";
+  }
+
+  if(
+    message.includes(
+      "password_required_for_new_account"
+    )
+  ){
+    return "Для нового телефонного аккаунта задайте пароль";
+  }
+
+  if(
+    message.includes(
+      "invalid_employee_phone"
+    ) ||
+    message.includes(
+      "invalid_transfer_phone"
+    )
+  ){
+    return "Проверьте номер телефона";
+  }
+
   return (
     message ||
     "Не удалось сохранить сотрудника"
@@ -2733,6 +3856,11 @@ function createEmployeeDraft(
       status:"active",
       hiredAt:"",
       userId:null,
+      phone:"",
+      transferPhone:"",
+      transferBank:"",
+      transferRecipient:"",
+      password:"",
       pointIds:[]
     };
   }
@@ -2754,6 +3882,14 @@ function createEmployeeDraft(
     status:employee.status,
     hiredAt:employee.hired_at || "",
     userId:employee.user_id || null,
+    phone:employee.phone || "",
+    transferPhone:
+      employee.transfer_phone || "",
+    transferBank:
+      employee.transfer_bank || "",
+    transferRecipient:
+      employee.transfer_recipient || "",
+    password:"",
     pointIds:
       employeePointIds(
         employee.id
@@ -3210,6 +4346,58 @@ async function saveEmployeeDraft(){
     return;
   }
 
+  let phone;
+  let transferPhone;
+
+  try{
+    phone=normalizePhone(
+      employeeDraft.phone
+    );
+
+    transferPhone=optionalPhone(
+      employeeDraft.transferPhone
+    );
+  }catch(error){
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Проверьте телефон сотрудника",
+      3200
+    );
+
+    document
+      .getElementById(
+        "employeePhone"
+      )
+      ?.focus();
+
+    return;
+  }
+
+  const password=
+    employeeDraft.password || "";
+
+  if(
+    password &&
+    (
+      password.length<8 ||
+      password.length>72
+    )
+  ){
+    toast(
+      "Пароль должен содержать от 8 до 72 символов",
+      3200
+    );
+
+    document
+      .getElementById(
+        "employeePassword"
+      )
+      ?.focus();
+
+    return;
+  }
+
   const wasExisting=
     Boolean(
       employeeDraft.id
@@ -3236,12 +4424,38 @@ async function saveEmployeeDraft(){
         userId:
           employeeDraft.userId ||
           null,
+        phone,
+        transferPhone,
+        transferBank:
+          employeeDraft.transferBank
+            .trim() || null,
+        transferRecipient:
+          employeeDraft.transferRecipient
+            .trim() || null,
         pointIds:
           employeeDraft.pointIds
       });
 
     employeeDraft.id=
       employeeId;
+
+    let authFailure=null;
+
+    if(
+      employeeDraft.userId ||
+      password
+    ){
+      try{
+        await saveAdminEmployeeAuth({
+          employeeId,
+          phone,
+          password
+        });
+      }catch(error){
+        authFailure=
+          employeeSaveError(error);
+      }
+    }
 
     const refreshed=
       await refreshTeamData({
@@ -3270,7 +4484,12 @@ async function saveEmployeeDraft(){
       );
 
       toast(
-        "Сотрудник сохранён"
+        authFailure
+          ? `Карточка сохранена. Вход не настроен: ${authFailure}`
+          : "Сотрудник сохранён",
+        authFailure
+          ? 5200
+          : 2200
       );
 
       return;
@@ -3280,7 +4499,12 @@ async function saveEmployeeDraft(){
     render();
 
     toast(
-      "Сотрудник сохранён"
+      authFailure
+        ? `Карточка сохранена. Вход не настроен: ${authFailure}`
+        : "Сотрудник сохранён",
+      authFailure
+        ? 5200
+        : 2200
     );
   }catch(error){
     employeeSaving=false;
@@ -3407,10 +4631,7 @@ function viewManage(){
   }
 
   if(manageSection==="tariffs"){
-    return viewManageSection(
-      "Тарифы",
-      "Здесь будут действующие ставки и история изменений тарифов."
-    );
+    return viewTariffs();
   }
 
   return `
@@ -3532,7 +4753,8 @@ function changeManageSection(
       if(
         [
           "employees",
-          "points"
+          "points",
+          "tariffs"
         ].includes(
           nextSection
         ) &&
@@ -3585,40 +4807,149 @@ function defaultShiftDate(){
   );
 }
 
+function assignedPointIds(
+  employeeId
+){
+  return teamData.employeePoints
+    .filter(item=>
+      item.employee_id===employeeId &&
+      item.active!==false
+    )
+    .map(item=>item.point_id);
+}
+
+function shiftEmployeeOptions(
+  value=draft
+){
+  return teamData.employees
+    .filter(employee=>
+      employee.status==="active" ||
+      employee.id===value?.employeeId
+    );
+}
+
+function shiftPointOptions(
+  value=draft
+){
+  const assigned=new Set(
+    assignedPointIds(
+      value?.employeeId
+    )
+  );
+
+  return teamData.points
+    .filter(point=>
+      (
+        assigned.has(point.id) &&
+        point.active!==false
+      ) ||
+      point.id===value?.dbPointId
+    );
+}
+
+function cloneShiftDraft(value){
+  return {
+    ...value,
+    bonuses:(value.bonuses || [])
+      .map(item=>({...item})),
+    penalties:(value.penalties || [])
+      .map(item=>({...item}))
+  };
+}
+
 function openSheet(id,restoredDraft=null,restoredScrollTop=0){
-  if(loadError){
+  if(serverDataError){
     tab="data";
     render();
-    toast("Сначала восстановите данные",3000);
+    toast("Сначала обновите данные с сервера",3000);
     return;
   }
 
   const sheet=document.getElementById("sheet");
   const savedShift=shifts.find(item=>item.id===id);
+
+  if(!savedShift && !isAdmin){
+    return;
+  }
+
+  if(
+    !savedShift &&
+    !teamData.employees.some(
+      employee=>
+        employee.status==="active"
+    )
+  ){
+    tab="manage";
+    manageSection="employees";
+    render();
+    toast("Сначала добавьте активного сотрудника",3200);
+    return;
+  }
+
   sheetPreviousFocus=document.activeElement;
   sheet.style.display="block";
   sheet.style.removeProperty("transition");
   sheet.style.removeProperty("--sheet-drag");
 
   draft=restoredDraft
-    ? {...restoredDraft}
+    ? cloneShiftDraft(restoredDraft)
     : savedShift
-      ? {...savedShift}
-      : {
+      ? cloneShiftDraft(savedShift)
+      : (()=>{
+          const employee=
+            teamData.employees.find(
+              item=>
+                item.status==="active" &&
+                assignedPointIds(item.id)
+                  .some(pointId=>
+                    teamData.points.some(
+                      point=>
+                        point.id===pointId &&
+                        point.active!==false
+                    )
+                  )
+            ) ||
+            teamData.employees.find(
+              item=>
+                item.status==="active"
+            );
+
+          const assigned=
+            new Set(
+              assignedPointIds(
+                employee.id
+              )
+            );
+
+          const point=
+            teamData.points.find(
+              item=>
+                item.active!==false &&
+                assigned.has(item.id)
+            ) || null;
+
+          return {
           v:3,
-          id:createShiftId(),
+          id:createTeamId(),
+          employeeId:employee.id,
+          employeeName:employee.full_name,
           date:defaultShiftDate(),
-          point:POINTS[0],
+          dbPointId:point?.id || "",
+          pointId:point?.code || point?.id || "",
+          point:point?.name || "ПВЗ не назначен",
           type:"main",
           shk:"",
           partial:false,
           hours:"",
-          bonus:"",
-          fine:""
+          bonuses:[],
+          penalties:[],
+          note:""
         };
+        })();
 
   const isEdit=Boolean(savedShift);
   document.getElementById("sheetTitle").textContent=isEdit ? "Смена" : "Новая смена";
+  document.getElementById("sheetSave").hidden=!isAdmin;
   drawSheet(isEdit);
 
   const restoring=Boolean(restoredDraft);
@@ -3706,6 +5037,7 @@ function closeSheet(){
 let datePickerHideTimer;
 let dateCalendarCursor="";
 let datePickerValue="";
+let datePickerTarget="shift";
 let dateJumpYear=0;
 let dateJumpValue="";
 let dateSwipe=null;
@@ -4077,17 +5409,38 @@ function toggleDateJump(){
   }
 }
 
-function openDatePicker(){
-  if(!draft) return;
+function openDatePicker(
+  target="shift"
+){
+  if(
+    target==="shift" &&
+    !draft
+  ) return;
 
-  readForm();
+  if(
+    target==="tariff" &&
+    !manageEditorDraft
+  ) return;
+
+  datePickerTarget=target;
+
+  if(target==="shift"){
+    readForm();
+  }else{
+    readManageEditor();
+  }
+
   datePreviousFocus=document.activeElement;
   const picker=document.getElementById("datePicker");
   const veil=document.getElementById("dateVeil");
   clearTimeout(datePickerHideTimer);
   picker.style.removeProperty("--date-drag");
 
-  datePickerValue=draft.date;
+  datePickerValue=
+    target==="shift"
+      ? draft.date
+      : manageEditorDraft
+          .effectiveFrom;
   dateCalendarCursor=datePickerValue.slice(0,7);
   closeDateJump();
   drawDatePicker();
@@ -4130,6 +5483,17 @@ function closeDatePicker(){
 }
 
 function selectDate(ymd){
+  if(datePickerTarget==="tariff"){
+    if(!manageEditorDraft) return;
+
+    manageEditorDraft.effectiveFrom=
+      ymd;
+
+    closeDatePicker();
+    drawManageEditor();
+    return;
+  }
+
   if(!draft) return;
 
   draft.date=ymd;
@@ -4161,20 +5525,22 @@ function openPointPicker(){
   picker.setAttribute("aria-hidden","false");
   veil.setAttribute("aria-hidden","false");
 
-  pointPickerValue=draft.point;
+  pointPickerValue=
+    draft.dbPointId;
 
-  list.innerHTML=POINTS.map(point=>`
+  list.innerHTML=shiftPointOptions()
+    .map(point=>`
     <button
       type="button"
-      class="point-option ${point===pointPickerValue?"on":""}"
-      data-point="${esc(point)}"
+      class="point-option ${point.id===pointPickerValue?"on":""}"
+      data-point="${esc(point.id)}"
     >
       <span class="point-check">
-        ${point===pointPickerValue?"✓":""}
+        ${point.id===pointPickerValue?"✓":""}
       </span>
 
       <span class="point-name">
-        ${esc(point)}
+        ${esc(point.name)}${point.active===false ? " · в архиве" : ""}
       </span>
     </button>
   `).join("");
@@ -4216,25 +5582,97 @@ function closePointPicker(){
   },460);
 }
 
+function shiftPricingDriversEqual(
+  existing,
+  value
+){
+  return Boolean(
+    existing &&
+    existing.employeeId===value.employeeId &&
+    existing.dbPointId===value.dbPointId &&
+    existing.date===value.date &&
+    existing.type===value.type &&
+    (Number(existing.shk) || 0)===(Number(value.shk) || 0) &&
+    existing.partial===value.partial &&
+    (
+      existing.partial
+        ? Number(existing.hours)===Number(value.hours)
+        : true
+    )
+  );
+}
+
 function previewCalc(value){
   const existing=shifts.find(item=>item.id===value.id);
+  const point=
+    teamData.points.find(
+      item=>
+        item.id===value.dbPointId
+    );
   let pricing;
+  let pricingError="";
 
   try{
-    pricing=(existing?.pricing && pricingDriversEqual(existing,value))
+    const sameDrivers=
+      shiftPricingDriversEqual(
+        existing,
+        value
+      );
+
+    const tariff=
+      point
+        ? tariffForDate(
+            teamData.tariffs,
+            point.id,
+            value.date
+          )
+        : null;
+
+    pricing=(existing?.pricing && sameDrivers)
       ? existing.pricing
-      : snapshotPricing(value);
-  }catch{
-    pricing={fixed:false,rate:0,fullHours:FULL_HOURS,rulesVersion:RULES_VERSION};
+      : createPricingSnapshot({
+          tariff,
+          point,
+          shiftDate:value.date,
+          shk:value.shk
+        });
+  }catch(error){
+    pricingError=
+      error instanceof Error
+        ? error.message
+        : "Тариф на выбранную дату не задан";
+
+    pricing={
+      fixed:
+        point?.pricing_type===
+          "fixed",
+      rate:0,
+      fullHours:FULL_HOURS,
+      rulesVersion:RULES_VERSION
+    };
   }
 
   const hours=value.partial ? (Number(value.hours)||0) : pricing.fullHours;
   const perHour=pricing.rate/pricing.fullHours;
-  const base=value.partial ? Math.round(perHour*hours) : pricing.rate;
-  const bonus=Number(value.bonus)||0;
-  const fine=Number(value.fine)||0;
+  const base=value.partial
+    ? Math.round(perHour*hours)
+    : pricing.rate;
+  const bonus=(value.bonuses || [])
+    .reduce(
+      (sum,item)=>
+        sum+(Number(item.amount)||0),
+      0
+    );
+  const fine=(value.penalties || [])
+    .reduce(
+      (sum,item)=>
+        sum+(Number(item.amount)||0),
+      0
+    );
 
   return {
+    available:!pricingError,
+    error:pricingError,
     fixed:pricing.fixed,
     rate:pricing.rate,
     hours,
@@ -4246,8 +5684,76 @@ function previewCalc(value){
   };
 }
 
+function adjustmentEditorHTML(
+  kind,
+  rows
+){
+  const label=
+    kind==="bonuses"
+      ? "Премия"
+      : "Штраф";
+
+  return `
+    <div class="card adjustment-list">
+      ${(rows || []).map((item,index)=>`
+        <div class="adjustment-row" data-adjustment-kind="${kind}" data-adjustment-index="${index}">
+          <label class="row">
+            <div class="t">${label}</div>
+            <input type="text" inputmode="decimal" data-adjustment-amount value="${esc(String(item.amount ?? "").replace(".",","))}" placeholder="0">
+          </label>
+          <label class="row">
+            <div class="t">Комментарий</div>
+            <input type="text" data-adjustment-comment value="${esc(item.comment || "")}" autocomplete="off">
+          </label>
+          <button type="button" class="adjustment-remove" data-adjustment-remove="${kind}:${index}">
+            Удалить
+          </button>
+        </div>
+      `).join("")}
+      ${rows?.length ? "" : `
+        <div class="employee-empty">Не добавлено.</div>
+      `}
+    </div>
+  `;
+}
+
+function adjustmentReadOnlyHTML(
+  title,
+  rows,
+  negative=false
+){
+  if(!rows?.length){
+    return "";
+  }
+
+  return `
+    <div class="ml">${title}</div>
+    <div class="card">
+      ${rows.map(item=>`
+        <div class="row">
+          <div class="l">
+            <div class="t">${esc(item.comment)}</div>
+          </div>
+          <div class="v ${negative ? "neg" : "pos"}">
+            ${negative ? "− " : "+ "}${money(item.amount)}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function calcHTML(){
   const result=previewCalc(draft);
+
+  if(!result.available){
+    return `
+      <div class="calc-error">
+        ${esc(result.error)}. Добавьте исторический тариф в разделе «Управление → Тарифы».
+      </div>
+    `;
+  }
+
   return `
     <div class="ln">
       <span>${result.fixed ? "Оклад смены" : "Ставка по объёму"}</span>
@@ -4260,11 +5766,51 @@ function calcHTML(){
 }
 
 function drawSheet(isEdit){
-  const fixed=isFixedPoint(draft.point);
+  const result=previewCalc(draft);
+  const fixed=result.fixed;
+
+  if(!isAdmin){
+    document.getElementById("sheetBody").innerHTML=`
+      <div class="ml">Смена</div>
+      <div class="card">
+        <div class="row"><div class="l"><div class="t">${esc(dateLabel(draft.date))}</div><div class="s">Дата</div></div></div>
+        <div class="row"><div class="l"><div class="t">${esc(draft.point)}</div><div class="s">ПВЗ</div></div></div>
+        <div class="row"><div class="l"><div class="t">${draft.type==="extra" ? "Дополнительная" : "Основная"}</div><div class="s">Тип</div></div></div>
+        <div class="row"><div class="l"><div class="t">${hoursWord(result.hours)}</div><div class="s">Часы</div></div></div>
+        ${fixed ? "" : `<div class="row"><div class="l"><div class="t">${nf(Number(draft.shk)||0)} ШК</div><div class="s">Объём</div></div></div>`}
+        <div class="row"><div class="l"><div class="t">${money(result.base)}</div><div class="s">Смена</div></div></div>
+      </div>
+      ${adjustmentReadOnlyHTML("Премии",draft.bonuses)}
+      ${adjustmentReadOnlyHTML("Штрафы",draft.penalties,true)}
+      ${draft.note ? `
+        <div class="ml">Комментарий</div>
+        <div class="card"><div class="row"><div class="l"><div class="t">${esc(draft.note)}</div></div></div></div>
+      ` : ""}
+      <div class="ml">Итого</div>
+      <div class="calc">${calcHTML()}</div>
+      <div class="sheet-spacer" aria-hidden="true"></div>
+    `;
+    return;
+  }
+
+  const employeeOptions=
+    shiftEmployeeOptions()
+      .map(employee=>`
+        <option value="${esc(employee.id)}" ${employee.id===draft.employeeId ? "selected" : ""}>
+          ${esc(employee.full_name)}${employee.status==="inactive" ? " · архив" : ""}
+        </option>
+      `)
+      .join("");
 
   document.getElementById("sheetBody").innerHTML=`
     <div class="ml">Смена</div>
     <div class="card">
+      <label class="row">
+        <div class="t">Сотрудник</div>
+        <select id="f-employee" aria-label="Сотрудник">
+          ${employeeOptions}
+        </select>
+      </label>
       <button type="button" class="row point-row" id="f-date-open">
         <div class="t">Дата</div>
         <div class="point-value">${esc(dateLabel(draft.date))}</div>
@@ -4296,11 +5842,13 @@ function drawSheet(isEdit){
       ${draft.partial?`<label class="row"><div class="t">Часов</div><input type="text" inputmode="decimal" id="f-hours" value="${esc(draft.hours==="" ? "" : String(draft.hours).replace(".",","))}" placeholder="0" aria-label="Часов"></label>`:""}
     </div>
 
-    <div class="ml">Премии и штрафы</div>
-    <div class="card">
-      <label class="row"><div class="t">Премии</div><input type="text" inputmode="decimal" id="f-bonus" value="${esc(draft.bonus==="" ? "" : String(draft.bonus).replace(".",","))}" placeholder="0" aria-label="Премии"></label>
-      <label class="row"><div class="t">Штрафы</div><input type="text" inputmode="decimal" id="f-fine" value="${esc(draft.fine==="" ? "" : String(draft.fine).replace(".",","))}" placeholder="0" aria-label="Штрафы"></label>
-    </div>
+    <div class="ml">Премии</div>
+    ${adjustmentEditorHTML("bonuses",draft.bonuses)}
+    <button type="button" class="btn" data-adjustment-add="bonuses">Добавить премию</button>
+
+    <div class="ml">Штрафы</div>
+    ${adjustmentEditorHTML("penalties",draft.penalties)}
+    <button type="button" class="btn" data-adjustment-add="penalties">Добавить штраф</button>
 
     <div class="ml">Расчёт</div>
     <div class="calc" id="calcBox">${calcHTML()}</div>
@@ -4330,29 +5878,42 @@ function readForm(){
           );
   }
 
-  if(get("f-bonus")){
-    const value=
-      get("f-bonus")
-        .value
-        .trim();
-
-    draft.bonus=
-      value===""
-        ? ""
-        : value.replace(",",".");
+  if(get("f-employee")){
+    draft.employeeId=
+      get("f-employee").value;
   }
 
-  if(get("f-fine")){
-    const value=
-      get("f-fine")
-        .value
-        .trim();
+  document
+    .querySelectorAll(
+      "[data-adjustment-kind]"
+    )
+    .forEach(row=>{
+      const kind=
+        row.dataset.adjustmentKind;
 
-    draft.fine=
-      value===""
-        ? ""
-        : value.replace(",",".");
-  }
+      const index=Number(
+        row.dataset.adjustmentIndex
+      );
+
+      const item=draft[kind]?.[index];
+
+      if(!item){
+        return;
+      }
+
+      item.amount=
+        row.querySelector(
+          "[data-adjustment-amount]"
+        )?.value
+          .trim()
+          .replace(",",".") || "";
+
+      item.comment=
+        row.querySelector(
+          "[data-adjustment-comment]"
+        )?.value
+          .trim() || "";
+    });
 }
 
 function validateWholeField(value,label,{allowEmpty=true,max=Number.MAX_SAFE_INTEGER}={}){
@@ -4403,9 +5964,10 @@ function validateMoneyField(value,label,{allowEmpty=true,max=MAX_MONEY}={}){
 
 function validateDraft(value){
   if(!isValidDateString(value.date)) return {message:`Выберите дату с ${MIN_YEAR} по ${MAX_YEAR} год`,fieldId:"f-date-open"};
-  if(!POINTS.includes(value.point)) return {message:"Выберите пункт",fieldId:"f-point-open"};
+  if(!shiftEmployeeOptions(value).some(employee=>employee.id===value.employeeId)) return {message:"Выберите сотрудника",fieldId:"f-employee"};
+  if(!shiftPointOptions(value).some(point=>point.id===value.dbPointId)) return {message:"Выберите назначенный ПВЗ",fieldId:"f-point-open"};
 
-  if(!isFixedPoint(value.point)){
+  if(!previewCalc(value).fixed){
     const error=validateWholeField(value.shk,"ШК",{allowEmpty:true,max:MAX_SHK});
     if(error) return {message:error,fieldId:"f-shk"};
   }
@@ -4435,13 +5997,38 @@ function validateDraft(value){
     }
   }
 
-  const bonusError=validateMoneyField(value.bonus,"Премия",{max:MAX_MONEY});
-  if(bonusError) return {message:bonusError,fieldId:"f-bonus"};
-  const fineError=validateMoneyField(value.fine,"Штраф",{max:MAX_MONEY});
-  if(fineError) return {message:fineError,fieldId:"f-fine"};
-
   try{
-    normalizeDraftForSave(value,shifts.find(item=>item.id===value.id) || null);
+    const point=teamData.points.find(item=>item.id===value.dbPointId);
+    const existing=shifts.find(item=>item.id===value.id);
+
+    if(
+      !shiftPricingDriversEqual(
+        existing,
+        value
+      )
+    ){
+      const tariff=tariffForDate(teamData.tariffs,point.id,value.date);
+      const pricing=createPricingSnapshot({tariff,point,shiftDate:value.date,shk:value.shk});
+      calculateBaseAmount(
+        pricing,
+        {
+          partial:value.partial,
+          hours:value.hours
+        }
+      );
+    }
+
+    for(const [kind,label] of [["bonuses","Премия"],["penalties","Штраф"]]){
+      for(const [index,item] of (value[kind] || []).entries()){
+        const moneyError=validateMoneyField(item.amount,label,{allowEmpty:false,max:MAX_MONEY});
+        if(moneyError || Number(item.amount)<=0){
+          return {message:moneyError || `${label} должна быть больше 0`,fieldId:null};
+        }
+        if(!String(item.comment || "").trim()){
+          return {message:`Добавьте комментарий: ${label.toLocaleLowerCase("ru-RU")} ${index+1}`,fieldId:null};
+        }
+      }
+    }
   }catch(error){
     return {message:error instanceof Error ? error.message : "Некорректные данные смены",fieldId:null};
   }
@@ -4450,15 +6037,32 @@ function validateDraft(value){
 }
 
 function normalizedDraft(value){
-  return normalizeDraftForSave(
-    value,
-    shifts.find(
-      item=>item.id===value.id
-    ) || null,
-    {
-      recordedOn:localYMD()
-    }
+  const point=teamData.points.find(
+    item=>item.id===value.dbPointId
   );
+
+  const employee=teamData.employees.find(
+    item=>item.id===value.employeeId
+  );
+
+  return {
+    ...cloneShiftDraft(value),
+    point:point.name,
+    pointId:point.code || point.id,
+    employeeName:employee.full_name,
+    shk:value.shk==="" ? "" : Number(value.shk),
+    hours:value.partial ? Number(value.hours) : "",
+    bonuses:value.bonuses.map(item=>({
+      ...item,
+      amount:Number(item.amount),
+      comment:item.comment.trim()
+    })),
+    penalties:value.penalties.map(item=>({
+      ...item,
+      amount:Number(item.amount),
+      comment:item.comment.trim()
+    }))
+  };
 }
 
 function showValidationError(error){
@@ -6288,6 +7892,176 @@ monthSwipeArea.addEventListener(
   {passive:true}
 );
 
+monthSwipeArea.addEventListener(
+  "pointerdown",
+  event=>{
+    if(
+      event.pointerType==="touch" ||
+      !event.isPrimary ||
+      !["shifts","stats"].includes(tab) ||
+      monthTransitionRunning ||
+      document.body.classList.contains("sheet-open") ||
+      document.body.classList.contains("point-picker-open") ||
+      document.body.classList.contains("month-picker-open") ||
+      monthSwipeStartBlocked(event.target)
+    ){
+      return;
+    }
+
+    monthSwipe={
+      id:event.pointerId,
+      x:event.clientX,
+      y:event.clientY,
+      lastX:event.clientX,
+      lastY:event.clientY,
+      time:performance.now(),
+      axis:null,
+      pointer:true
+    };
+  }
+);
+
+monthSwipeArea.addEventListener(
+  "pointermove",
+  event=>{
+    if(
+      !monthSwipe?.pointer ||
+      event.pointerId!==monthSwipe.id
+    ){
+      return;
+    }
+
+    monthSwipe.lastX=event.clientX;
+    monthSwipe.lastY=event.clientY;
+
+    const dx=event.clientX-monthSwipe.x;
+    const dy=event.clientY-monthSwipe.y;
+    const absX=Math.abs(dx);
+    const absY=Math.abs(dy);
+
+    if(monthSwipe.axis===null){
+      if(absX<8 && absY<8) return;
+
+      if(absX>=10 && absX>absY*1.10){
+        monthSwipe.axis="x";
+      }else if(absY>=14 && absY>absX*1.25){
+        monthSwipe.axis="y";
+      }else{
+        return;
+      }
+    }
+
+    if(monthSwipe.axis==="x"){
+      document.body.classList.add("month-swiping");
+
+      try{
+        monthSwipeArea.setPointerCapture?.(
+          event.pointerId
+        );
+      }catch{}
+
+      event.preventDefault();
+    }
+  }
+);
+
+monthSwipeArea.addEventListener(
+  "pointerup",
+  event=>{
+    if(
+      !monthSwipe?.pointer ||
+      event.pointerId!==monthSwipe.id
+    ){
+      return;
+    }
+
+    finishMonthSwipe({
+      changedTouches:[{
+        identifier:event.pointerId,
+        clientX:event.clientX,
+        clientY:event.clientY
+      }]
+    });
+  }
+);
+
+monthSwipeArea.addEventListener(
+  "pointercancel",
+  event=>{
+    if(
+      monthSwipe?.pointer &&
+      event.pointerId===monthSwipe.id
+    ){
+      resetMonthSwipe();
+    }
+  }
+);
+
+let monthWheelX=0;
+let monthWheelY=0;
+let monthWheelTimer=0;
+let monthWheelBlockedUntil=0;
+
+monthSwipeArea.addEventListener(
+  "wheel",
+  event=>{
+    if(
+      performance.now()<
+        monthWheelBlockedUntil ||
+      !["shifts","stats"].includes(tab) ||
+      monthTransitionRunning ||
+      activeModal() ||
+      monthSwipeStartBlocked(event.target) ||
+      Math.abs(event.deltaX)<=
+        Math.abs(event.deltaY)
+    ){
+      return;
+    }
+
+    monthWheelX+=event.deltaX;
+    monthWheelY+=event.deltaY;
+
+    window.clearTimeout(
+      monthWheelTimer
+    );
+
+    monthWheelTimer=
+      window.setTimeout(()=>{
+        monthWheelX=0;
+        monthWheelY=0;
+      },140);
+
+    if(
+      Math.abs(monthWheelX)<48 ||
+      Math.abs(monthWheelX)<=
+        Math.abs(monthWheelY)*1.12
+    ){
+      return;
+    }
+
+    if(event.cancelable){
+      event.preventDefault();
+    }
+
+    const direction=
+      monthWheelX>0
+        ? 1
+        : -1;
+
+    monthWheelX=0;
+    monthWheelY=0;
+    monthWheelBlockedUntil=
+      performance.now()+520;
+
+    changeMonth(
+      shiftMonth(cursor,direction),
+      direction,
+      {scrollTop:true}
+    );
+  },
+  {passive:false}
+);
+
 let pointerPressGuard=null;
 let suppressMovedPointerClickUntil=0;
 
@@ -6919,6 +8693,69 @@ dateGrid.addEventListener("pointercancel",e=>{
   },250);
 });
 
+let dateWheelX=0;
+let dateWheelY=0;
+let dateWheelTimer=0;
+let dateWheelBlockedUntil=0;
+
+dateGrid.addEventListener(
+  "wheel",
+  event=>{
+    if(
+      performance.now()<
+        dateWheelBlockedUntil ||
+      Math.abs(event.deltaX)<=
+        Math.abs(event.deltaY)
+    ){
+      return;
+    }
+
+    dateWheelX+=event.deltaX;
+    dateWheelY+=event.deltaY;
+
+    window.clearTimeout(
+      dateWheelTimer
+    );
+
+    dateWheelTimer=
+      window.setTimeout(()=>{
+        dateWheelX=0;
+        dateWheelY=0;
+      },140);
+
+    if(
+      Math.abs(dateWheelX)<42 ||
+      Math.abs(dateWheelX)<=
+        Math.abs(dateWheelY)*1.12
+    ){
+      return;
+    }
+
+    if(event.cancelable){
+      event.preventDefault();
+    }
+
+    const direction=
+      dateWheelX>0
+        ? 1
+        : -1;
+
+    dateWheelX=0;
+    dateWheelY=0;
+    dateWheelBlockedUntil=
+      performance.now()+460;
+
+    changeDateCalendarMonth(
+      shiftMonth(
+        dateCalendarCursor,
+        direction
+      ),
+      direction
+    );
+  },
+  {passive:false}
+);
+
 document.getElementById("dateToday").onclick=()=>{
   const value=
     localYMD();
@@ -7000,6 +8837,118 @@ document
   .onclick=
     applyEmployeeFilter;
 
+document
+  .getElementById(
+    "manageEditorVeil"
+  )
+  .onclick=
+    closeManageEditor;
+
+document
+  .getElementById(
+    "manageEditorCancel"
+  )
+  .onclick=
+    closeManageEditor;
+
+document
+  .getElementById(
+    "manageEditorSave"
+  )
+  .onclick=()=>{
+    void saveManageEditor();
+  };
+
+manageEditorSheetElement.addEventListener(
+  "click",
+  event=>{
+    const button=
+      event.target.closest(
+        "button"
+      );
+
+    if(
+      !button ||
+      !manageEditorDraft
+    ){
+      return;
+    }
+
+    readManageEditor();
+
+    if(button.id==="manageTariffDateOpen"){
+      openDatePicker("tariff");
+      return;
+    }
+
+    if(
+      button.dataset.pointActive!==
+      undefined
+    ){
+      manageEditorDraft.active=
+        button.dataset.pointActive==="1";
+      drawManageEditor();
+      return;
+    }
+
+    if(
+      button.dataset.pointAdvance!==
+      undefined
+    ){
+      manageEditorDraft.advanceEnabled=
+        button.dataset.pointAdvance==="1";
+      drawManageEditor();
+      return;
+    }
+
+    if(button.dataset.pricingType){
+      manageEditorDraft.pricingType=
+        button.dataset.pricingType;
+      drawManageEditor();
+      return;
+    }
+
+    if(button.id==="tierAdd"){
+      const final=
+        manageEditorDraft.tiers.at(-1);
+
+      const previous=
+        manageEditorDraft.tiers.at(-2);
+
+      manageEditorDraft.tiers.splice(
+        -1,
+        0,
+        {
+          up_to:
+            (
+              Number(previous?.up_to) ||
+              0
+            )+100,
+          rate:
+            Number(final?.rate) ||
+            3000
+        }
+      );
+
+      drawManageEditor();
+      return;
+    }
+
+    if(
+      button.dataset.tierRemove!==
+      undefined
+    ){
+      manageEditorDraft.tiers.splice(
+        Number(
+          button.dataset.tierRemove
+        ),
+        1
+      );
+      drawManageEditor();
+    }
+  }
+);
+
 employeeFilterSheetElement.addEventListener(
   "click",
   event=>{
@@ -7021,7 +8970,7 @@ employeeFilterSheetElement.addEventListener(
     ){
       employeeFilterDraft={
         status:"active",
-        pointId:""
+        pointIds:null
       };
 
       drawEmployeeFilterSheet();
@@ -7047,9 +8996,39 @@ employeeFilterSheetElement.addEventListener(
         .employeeFilterPoint!==
       undefined
     ){
-      employeeFilterDraft.pointId=
+      const pointId=
         button.dataset
           .employeeFilterPoint;
+
+      if(!pointId){
+        employeeFilterDraft.pointIds=
+          null;
+      }else{
+        const allIds=
+          teamData.points.map(
+            point=>point.id
+          );
+
+        const selected=
+          employeeFilterDraft
+            .pointIds===null
+            ? new Set(allIds)
+            : new Set(
+                employeeFilterDraft
+                  .pointIds
+              );
+
+        if(selected.has(pointId)){
+          selected.delete(pointId);
+        }else{
+          selected.add(pointId);
+        }
+
+        employeeFilterDraft.pointIds=
+          selected.size===allIds.length
+            ? null
+            : Array.from(selected);
+      }
 
       drawEmployeeFilterSheet();
     }
@@ -7196,6 +9175,33 @@ bindBottomSheetDismiss({
   }
 });
 
+bindBottomSheetDismiss({
+  element:
+    manageEditorSheetElement,
+
+  dragProperty:
+    "--sheet-drag",
+
+  close:
+    closeManageEditor,
+
+  canStart:target=>{
+    if(
+      target instanceof Element &&
+      target.closest(
+        ".grab,.shead"
+      )
+    ){
+      return true;
+    }
+
+    return (
+      manageEditorSheetElement
+        .scrollTop<=0
+    );
+  }
+});
+
 const shiftSheet=
   document.getElementById("sheet");
 
@@ -7240,6 +9246,10 @@ bindBottomSheetDismiss({
 });
 
 document.getElementById("sheetSave").onclick=async()=>{
+  if(!isAdmin){
+    return;
+  }
+
   const button=document.getElementById("sheetSave");
 
   readForm();
@@ -7252,27 +9262,39 @@ document.getElementById("sheetSave").onclick=async()=>{
   }
 
   const savedDraft=normalizedDraft(draft);
-  const index=shifts.findIndex(item=>item.id===savedDraft.id);
-  const nextShifts=[...shifts];
-
-  if(index>=0){
-    nextShifts[index]=savedDraft;
-  }else{
-    nextShifts.push(savedDraft);
-  }
 
   button.disabled=true;
-  const saved=await save(nextShifts);
-  button.disabled=false;
 
-  if(!saved) return;
+  try{
+    await saveAdminShift(
+      savedDraft
+    );
 
-  shifts=nextShifts;
-  cursor=savedDraft.date.slice(0,7);
+    await refreshTeamData({
+      renderAfter:false
+    });
 
-  closeSheet();
-  render();
-  toast("Смена сохранена");
+    cursor=savedDraft.date.slice(0,7);
+    closeSheet();
+    render();
+    toast("Смена сохранена");
+  }catch(error){
+    console.error(
+      "Не удалось сохранить смену:",
+      error
+    );
+
+    toast(
+      navigator.onLine
+        ? error instanceof Error
+          ? error.message
+          : "Не удалось сохранить смену"
+        : "Нет подключения. Смена не сохранена.",
+      4400
+    );
+  }finally{
+    button.disabled=false;
+  }
 };
 
 document.getElementById("sheetBody").addEventListener("click",async e=>{
@@ -7290,6 +9312,39 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
   if(t.id==="f-point-open"){
     readForm();
     openPointPicker();
+    return;
+  }
+
+  if(t.dataset.adjustmentAdd){
+    readForm();
+
+    draft[
+      t.dataset.adjustmentAdd
+    ].push({
+      id:createTeamId(),
+      amount:"",
+      comment:""
+    });
+
+    drawSheet(isEdit);
+    saveUIState();
+    return;
+  }
+
+  if(t.dataset.adjustmentRemove){
+    readForm();
+
+    const [kind,index]=
+      t.dataset.adjustmentRemove
+        .split(":");
+
+    draft[kind].splice(
+      Number(index),
+      1
+    );
+
+    drawSheet(isEdit);
+    saveUIState();
     return;
   }
 
@@ -7326,16 +9381,61 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
 
     if(!confirmed) return;
 
-    const nextShifts=
-      shifts.filter(item=>item.id!==draft.id);
+    try{
+      await deleteAdminShift(
+        draft.id
+      );
 
-    if(!await save(nextShifts)) return;
+      await refreshTeamData({
+        renderAfter:false
+      });
 
-    shifts=nextShifts;
-    closeSheet();
-    render();
-    toast("Смена удалена");
+      closeSheet();
+      render();
+      toast("Смена удалена");
+    }catch(error){
+      toast(
+        navigator.onLine
+          ? error instanceof Error
+            ? error.message
+            : "Не удалось удалить смену"
+          : "Нет подключения. Смена не удалена.",
+        4200
+      );
+    }
   }
+});
+
+document.getElementById("sheetBody").addEventListener("change",event=>{
+  if(
+    !draft ||
+    event.target.id!=="f-employee"
+  ){
+    return;
+  }
+
+  readForm();
+
+  draft.dbPointId="";
+
+  const point=
+    shiftPointOptions(draft)[0] ||
+    null;
+
+  draft.dbPointId=
+    point?.id || "";
+  draft.pointId=
+    point?.code || point?.id || "";
+  draft.point=
+    point?.name || "ПВЗ не назначен";
+  draft.shk="";
+
+  drawSheet(
+    shifts.some(
+      item=>item.id===draft.id
+    )
+  );
+  saveUIState();
 });
 
 document
@@ -7397,17 +9497,27 @@ document
     }
 
     const wasFixed=
-      FIXED_POINTS.has(draft.point);
+      previewCalc(draft).fixed;
 
     readForm();
 
-    draft.point=
-      pointPickerValue;
+    const point=
+      teamData.points.find(
+        item=>
+          item.id===pointPickerValue
+      );
 
-    delete draft.pointId;
+    if(!point){
+      return;
+    }
+
+    draft.dbPointId=point.id;
+    draft.pointId=
+      point.code || point.id;
+    draft.point=point.name;
 
     const nowFixed=
-      FIXED_POINTS.has(draft.point);
+      previewCalc(draft).fixed;
 
     if(nowFixed){
       draft.shk=0;
@@ -7454,8 +9564,9 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
   }
 
   if(
-    ["f-bonus","f-fine"]
-      .includes(e.target.id)
+    e.target.matches(
+      "[data-adjustment-amount]"
+    )
   ){
     let value=
       e.target.value
@@ -7485,10 +9596,11 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
   if(
     [
       "f-shk",
-      "f-hours",
-      "f-bonus",
-      "f-fine"
-    ].includes(e.target.id)
+      "f-hours"
+    ].includes(e.target.id) ||
+    e.target.matches(
+      "[data-adjustment-amount]"
+    )
   ){
     readForm();
 
@@ -7509,14 +9621,15 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
 function moveFieldCaretToEnd(field){
   const allowed=[
     "f-shk",
-    "f-hours",
-    "f-bonus",
-    "f-fine"
+    "f-hours"
   ];
 
   if(
     !field ||
-    !allowed.includes(field.id) ||
+    !allowed.includes(field.id) &&
+    !field.matches?.(
+      "[data-adjustment-amount]"
+    ) ||
     field.value===""
   ){
     return;
@@ -7576,6 +9689,31 @@ function updateEmployeeDraftField(
       target.value ||
       null;
   }
+
+  if(target.id==="employeePhone"){
+    employeeDraft.phone=
+      target.value;
+  }
+
+  if(target.id==="employeeTransferPhone"){
+    employeeDraft.transferPhone=
+      target.value;
+  }
+
+  if(target.id==="employeeTransferBank"){
+    employeeDraft.transferBank=
+      target.value;
+  }
+
+  if(target.id==="employeeTransferRecipient"){
+    employeeDraft.transferRecipient=
+      target.value;
+  }
+
+  if(target.id==="employeePassword"){
+    employeeDraft.password=
+      target.value;
+  }
 }
 
 employeeSheetElement.addEventListener(
@@ -7628,16 +9766,47 @@ app.addEventListener("click",async event=>{
   if(!button) return;
 
   if(
-    button.id==="employeeRetry"
+    [
+      "employeeRetry",
+      "pointRetry",
+      "tariffRetry",
+      "serverRetry"
+    ].includes(button.id)
   ){
     await refreshTeamData();
     return;
   }
 
   if(
-    button.id==="pointRetry"
+    button.id==="pointAdd" &&
+    isAdmin &&
+    tab==="manage"
   ){
-    await refreshTeamData();
+    openManageEditor("point");
+    return;
+  }
+
+  if(
+    button.dataset.pointId &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    openManageEditor(
+      "point",
+      button.dataset.pointId
+    );
+    return;
+  }
+
+  if(
+    button.dataset.tariffPointId &&
+    isAdmin &&
+    tab==="manage"
+  ){
+    openManageEditor(
+      "tariff",
+      button.dataset.tariffPointId
+    );
     return;
   }
 
@@ -7705,13 +9874,133 @@ app.addEventListener("click",async event=>{
 
   if(button.id==="doExport"){
     downloadText(exportEnvelopeJson(),backupFilename());
-    toast("Резервная копия скачана");
+    toast("Серверный export скачан");
     return;
   }
 
-  if(button.id==="doCopyJson"){
-    const copied=await copyText(exportEnvelopeJson());
-    toast(copied ? "JSON скопирован" : "Не удалось скопировать JSON");
+  if(button.id==="doLegacyExport"){
+    if(loadError){
+      const raw=(loadError instanceof StorageCorruptError && loadError.raw)
+        ? loadError.raw
+        : store.getCurrentRaw();
+
+      if(raw){
+        downloadText(
+          raw,
+          `shift-register-legacy-raw-${localYMD()}.json`
+        );
+      }
+    }else{
+      downloadText(
+        exportLegacyJson(),
+        `shift-register-legacy-${localYMD()}.json`
+      );
+    }
+
+    toast("Локальная копия скачана");
+    return;
+  }
+
+  if(
+    button.id==="doLegacyMigrate" &&
+    isAdmin &&
+    !legacyMigrationRunning
+  ){
+    const employee=teamData.employees.find(
+      item=>item.id===legacyMigrationEmployeeId
+    );
+
+    if(!employee){
+      toast("Выберите сотрудника",3000);
+      return;
+    }
+
+    let payloads;
+
+    try{
+      payloads=legacyShifts.map(source=>
+        legacyShiftPayload({
+          source,
+          employeeId:employee.id,
+          points:teamData.points
+        })
+      );
+    }catch(error){
+      toast(
+        error instanceof Error
+          ? error.message
+          : "Локальные смены не прошли проверку",
+        4400
+      );
+      return;
+    }
+
+    const confirmed=await appConfirm(
+      `Перенести ${shiftsAccWord(payloads.length)}?`,
+      {
+        okText:"Перенести",
+        detail:`Сотрудник: ${employee.full_name}. Перед импортом будет скачана локальная резервная копия.`
+      }
+    );
+
+    if(!confirmed){
+      return;
+    }
+
+    downloadText(
+      exportLegacyJson(),
+      `shift-register-legacy-before-import-${localYMD()}.json`
+    );
+
+    legacyMigrationRunning=true;
+    legacyMigrationProgress=
+      `0 из ${payloads.length}`;
+    render();
+
+    try{
+      await importAdminLegacyShifts(
+        payloads,
+        {
+          onProgress:({completed,total})=>{
+            legacyMigrationProgress=
+              `${completed} из ${total}`;
+
+            const progress=
+              document.querySelector(
+                ".manage-loading"
+              );
+
+            if(progress){
+              progress.textContent=
+                legacyMigrationProgress;
+            }
+          }
+        }
+      );
+
+      await refreshTeamData({
+        renderAfter:false
+      });
+
+      legacyMigrationProgress=
+        `Перенесено: ${payloads.length}. Локальный источник сохранён.`;
+      toast("Локальные смены перенесены");
+    }catch(error){
+      legacyMigrationProgress=
+        "Импорт остановлен. Локальный источник не изменён; повторный запуск безопасен.";
+      toast(
+        navigator.onLine
+          ? error instanceof Error
+            ? error.message
+            : "Не удалось перенести смены"
+          : "Нет подключения. Локальные смены не удалены.",
+        4600
+      );
+    }finally{
+      legacyMigrationRunning=false;
+      render();
+    }
+
     return;
   }
 
@@ -7730,117 +10019,6 @@ app.addEventListener("click",async event=>{
     return;
   }
 
-  if(button.id==="doReloadData"){
-    try{
-      await loadFromStorage({notify:true});
-      render();
-    }catch(error){
-      loadError=error;
-      storageOk=false;
-      render();
-    }
-    return;
-  }
-
-  if(button.id==="doRestoreBackup"){
-    const confirmed=await appConfirm(
-      loadError
-        ? "Восстановить последнюю исправную копию данных?"
-        : "Восстановить предыдущую версию?",
-      {
-        okText:"Восстановить",
-        detail:loadError
-          ? ""
-          : "Текущая версия будет сохранена отдельно."
-      }
-    );
-    if(!confirmed) return;
-
-    try{
-      const result=await store.restoreBackup();
-      shifts=result.shifts;
-      storageRevision=result.revision;
-      hasBackup=result.hasBackup;
-      loadError=null;
-      storageOk=true;
-      syncConflict=false;
-      announceRevision(storageRevision);
-      render();
-      toast("Данные восстановлены");
-    }catch(error){
-      toast(error instanceof Error ? error.message : "Не удалось восстановить данные",4000);
-    }
-    return;
-  }
-
-  if(button.id==="doImportToggle"){
-    const panel=document.getElementById("dataImportPanel");
-    if(!panel) return;
-
-    panel.hidden=!panel.hidden;
-
-    if(!panel.hidden){
-      requestAnimationFrame(()=>{
-        document.getElementById("dataImportInput")?.focus();
-      });
-    }
-
-    return;
-  }
-
-  if(button.id==="doImport"){
-    const input=document.getElementById("dataImportInput");
-    const json=input?.value.trim() || "";
-    if(!json){
-      toast("Вставьте резервную копию JSON",3000);
-      return;
-    }
-
-    let imported;
-    try{
-      imported=parseBackupJson(json).shifts;
-    }catch(error){
-      toast(error instanceof Error ? error.message : "Некорректная резервная копия",4400);
-      return;
-    }
-
-    const confirmed=await appConfirm(
-      loadError
-        ? "Заменить повреждённые данные?"
-        : (shifts.length
-            ? "Заменить все текущие смены?"
-            : "Загрузить резервную копию?"),
-      {
-        okText:loadError || shifts.length ? "Заменить" : "Загрузить",
-        detail:`Резервная копия содержит ${shiftsAccWord(imported.length)}.`
-      }
-    );
-    if(!confirmed) return;
-
-    if(loadError){
-      try{
-        const result=await store.replaceCorrupt(imported);
-        shifts=result.shifts;
-        storageRevision=result.revision;
-        hasBackup=result.hasBackup;
-        loadError=null;
-        storageOk=true;
-        syncConflict=false;
-        announceRevision(storageRevision);
-      }catch(error){
-        toast(error instanceof Error ? error.message : "Не удалось заменить данные",4200);
-        return;
-      }
-    }else{
-      if(!await save(imported)) return;
-      shifts=imported;
-    }
-
-    input.value="";
-    render();
-    toast("Загружено: "+shiftsWord(shifts.length));
-    return;
-  }
 
   if(button.id==="doSignOut"){
     const confirmed=await appConfirm(
@@ -7869,23 +10047,20 @@ app.addEventListener("click",async event=>{
     return;
   }
 
-  if(button.id==="doWipe"){
-    const confirmed=await appConfirm(
-      "Удалить все смены?",
-      {
-        okText:"Удалить всё",
-        danger:true,
-        detail:"Предыдущую версию можно будет восстановить."
-      }
-    );
-    if(!confirmed) return;
+});
 
-    const nextShifts=[];
-    if(!await save(nextShifts)) return;
-    shifts=nextShifts;
+app.addEventListener("change",event=>{
+  if(event.target.id==="statsEmployee"){
+    statsEmployeeId=
+      event.target.value;
+
     render();
-    toast("Все смены удалены");
     return;
+  }
+
+  if(event.target.id==="legacyEmployee"){
+    legacyMigrationEmployeeId=
+      event.target.value;
   }
 });
 
@@ -7914,6 +10089,13 @@ window.addEventListener("pageshow",()=>{
     ui.scrollY || 0
   );
 });
+
+window.addEventListener(
+  "online",
+  ()=>{
+    void refreshTeamData();
+  }
+);
 
 if("serviceWorker" in navigator){
   window.addEventListener("load",async()=>{
@@ -8105,8 +10287,12 @@ window.addEventListener(
 startAuth({
   onAuthenticated:async({
     freshLogin,
-    profile
+    profile,
+    user
   })=>{
+    currentUser=user;
+    currentProfile=profile;
+
     isAdmin=
       profile.role==="admin";
 
@@ -8152,9 +10338,6 @@ startAuth({
     }
 
     await load();
-
-    if(isAdmin){
-      void refreshTeamData();
-    }
+    void startAutomaticSync();
   }
 });

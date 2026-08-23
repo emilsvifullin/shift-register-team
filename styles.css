@@ -1004,6 +1004,11 @@ nav.tabs button.on{
   box-shadow:none !important;
 }
 
+#pointAdd + .manage-menu,
+#pointAdd + .card{
+  margin-top:12px;
+}
+
 .employee-row{
   min-height:76px;
 }
@@ -1089,6 +1094,10 @@ nav.tabs button.on{
   line-height:1.35;
 }
 
+.employee-help + .employee-password-card{
+  margin-top:10px;
+}
+
 .employee-points{
   overflow:hidden;
 }
@@ -1168,6 +1177,97 @@ nav.tabs button.on{
 
 .employee-point.touch-active{
   background:var(--tint);
+}
+
+.adjustment-list,
+.tariff-tiers{
+  overflow:hidden;
+}
+
+.adjustment-row,
+.tariff-tier{
+  border-top:1px solid var(--line);
+}
+
+.adjustment-row:first-child,
+.tariff-tier:first-child{
+  border-top:0;
+}
+
+.adjustment-remove,
+.tariff-tier-remove{
+  min-height:40px;
+  border:0;
+  background:transparent;
+  color:var(--rust);
+  font:inherit;
+  cursor:pointer;
+}
+
+.adjustment-remove{
+  width:100%;
+  border-top:1px solid var(--line);
+  font-size:12px;
+}
+
+.tariff-tier{
+  padding:10px 14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.tariff-tier-fields{
+  min-width:0;
+  flex:1;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  align-items:end;
+}
+
+.tariff-tier-fields label{
+  min-width:0;
+  display:grid;
+  gap:4px;
+}
+
+.tariff-tier-fields .s{
+  margin-top:0;
+  text-align:right;
+}
+
+.tariff-tier-fields input{
+  width:100%;
+  min-width:0;
+  padding:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:var(--ink);
+  text-align:right;
+  height:28px;
+  font:inherit;
+}
+
+.tariff-tier-open{
+  min-width:0;
+  height:28px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  overflow:hidden;
+  color:var(--ink2);
+  font-size:12px;
+  text-align:right;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.tariff-tier-remove{
+  width:36px;
+  flex:none;
+  font-size:22px;
 }
 
 @media (max-width:430px){
@@ -1384,6 +1484,18 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
   white-space:nowrap;
   font-size:clamp(11px,3vw,13px);
   letter-spacing:-.25px;
+}
+
+#f-employee{
+  font-size:clamp(11px,3vw,13px);
+  letter-spacing:-.25px;
+}
+
+.calc-error{
+  padding:16px;
+  color:var(--rust);
+  font-size:13px;
+  line-height:1.45;
 }
 
 .point-veil{

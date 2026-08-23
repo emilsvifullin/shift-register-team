@@ -122,6 +122,9 @@ test(
         "src/domain.js",
         "src/storage.js",
         "src/team.js",
+        "src/team-domain.js",
+        "src/phone.js",
+        "src/employee-ui.js",
         "src/supabase.js",
         "src/auth.js",
         "src/login.js",
@@ -173,6 +176,11 @@ test(
       sw,
       /\.\/src\/supabase\.js/
     );
+
+    assert.match(
+      sw,
+      /\.\/src\/employee-ui\.js/
+    );
   }
 );
 
@@ -218,6 +226,96 @@ test(
     assert.doesNotMatch(
       supabase,
       /workers\.dev/
+    );
+  }
+);
+
+test(
+  "phone authentication and realtime synchronization stay explicit",
+  async()=>{
+    const loginHtml=
+      await read(
+        "login.html"
+      );
+
+    const login=
+      await read(
+        "src/login.js"
+      );
+
+    const supabase=
+      await read(
+        "src/supabase.js"
+      );
+
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    assert.match(
+      loginHtml,
+      /Телефон или email/
+    );
+
+    assert.match(
+      login,
+      /signInWithPassword\([\s\S]*credentials[\s\S]*\)/
+    );
+
+    assert.match(
+      login,
+      /normalizePhone/
+    );
+
+    assert.match(
+      supabase,
+      /SUPABASE_REALTIME_URL/
+    );
+
+    assert.match(
+      supabase,
+      /onAuthStateChange/
+    );
+
+    assert.match(
+      team,
+      /postgres_changes/
+    );
+
+    assert.match(
+      team,
+      /point_tariffs/
+    );
+  }
+);
+
+test(
+  "application uses its own calendar and keeps shift comments out of the editor",
+  async()=>{
+    const html=
+      await read(
+        "index.html"
+      );
+
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.doesNotMatch(
+      html,
+      /type="date"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /Комментарий к смене/
+    );
+
+    assert.match(
+      app,
+      /datePickerTarget/
     );
   }
 );
@@ -292,7 +390,7 @@ test(
 );
 
 test(
-  "employee UI mutation observers settle after synchronizing the DOM",
+  "employee UI exposes one explicit integration without duplicate state or requests",
   async()=>{
     const employeeUi=
       await read(
@@ -301,17 +399,180 @@ test(
 
     assert.match(
       employeeUi,
-      /function setTextIfChanged\(/
+      /export function initEmployeeUi\(/
     );
 
     assert.doesNotMatch(
       employeeUi,
-      /check\.textContent\s*=/
+      /MutationObserver/
+    );
+
+    assert.doesNotMatch(
+      employeeUi,
+      /supabaseClient|supabase\.from\(|client\.from\(/
+    );
+  }
+);
+
+test(
+  "team shifts use Supabase as the canonical source",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.match(
+      app,
+      /await loadTeamData\(/
     );
 
     assert.match(
-      employeeUi,
-      /visible===0\s*&&\s*!existingEmpty/
+      app,
+      /await saveAdminShift\(/
+    );
+
+    assert.match(
+      app,
+      /await deleteAdminShift\(/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /store\.save\(/
+    );
+  }
+);
+
+test(
+  "employee loading resolves ownership before requesting shifts",
+  async()=>{
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    const employeeFlow=
+      team.slice(
+        team.indexOf(
+          "export async function loadEmployeeTeamData"
+        ),
+        team.indexOf(
+          "export function loadTeamData"
+        )
+      );
+
+    assert.ok(
+      employeeFlow.indexOf(
+        '.from("employees")'
+      )<employeeFlow.indexOf(
+        "loadShiftRows("
+      )
+    );
+
+    assert.match(
+      employeeFlow,
+      /if\(!employee\)[\s\S]*shifts:\[\]/
+    );
+
+    assert.match(
+      employeeFlow,
+      /loadShiftRows\([\s\S]*employee\.id/
+    );
+  }
+);
+
+test(
+  "database migration keeps writes admin-only and historical employee references restricted",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260824090000_complete_team_workflow.sql"
+      );
+
+    assert.match(
+      migration,
+      /if not private\.is_admin\(\)/
+    );
+
+    assert.match(
+      migration,
+      /set search_path = ''/
+    );
+
+    assert.match(
+      migration,
+      /revoke all on table[\s\S]*from anon;/
+    );
+
+    assert.match(
+      migration,
+      /create unique index if not exists shifts_employee_legacy_source_uidx/
+    );
+
+    assert.doesNotMatch(
+      migration,
+      /drop table|truncate table|on delete cascade[\s\S]*employee_id/i
+    );
+  }
+);
+
+test(
+  "employee phone migration and edge function preserve the security boundary",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260824113000_employee_phone_realtime.sql"
+      );
+
+    const edge=
+      await read(
+        "supabase/functions/admin-employee-auth/index.ts"
+      );
+
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    assert.match(
+      migration,
+      /add column if not exists phone text/
+    );
+
+    assert.match(
+      migration,
+      /admin_save_employee_profile/
+    );
+
+    assert.match(
+      migration,
+      /alter publication supabase_realtime add table/
+    );
+
+    assert.match(
+      migration,
+      /revoke all on function public\.admin_save_employee/
+    );
+
+    assert.match(
+      edge,
+      /SUPABASE_SERVICE_ROLE_KEY/
+    );
+
+    assert.match(
+      edge,
+      /profile\?\.role!=="admin"/
+    );
+
+    assert.doesNotMatch(
+      team,
+      /SERVICE_ROLE/
+    );
+
+    assert.match(
+      team,
+      /admin-employee-auth/
     );
   }
 );

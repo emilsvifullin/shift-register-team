@@ -1,3 +1,7 @@
+import {
+  normalizePhone
+} from "./phone.js";
+
 const form=
   document.getElementById(
     "authForm"
@@ -957,18 +961,43 @@ form.addEventListener(
       autofillTimer
     );
 
-    const emailValue=
+    const loginValue=
       email.value.trim();
 
     const passwordValue=
       password.value;
 
     if(
-      !emailValue ||
+      !loginValue ||
       !passwordValue
     ){
       setError(
-        "Введите email и пароль."
+        "Введите телефон или email и пароль."
+      );
+
+      return;
+    }
+
+    let credentials;
+
+    try{
+      credentials=
+        loginValue.includes("@")
+          ? {
+              email:loginValue,
+              password:passwordValue
+            }
+          : {
+              phone:normalizePhone(
+                loginValue
+              ),
+              password:passwordValue
+            };
+    }catch(error){
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Проверьте номер телефона."
       );
 
       return;
@@ -992,10 +1021,9 @@ form.addEventListener(
       }=
         await supabaseClient
           .auth
-          .signInWithPassword({
-            email:emailValue,
-            password:passwordValue
-          }));
+          .signInWithPassword(
+            credentials
+          ));
     }catch(authRequestError){
       console.error(
         "Не удалось выполнить вход:",
@@ -1031,7 +1059,7 @@ form.addEventListener(
         password.value="";
 
         setError(
-          "Неверный email или пароль."
+          "Неверный телефон, email или пароль."
         );
 
         return;

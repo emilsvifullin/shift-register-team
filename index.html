@@ -20,7 +20,7 @@ html{
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app https://rxosovinouuonwrrzigs.supabase.co wss://rxosovinouuonwrrzigs.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 
 <meta name="apple-mobile-web-app-title" content="Shift Register">
 <meta name="theme-color" content="#0B0C0E" media="(prefers-color-scheme: dark)">
@@ -91,6 +91,21 @@ body{
   href="./src/team.js"
 >
 
+<link
+  rel="modulepreload"
+  href="./src/team-domain.js"
+>
+
+<link
+  rel="modulepreload"
+  href="./src/phone.js"
+>
+
+<link
+  rel="modulepreload"
+  href="./src/employee-ui.js"
+>
+
 <script
   src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
 ></script>
@@ -100,10 +115,6 @@ body{
   src="./src/app.js"
 ></script>
 
-<script
-  type="module"
-  src="./src/employee-ui.js"
-></script>
 </head>
 <body class="app-booting">
 
@@ -278,6 +289,52 @@ body{
   <div
     class="sbody"
     id="employeeFilterSheetBody"
+  ></div>
+</div>
+
+<div
+  class="veil"
+  id="manageEditorVeil"
+  aria-hidden="true"
+></div>
+
+<div
+  class="sheet"
+  id="manageEditorSheet"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="manageEditorTitle"
+  aria-hidden="true"
+  tabindex="-1"
+>
+  <div class="grab"></div>
+
+  <div class="shead">
+    <button
+      type="button"
+      class="lnk"
+      id="manageEditorCancel"
+    >
+      Отмена
+    </button>
+
+    <div
+      class="ttl"
+      id="manageEditorTitle"
+    ></div>
+
+    <button
+      type="button"
+      class="lnk b"
+      id="manageEditorSave"
+    >
+      Готово
+    </button>
+  </div>
+
+  <div
+    class="sbody"
+    id="manageEditorBody"
   ></div>
 </div>
 

@@ -430,6 +430,21 @@ test(
 
     assert.match(
       app,
+      /app-picker-anchored[\s\S]*applyPointPickerValue\(\)/
+    );
+
+    assert.match(
+      styles,
+      /body\.app-picker-anchored-open \.point-veil\{[\s\S]*background:transparent;[\s\S]*transition:none;/
+    );
+
+    assert.match(
+      styles,
+      /\.point-picker\.app-picker-anchored \.picker-toolbar\{\s*display:none;/
+    );
+
+    assert.match(
+      app,
       /id="f-employee-open"/
     );
 

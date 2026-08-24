@@ -6003,9 +6003,15 @@ function openChoicePicker({
     </button>
   `).join("");
 
-  positionAppPicker(
-    picker,
-    pointPreviousFocus
+  const anchored=
+    positionAppPicker(
+      picker,
+      pointPreviousFocus
+    );
+
+  document.body.classList.toggle(
+    "app-picker-anchored-open",
+    anchored
   );
 
   document.body.classList.add("point-picker-open");
@@ -6111,6 +6117,11 @@ function closePointPicker(){
   const picker=document.getElementById("pointPicker");
   if(!picker.classList.contains("on") && picker.getAttribute("aria-hidden")==="true") return;
 
+  const anchored=
+    picker.classList.contains(
+      "app-picker-anchored"
+    );
+
   picker.style.removeProperty("transition");
   picker.classList.remove("on");
   picker.setAttribute("aria-hidden","true");
@@ -6119,11 +6130,15 @@ function closePointPicker(){
   veil.classList.remove("on");
   veil.setAttribute("aria-hidden","true");
   document.body.classList.remove("point-picker-open");
+  document.body.classList.remove(
+    "app-picker-anchored-open"
+  );
   clearTimeout(pointPickerHideTimer);
 
   const previousFocus=pointPreviousFocus;
   pointPreviousFocus=null;
-  pointPickerHideTimer=setTimeout(()=>{
+
+  const finishClose=()=>{
     if(!picker.classList.contains("on")){
       picker.style.display="none";
       resetAppPickerPosition(
@@ -6132,7 +6147,17 @@ function closePointPicker(){
     }
     picker.style.removeProperty("--point-drag");
     if(previousFocus && document.contains(previousFocus)) previousFocus.focus();
-  },460);
+  };
+
+  if(anchored){
+    finishClose();
+    return;
+  }
+
+  pointPickerHideTimer=setTimeout(
+    finishClose,
+    460
+  );
 }
 
 function shiftPricingDriversEqual(
@@ -10311,6 +10336,14 @@ document
               selected ? "✓" : "";
           }
         });
+
+      if(
+        pointPicker.classList.contains(
+          "app-picker-anchored"
+        )
+      ){
+        applyPointPickerValue();
+      }
     }
   );
 
@@ -10320,9 +10353,7 @@ document
     closePointPicker();
   };
 
-document
-  .getElementById("pointDone")
-  .onclick=()=>{
+function applyPointPickerValue(){
     if(pointPickerKind==="stats-point"){
       statsPointId=
         pointPickerValue;
@@ -10437,7 +10468,11 @@ document
 
     drawSheet(isEdit);
     saveUIState();
-  };
+}
+
+document
+  .getElementById("pointDone")
+  .onclick=applyPointPickerValue;
 
 document.getElementById("sheetBody").addEventListener("input",e=>{
   if(e.target.id==="f-hours"){

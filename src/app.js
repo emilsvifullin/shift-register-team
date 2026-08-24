@@ -4184,6 +4184,17 @@ function employeeSaveError(
 
   if(
     message.includes(
+      "employee_auth_request_failed"
+    ) ||
+    message.includes(
+      "employee_auth_http_"
+    )
+  ){
+    return "Сервер создания аккаунта недоступен. Повторите попытку.";
+  }
+
+  if(
+    message.includes(
       "email_exists"
     ) ||
     message.includes(

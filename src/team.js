@@ -1,4 +1,5 @@
 import {
+  invokeSupabaseFunction,
   supabaseClient,
   supabaseRealtimeClient
 } from "./supabase.js";
@@ -420,40 +421,15 @@ export async function saveAdminEmployeeAuth({
   email,
   password=""
 }){
-  const result=
-    await supabaseClient
-      .functions
-      .invoke(
-        "admin-employee-auth",
-        {
-          body:{
-            employeeId,
-            email,
-            password:
-              password || undefined
-          }
-        }
-      );
-
-  if(result.error){
-    let message=
-      result.error.message ||
-      "Не удалось настроить вход сотрудника";
-
-    try{
-      const details=
-        await result.error.context
-          ?.json();
-
-      message=
-        details?.error ||
-        message;
-    }catch{}
-
-    throw new Error(message);
-  }
-
-  return result.data;
+  return invokeSupabaseFunction(
+    "admin-employee-auth",
+    {
+      employeeId,
+      email,
+      password:
+        password || undefined
+    }
+  );
 }
 
 export async function subscribeTeamChanges({

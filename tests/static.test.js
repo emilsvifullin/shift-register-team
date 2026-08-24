@@ -195,7 +195,7 @@ test(
 );
 
 test(
-  "Supabase traffic uses the Vercel proxy",
+  "Supabase REST uses the proxy and Edge Functions use the direct project URL",
   async()=>{
     const proxy=
       "https://shift-register-supabase-proxy.vercel.app";
@@ -231,6 +231,26 @@ test(
       login.includes(
         proxy
       )
+    );
+
+    assert.match(
+      supabase,
+      /SUPABASE_FUNCTIONS_URL/
+    );
+
+    assert.match(
+      supabase,
+      /\/functions\/v1/
+    );
+
+    assert.match(
+      supabase,
+      /Authorization:[\s\S]*Bearer \$\{accessToken\}/
+    );
+
+    assert.match(
+      supabase,
+      /apikey:[\s\S]*SUPABASE_PUBLISHABLE_KEY/
     );
 
     assert.doesNotMatch(
@@ -315,7 +335,12 @@ test(
 
     assert.match(
       supabase,
-      /SUPABASE_REALTIME_URL/
+      /SUPABASE_PROJECT_URL/
+    );
+
+    assert.match(
+      supabase,
+      /invokeSupabaseFunction/
     );
 
     assert.match(
@@ -335,7 +360,12 @@ test(
 
     assert.match(
       team,
-      /saveAdminEmployeeAuth\([\s\S]*email[\s\S]*admin-employee-auth/
+      /saveAdminEmployeeAuth\([\s\S]*email[\s\S]*invokeSupabaseFunction\([\s\S]*admin-employee-auth/
+    );
+
+    assert.doesNotMatch(
+      team,
+      /\.functions[\s\S]*\.invoke\(/
     );
   }
 );

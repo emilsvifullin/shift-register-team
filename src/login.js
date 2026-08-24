@@ -888,6 +888,12 @@ function loadSupabaseLibrary(){
       script.src=
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
+      script.integrity=
+        "sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC";
+
+      script.crossOrigin=
+        "anonymous";
+
       script.async=true;
 
       script.addEventListener(
@@ -1043,7 +1049,7 @@ form.addEventListener(
         password.value="";
 
         setError(
-          "Неверный телефон, email или пароль."
+          "Неверная почта или пароль."
         );
 
         return;

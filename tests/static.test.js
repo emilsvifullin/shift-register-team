@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   access,
-  readFile
+  readFile,
+  readdir
 } from "node:fs/promises";
 
 const read=
@@ -47,6 +48,44 @@ test(
       html,
       /src="\.\/src\/app\.js"/
     );
+  }
+);
+
+test(
+  "repository contains the complete applied Supabase migration history",
+  async()=>{
+    const files=
+      await readdir(
+        new URL(
+          "../supabase/migrations/",
+          import.meta.url
+        )
+      );
+
+    for(const version of [
+      "20260822132510",
+      "20260822132637",
+      "20260822133735",
+      "20260822133824",
+      "20260823101457",
+      "20260823101524",
+      "20260823113313",
+      "20260823230320",
+      "20260823230333",
+      "20260824151948",
+      "20260824225714",
+      "20260824225728"
+    ]){
+      assert.ok(
+        files.some(
+          file=>
+            file.startsWith(
+              version
+            )
+        ),
+        `migration ${version} is missing`
+      );
+    }
   }
 );
 
@@ -137,6 +176,7 @@ test(
         "src/employee-ui.js",
         "src/supabase.js",
         "src/auth.js",
+        "src/frame-guard.js",
         "src/login.js",
         "src/app.js",
         "icon-192.png",
@@ -191,14 +231,19 @@ test(
       sw,
       /\.\/src\/employee-ui\.js/
     );
+
+    assert.match(
+      sw,
+      /SUPABASE_CDN_URL/
+    );
   }
 );
 
 test(
-  "Supabase REST uses the proxy and Edge Functions use the direct project URL",
+  "Supabase REST, Auth, Realtime and Edge Functions use the direct project URL",
   async()=>{
-    const proxy=
-      "https://shift-register-supabase-proxy.vercel.app";
+    const projectUrl=
+      "https://rxosovinouuonwrrzigs.supabase.co";
 
     const supabase=
       await read(
@@ -215,23 +260,22 @@ test(
         "login.html"
       );
 
-    assert.ok(
-      supabase.includes(
-        proxy
-      )
-    );
+    for(const source of [
+      supabase,
+      index,
+      login
+    ]){
+      assert.ok(
+        source.includes(
+          projectUrl
+        )
+      );
 
-    assert.ok(
-      index.includes(
-        proxy
-      )
-    );
-
-    assert.ok(
-      login.includes(
-        proxy
-      )
-    );
+      assert.doesNotMatch(
+        source,
+        /shift-register-supabase-proxy/
+      );
+    }
 
     assert.match(
       supabase,
@@ -245,7 +289,7 @@ test(
 
     assert.match(
       supabase,
-      /Authorization:[\s\S]*Bearer \$\{accessToken\}/
+      /Authorization:[\s\S]*Bearer \$\{token\}/
     );
 
     assert.match(
@@ -256,6 +300,43 @@ test(
     assert.doesNotMatch(
       supabase,
       /workers\.dev/
+    );
+
+    assert.match(
+      supabase,
+      /refreshSession\(\)/
+    );
+  }
+);
+
+test(
+  "entrypoints pin the Supabase CDN asset and block embedding",
+  async()=>{
+    const index=
+      await read("index.html");
+    const login=
+      await read("login.html");
+    const frameGuard=
+      await read("src/frame-guard.js");
+
+    assert.match(
+      index,
+      /integrity="sha384-[^"]+"/
+    );
+
+    assert.match(
+      index,
+      /crossorigin="anonymous"/
+    );
+
+    assert.match(
+      login,
+      /frame-src 'none'/
+    );
+
+    assert.match(
+      frameGuard,
+      /globalThis\.self!==globalThis\.top/
     );
   }
 );
@@ -961,7 +1042,7 @@ test(
   async()=>{
     const migration=
       await read(
-        "supabase/migrations/20260824090000_complete_team_workflow.sql"
+        "supabase/migrations/20260823230320_complete_team_workflow.sql"
       );
 
     assert.match(
@@ -996,7 +1077,7 @@ test(
   async()=>{
     const migration=
       await read(
-        "supabase/migrations/20260824113000_employee_phone_realtime.sql"
+        "supabase/migrations/20260823230333_employee_phone_realtime.sql"
       );
 
     const edge=
@@ -1062,6 +1143,101 @@ test(
     assert.match(
       team,
       /admin-employee-auth/
+    );
+  }
+);
+
+test(
+  "employee deletion removes auth access and keeps only a minimal audit tombstone",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260824225714_safe_deletion_cleanup.sql"
+      );
+
+    const edge=
+      await read(
+        "supabase/functions/admin-employee-auth/index.ts"
+      );
+
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.match(
+      edge,
+      /admin_begin_employee_deletion[\s\S]*deleteUser\(authUserId\)[\s\S]*admin_finalize_employee_deletion/
+    );
+
+    assert.match(
+      edge,
+      /employee\.status==="inactive"[\s\S]*ban_duration/
+    );
+
+    assert.match(
+      migration,
+      /delete from public\.audit_log[\s\S]*entity_id = object_id/
+    );
+
+    assert.match(
+      migration,
+      /admin_rollback_employee_creation/
+    );
+
+    assert.match(
+      migration,
+      /lock table public\.shifts[\s\S]*share row exclusive/
+    );
+
+    assert.match(
+      migration,
+      /shifts_block_deleting_employee/
+    );
+
+    assert.match(
+      migration,
+      /shifts_select_own_or_admin[\s\S]*e\.status = 'active'[\s\S]*not e\.deletion_pending/
+    );
+
+    assert.match(
+      migration,
+      /shift_bonuses_select_own_or_admin[\s\S]*e\.status = 'active'/
+    );
+
+    assert.match(
+      migration,
+      /shift_penalties_select_own_or_admin[\s\S]*e\.status = 'active'/
+    );
+
+    assert.match(
+      team,
+      /action:"delete",[\s\S]*employeeId:id/
+    );
+
+    assert.match(
+      app,
+      /Сотрудник находится в архиве/
+    );
+
+    assert.match(
+      app,
+      /rollbackAdminEmployeeCreation\([\s\S]*Аккаунт не создан, карточка не сохранена/
+    );
+
+    assert.match(
+      edge,
+      /ALLOWED_ORIGINS[\s\S]*origin_not_allowed/
+    );
+
+    assert.doesNotMatch(
+      team,
+      /SUPABASE_SERVICE_ROLE_KEY/
     );
   }
 );

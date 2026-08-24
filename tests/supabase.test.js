@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 test(
-  "Edge Function requests bypass the REST proxy and keep the admin token",
+  "Supabase clients and Edge Function requests use the direct project URL",
   async()=>{
     const originalSupabase=
       globalThis.supabase;
@@ -10,11 +10,13 @@ test(
       globalThis.fetch;
 
     let clientNumber=0;
+    const clientUrls=[];
     let request=null;
 
     globalThis.supabase={
-      createClient(){
+      createClient(url){
         clientNumber+=1;
+        clientUrls.push(url);
 
         if(clientNumber===1){
           return {
@@ -26,6 +28,10 @@ test(
                       "admin-access-token"
                   }
                 },
+                error:null
+              }),
+              refreshSession:async()=>({
+                data:{session:null},
                 error:null
               }),
               onAuthStateChange(){}
@@ -102,6 +108,14 @@ test(
         "https://rxosovinouuonwrrzigs.supabase.co/functions/v1/admin-employee-auth"
       );
 
+      assert.deepEqual(
+        clientUrls,
+        [
+          "https://rxosovinouuonwrrzigs.supabase.co",
+          "https://rxosovinouuonwrrzigs.supabase.co"
+        ]
+      );
+
       assert.equal(
         request.options.headers.Authorization,
         "Bearer admin-access-token"
@@ -124,6 +138,141 @@ test(
           password:
             "password-value"
         }
+      );
+    }finally{
+      globalThis.supabase=
+        originalSupabase;
+      globalThis.fetch=
+        originalFetch;
+    }
+  }
+);
+
+test(
+  "Edge Function retries once with a refreshed user JWT after a 401",
+  async()=>{
+    const originalSupabase=
+      globalThis.supabase;
+    const originalFetch=
+      globalThis.fetch;
+
+    let clientNumber=0;
+    let refreshCount=0;
+    const authorizations=[];
+
+    globalThis.supabase={
+      createClient(){
+        clientNumber+=1;
+
+        if(clientNumber===1){
+          return {
+            auth:{
+              getSession:async()=>({
+                data:{
+                  session:{
+                    access_token:"expired-token"
+                  }
+                },
+                error:null
+              }),
+              refreshSession:async()=>{
+                refreshCount+=1;
+
+                return {
+                  data:{
+                    session:{
+                      access_token:"fresh-token"
+                    }
+                  },
+                  error:null
+                };
+              },
+              onAuthStateChange(){}
+            }
+          };
+        }
+
+        return {
+          auth:{},
+          realtime:{
+            setAuth:async()=>{}
+          }
+        };
+      }
+    };
+
+    let requestCount=0;
+
+    globalThis.fetch=async(
+      _url,
+      options
+    )=>{
+      requestCount+=1;
+      authorizations.push(
+        options.headers.Authorization
+      );
+
+      if(requestCount===1){
+        return {
+          ok:false,
+          status:401,
+          json:async()=>({
+            error:"unauthorized"
+          })
+        };
+      }
+
+      return {
+        ok:true,
+        status:200,
+        json:async()=>({
+          ok:true
+        })
+      };
+    };
+
+    try{
+      const moduleUrl=
+        new URL(
+          "../src/supabase.js",
+          import.meta.url
+        );
+
+      moduleUrl.searchParams.set(
+        "refresh-test",
+        String(Date.now())
+      );
+
+      const {
+        invokeSupabaseFunction
+      }=await import(
+        moduleUrl.href
+      );
+
+      const result=
+        await invokeSupabaseFunction(
+          "admin-employee-auth",
+          {
+            action:"save"
+          }
+        );
+
+      assert.deepEqual(
+        result,
+        {ok:true}
+      );
+
+      assert.equal(
+        refreshCount,
+        1
+      );
+
+      assert.deepEqual(
+        authorizations,
+        [
+          "Bearer expired-token",
+          "Bearer fresh-token"
+        ]
       );
     }finally{
       globalThis.supabase=

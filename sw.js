@@ -1,8 +1,11 @@
 const CACHE_NAME=
-  "sr-team-runtime-v67";
+  "sr-team-runtime-v68";
 
 const INDEX_FILE=
   "./index.html";
+
+const SUPABASE_CDN_URL=
+  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
 const ASSETS=[
   "./",
@@ -20,11 +23,16 @@ const ASSETS=[
   "./src/picker-position.js",
   "./src/supabase.js",
   "./src/auth.js",
+  "./src/frame-guard.js",
   "./src/login.js",
   "./src/app.js",
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"
+];
+
+const REMOTE_ASSETS=[
+  SUPABASE_CDN_URL
 ];
 
 self.addEventListener(
@@ -47,6 +55,13 @@ self.addEventListener(
             error
           );
         }
+
+        await Promise.allSettled(
+          REMOTE_ASSETS.map(
+            asset=>
+              cache.add(asset)
+          )
+        );
 
         await self.skipWaiting();
       })()
@@ -250,6 +265,20 @@ self.addEventListener(
       new URL(
         self.registration.scope
       );
+
+    if(
+      REMOTE_ASSETS.includes(
+        url.href
+      )
+    ){
+      event.respondWith(
+        networkFirst(
+          request
+        )
+      );
+
+      return;
+    }
 
     if(
       url.origin!==

@@ -4,23 +4,52 @@ import {
   createClient
 } from "npm:@supabase/supabase-js@2.112.3";
 
-const CORS_HEADERS={
+const ALLOWED_ORIGINS=new Set([
+  "https://emilsvifullin.github.io",
+  "https://shift-register-project-ready.emilsvifullin.chatgpt.site",
+  "http://127.0.0.1:4173",
+  "http://localhost:4173"
+]);
+
+const DEFAULT_CORS_HEADERS={
   "Access-Control-Allow-Origin":"*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods":"POST, OPTIONS"
+  "Access-Control-Allow-Methods":
+    "POST, OPTIONS",
+  "Vary":"Origin"
 };
+
+function corsHeaders(
+  request:Request
+){
+  const origin=
+    request.headers.get("Origin");
+
+  return {
+    ...DEFAULT_CORS_HEADERS,
+    ...(origin &&
+      ALLOWED_ORIGINS.has(origin)
+      ? {
+          "Access-Control-Allow-Origin":
+            origin
+        }
+      : {})
+  };
+}
 
 function json(
   body:Record<string,unknown>,
-  status=200
+  status=200,
+  headers:Record<string,string>=
+    DEFAULT_CORS_HEADERS
 ){
   return new Response(
     JSON.stringify(body),
     {
       status,
       headers:{
-        ...CORS_HEADERS,
+        ...headers,
         "Content-Type":"application/json; charset=utf-8"
       }
     }
@@ -50,11 +79,24 @@ function normalizedEmail(value:unknown){
 }
 
 Deno.serve(async request=>{
+  const origin=
+    request.headers.get("Origin");
+
+  if(
+    origin &&
+    !ALLOWED_ORIGINS.has(origin)
+  ){
+    return json(
+      {error:"origin_not_allowed"},
+      403
+    );
+  }
+
   if(request.method==="OPTIONS"){
     return new Response(
       "ok",
       {
-        headers:CORS_HEADERS
+        headers:corsHeaders(request)
       }
     );
   }
@@ -157,6 +199,10 @@ Deno.serve(async request=>{
   }
 
   const employeeId=payload.employeeId;
+  const action=
+    payload.action==="delete"
+      ? "delete"
+      : "save";
   const email=normalizedEmail(
     payload.email
   );
@@ -167,12 +213,17 @@ Deno.serve(async request=>{
 
   if(
     !validUuid(employeeId) ||
-    !email ||
     (
-      password &&
+      action==="save" &&
       (
-        password.length<8 ||
-        password.length>72
+        !email ||
+        (
+          password &&
+          (
+            password.length<8 ||
+            password.length>72
+          )
+        )
       )
     )
   ){
@@ -187,7 +238,9 @@ Deno.serve(async request=>{
     error:employeeError
   }=await adminClient
     .from("employees")
-    .select("id, user_id, full_name")
+    .select(
+      "id, user_id, full_name, status, deletion_pending"
+    )
     .eq("id",employeeId)
     .maybeSingle();
 
@@ -195,6 +248,107 @@ Deno.serve(async request=>{
     return json(
       {error:"employee_not_found"},
       404
+    );
+  }
+
+  if(action==="delete"){
+    const {
+      data:authUserId,
+      error:beginDeleteError
+    }=await userClient.rpc(
+      "admin_begin_employee_deletion",
+      {
+        p_employee_id:employeeId
+      }
+    );
+
+    if(beginDeleteError){
+      return json(
+        {
+          error:
+            beginDeleteError.message ||
+            "employee_delete_begin_failed"
+        },
+        beginDeleteError.code==="23503"
+          ? 409
+          : beginDeleteError.code==="P0002"
+            ? 404
+            : beginDeleteError.code==="42501"
+              ? 403
+              : beginDeleteError.code==="55000"
+                ? 409
+                : 500
+      );
+    }
+
+    if(authUserId){
+      const {error:deleteUserError}=
+        await adminClient.auth.admin
+          .deleteUser(authUserId);
+
+      if(deleteUserError){
+        const {error:cancelDeleteError}=
+          await userClient.rpc(
+            "admin_cancel_employee_deletion",
+            {
+              p_employee_id:employeeId
+            }
+          );
+
+        return json(
+          {
+            error:
+              cancelDeleteError
+                ? "employee_delete_cancel_failed"
+                : (
+                    deleteUserError.code ||
+                    "employee_auth_delete_failed"
+                  )
+          },
+          500
+        );
+      }
+    }
+
+    const {error:deleteEmployeeError}=
+      await userClient.rpc(
+        "admin_finalize_employee_deletion",
+        {
+          p_employee_id:employeeId
+        }
+      );
+
+    if(deleteEmployeeError){
+      return json(
+        {
+          error:
+            deleteEmployeeError.message ||
+            "employee_delete_finalize_failed"
+        },
+        deleteEmployeeError.code==="23503"
+          ? 409
+          : deleteEmployeeError.code==="P0002"
+            ? 404
+            : deleteEmployeeError.code==="42501"
+              ? 403
+              : deleteEmployeeError.code==="55000"
+                ? 409
+                : 500
+      );
+    }
+
+    return json({
+      ok:true,
+      deleted:true,
+      authDeleted:
+        Boolean(authUserId)
+    });
+  }
+
+  if(employee.deletion_pending){
+    return json(
+      {error:"employee_deletion_pending"},
+      409
     );
   }
 
@@ -249,7 +403,11 @@ Deno.serve(async request=>{
       app_metadata:{
         ...existingUser.user.app_metadata,
         role:"employee"
-      }
+      },
+      ban_duration:
+        employee.status==="inactive"
+          ? "876000h"
+          : "none"
     };
 
     if(password){
@@ -311,6 +469,27 @@ Deno.serve(async request=>{
 
     authUserId=createdUser.user.id;
     created=true;
+
+    if(employee.status==="inactive"){
+      const {error:banError}=
+        await adminClient.auth.admin
+          .updateUserById(
+            authUserId,
+            {
+              ban_duration:"876000h"
+            }
+          );
+
+      if(banError){
+        await adminClient.auth.admin
+          .deleteUser(authUserId);
+
+        return json(
+          {error:"employee_auth_archive_failed"},
+          500
+        );
+      }
+    }
   }
 
   const {error:profileSaveError}=
@@ -321,15 +500,24 @@ Deno.serve(async request=>{
         role:"employee"
       });
 
-  const {error:employeeSaveError}=
+  const {
+    data:linkedEmployee,
+    error:employeeSaveError
+  }=
     await adminClient
       .from("employees")
       .update({
         user_id:authUserId
       })
-      .eq("id",employeeId);
+      .eq("id",employeeId)
+      .select("id")
+      .maybeSingle();
 
-  if(profileSaveError || employeeSaveError){
+  if(
+    profileSaveError ||
+    employeeSaveError ||
+    !linkedEmployee
+  ){
     if(created){
       await adminClient.auth.admin
         .deleteUser(authUserId);

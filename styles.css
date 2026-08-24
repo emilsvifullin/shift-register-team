@@ -3010,36 +3010,42 @@ select:focus-visible{
 }
 
 #sheet:focus,
-#sheet:focus-visible,
-.point-option:focus,
-.point-option:focus-visible{
+#sheet:focus-visible{
   outline:none;
   outline-offset:0;
 }
 
-nav.tabs button:focus,
-nav.tabs button:focus-visible,
-.seg button:focus,
-.seg button:focus-visible{
+.point-option:focus:not(:focus-visible),
+nav.tabs button:focus:not(:focus-visible),
+.seg button:focus:not(:focus-visible){
   outline:none;
   outline-offset:0;
 }
 
-/*
-  Desktop:
-  фокус остаётся технически,
-  но визуальные рамки не показываем.
-*/
 @media (hover:hover) and (pointer:fine){
-  *:focus,
-  *:focus-visible{
-    outline:none !important;
-    outline-offset:0 !important;
+  *:focus:not(:focus-visible){
+    outline:none;
+  }
+
+  .point-option:focus-visible,
+  nav.tabs button:focus-visible,
+  .seg button:focus-visible{
+    outline:2px solid var(--gold);
+    outline-offset:2px;
   }
 }
 
 @media (prefers-reduced-motion:reduce){
   html:focus-within{scroll-behavior:auto}
+
+  *,
+  *::before,
+  *::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    scroll-behavior:auto !important;
+    transition-duration:.01ms !important;
+  }
 }
 
 /* Final hardening: native buttons used as custom controls must not inherit browser chrome. */

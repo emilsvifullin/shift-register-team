@@ -1,11 +1,11 @@
 {
   "name": "shift-register",
-  "version": "6.7.4",
+  "version": "6.8.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/config.js && node --check src/domain.js && node --check src/team-domain.js && node --check src/phone.js && node --check src/storage.js && node --check src/team.js && node --check src/employee-ui.js && node --check src/picker-position.js && node --check src/supabase.js && node --check src/auth.js && node --check src/login.js && node --check src/app.js && node --check sw.js && node --test"
+    "check": "node --check src/config.js && node --check src/domain.js && node --check src/team-domain.js && node --check src/phone.js && node --check src/storage.js && node --check src/team.js && node --check src/employee-ui.js && node --check src/picker-position.js && node --check src/supabase.js && node --check src/auth.js && node --check src/frame-guard.js && node --check src/login.js && node --check src/app.js && node --check sw.js && node --test"
   },
   "engines": {
     "node": ">=20"

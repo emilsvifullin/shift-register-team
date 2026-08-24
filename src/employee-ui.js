@@ -536,14 +536,8 @@ export function initEmployeeUi({
     }
   }
 
-  function employeesManageView(){
+  function manageSubsectionView(){
     return Boolean(
-      document.getElementById(
-        "employeeAdd"
-      ) &&
-      document.getElementById(
-        "employeeList"
-      ) &&
       document.getElementById(
         "manageBack"
       )
@@ -556,7 +550,7 @@ export function initEmployeeUi({
 
   function startManageSwipe(event){
     if(
-      !employeesManageView() ||
+      !manageSubsectionView() ||
       event.touches.length!==1 ||
       event.target.closest(
         "input,textarea,select,[contenteditable='true']"
@@ -773,7 +767,7 @@ export function initEmployeeUi({
       if(
         event.pointerType==="touch" ||
         !event.isPrimary ||
-        !employeesManageView() ||
+        !manageSubsectionView() ||
         event.target.closest(
           "input,textarea,select,[contenteditable='true']"
         ) ||
@@ -784,6 +778,7 @@ export function initEmployeeUi({
           "point-picker-open"
         )
       ){
+        resetManageSwipe();
         return;
       }
 
@@ -889,18 +884,13 @@ export function initEmployeeUi({
   let wheelX=0;
   let wheelY=0;
   let wheelTimer=0;
-  let wheelBlockedUntil=0;
+  let wheelGestureLocked=false;
 
   app?.addEventListener(
     "wheel",
     event=>{
       if(
-        performance.now()<
-          wheelBlockedUntil ||
-        !employeesManageView() ||
-        event.target.closest(
-          "input,textarea,select,[contenteditable='true']"
-        ) ||
+        !manageSubsectionView() ||
         Math.abs(event.deltaX)<=
           Math.abs(event.deltaY)
       ){
@@ -917,7 +907,16 @@ export function initEmployeeUi({
       wheelTimer=window.setTimeout(()=>{
         wheelX=0;
         wheelY=0;
+        wheelGestureLocked=false;
       },140);
+
+      if(wheelGestureLocked){
+        if(event.cancelable){
+          event.preventDefault();
+        }
+
+        return;
+      }
 
       if(
         wheelX>-48 ||
@@ -933,8 +932,7 @@ export function initEmployeeUi({
 
       wheelX=0;
       wheelY=0;
-      wheelBlockedUntil=
-        performance.now()+650;
+      wheelGestureLocked=true;
 
       document
         .getElementById(

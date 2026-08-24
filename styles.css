@@ -1318,24 +1318,24 @@ nav.tabs button.on{
 }
 
 .tariff-tier{
-  padding:11px 14px;
+  min-height:54px;
+  padding:8px 12px;
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:8px;
 }
 
 .tariff-tier-head{
   padding:
     10px
-    14px
-    7px;
+    12px;
 
   display:grid;
   grid-template-columns:
     minmax(0,1fr)
     minmax(0,1fr)
-    36px;
-  gap:10px;
+    32px;
+  gap:8px;
 
   border-bottom:1px solid var(--line);
 
@@ -1343,6 +1343,10 @@ nav.tabs button.on{
 
   font-size:11px;
   line-height:1.2;
+  text-align:left;
+}
+
+.tariff-tier-head span:nth-child(2){
   text-align:right;
 }
 
@@ -1351,45 +1355,68 @@ nav.tabs button.on{
   flex:1;
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:10px;
-  align-items:end;
+  gap:8px;
+  align-items:center;
 }
 
 .tariff-tier-fields input{
   width:100%;
   min-width:0;
-  padding:0;
-  border:0;
+  height:36px;
+  padding:0 10px;
+
+  border:1px solid var(--line);
+  border-radius:10px;
   outline:0;
-  background:transparent;
+  background:var(--tint-soft);
   color:var(--ink);
+
   text-align:right;
-  height:28px;
   font:inherit;
+  font-variant-numeric:tabular-nums;
+}
+
+.tariff-tier-fields input:first-child{
+  text-align:left;
 }
 
 .tariff-tier-open{
   min-width:0;
-  height:28px;
+  height:36px;
+  padding:0 10px;
+
   display:flex;
   align-items:center;
-  justify-content:flex-end;
+  justify-content:flex-start;
+
   overflow:hidden;
+
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--tint-soft);
   color:var(--ink2);
+
   font-size:12px;
-  text-align:right;
+  text-align:left;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
 
 .tariff-tier-remove,
 .tariff-tier-remove-space{
-  width:36px;
+  width:32px;
   flex:none;
 }
 
 .tariff-tier-remove{
-  font-size:22px;
+  min-height:32px;
+  height:32px;
+
+  border-radius:10px;
+  background:var(--tint-soft);
+
+  font-size:19px;
+  line-height:1;
 }
 
 .tariff-current-label{
@@ -1502,7 +1529,16 @@ nav.tabs button.on{
   z-index:41;
 
   height:93vh;
+  height:93dvh;
   max-height:93vh;
+  max-height:
+    calc(
+      100dvh -
+      max(
+        12px,
+        env(safe-area-inset-top)
+      )
+    );
   overflow-y:auto;
   overscroll-behavior:contain;
   -webkit-overflow-scrolling:touch;
@@ -1587,7 +1623,7 @@ body.sheet-open{
     right:24px;
 
     width:auto;
-    max-width:840px;
+    max-width:720px;
     margin:0 auto;
 
     border-left:1px solid var(--line2);
@@ -1716,6 +1752,10 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
   right:8px;
   bottom:calc(8px + env(safe-area-inset-bottom));
   z-index:49;
+
+  width:auto;
+  max-width:604px;
+  margin:0 auto;
 
   max-height:78vh;
   overflow:hidden;
@@ -2227,6 +2267,10 @@ nav.tabs button.touch-active,
   right:8px;
   bottom:calc(8px + env(safe-area-inset-bottom));
   z-index:47;
+
+  width:auto;
+  max-width:604px;
+  margin:0 auto;
 
   background:var(--sheet);
   border:1px solid var(--line2);

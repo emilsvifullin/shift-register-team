@@ -636,6 +636,31 @@ function setBackgroundInert(enabled){
     });
 }
 
+function prepareBottomSheetOpen(
+  element,
+  dragProperty
+){
+  element
+    .getAnimations?.()
+    .forEach(animation=>{
+      animation.cancel();
+    });
+
+  element.dispatchEvent(
+    new Event(
+      "bottomsheetopen"
+    )
+  );
+
+  element.style.removeProperty(
+    "transition"
+  );
+
+  element.style.removeProperty(
+    dragProperty
+  );
+}
+
 function closeAppConfirm(result){
   const modal=document.getElementById("appConfirm");
   if(!modal.classList.contains("on")) return;
@@ -2581,9 +2606,12 @@ function openEmployeeFilterSheet(){
 
   drawEmployeeFilterSheet();
 
+  prepareBottomSheetOpen(
+    sheet,
+    "--sheet-drag"
+  );
+
   sheet.style.display="block";
-  sheet.style.removeProperty("transition");
-  sheet.style.removeProperty("--sheet-drag");
 
   sheet.classList.remove("on");
 
@@ -2960,7 +2988,7 @@ function tierEditorHTML(tiers){
       <div class="row tariff-tier" data-tier-index="${index}">
         <div class="tariff-tier-fields">
           ${final ? `
-            <span class="tariff-tier-open">Без границы</span>
+            <span class="tariff-tier-open">Без верхней границы</span>
           ` : `
             <input type="number" inputmode="numeric" data-tier-limit value="${esc(tier.up_to)}" min="1" step="1" aria-label="ШК до">
           `}
@@ -3134,7 +3162,7 @@ function tariffDraftFields(){
       <div class="card tariff-tiers">
         <div class="tariff-tier-head" aria-hidden="true">
           <span>ШК до</span>
-          <span>Ставка</span>
+          <span>Ставка, ₽</span>
           <span></span>
         </div>
         ${tierEditorHTML(manageEditorDraft.tiers)}
@@ -3227,6 +3255,11 @@ function openManageEditor(kind,id=null){
     "manageEditorVeil"
   );
 
+  prepareBottomSheetOpen(
+    manageEditorSheetElement,
+    "--sheet-drag"
+  );
+
   manageEditorSheetElement.style.display="block";
   manageEditorSheetElement.classList.remove("on");
   manageEditorSheetElement.setAttribute("aria-hidden","false");
@@ -3236,7 +3269,12 @@ function openManageEditor(kind,id=null){
   document.body.classList.add("sheet-open");
   veil.classList.add("on");
   manageEditorSheetElement.classList.add("on");
-  requestAnimationFrame(()=>manageEditorSheetElement.focus({preventScroll:true}));
+  requestAnimationFrame(()=>{
+    manageEditorSheetElement.scrollTop=0;
+    manageEditorSheetElement.focus({
+      preventScroll:true
+    });
+  });
 }
 
 function closeManageEditor(){
@@ -4319,9 +4357,12 @@ function openEmployeeEditor(
   syncEmployeeSheetHeader();
   drawEmployeeSheet();
 
+  prepareBottomSheetOpen(
+    sheet,
+    "--sheet-drag"
+  );
+
   sheet.style.display="block";
-  sheet.style.removeProperty("transition");
-  sheet.style.removeProperty("--sheet-drag");
 
   sheet.classList.remove("on");
 
@@ -4967,9 +5008,13 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
   }
 
   sheetPreviousFocus=document.activeElement;
+
+  prepareBottomSheetOpen(
+    sheet,
+    "--sheet-drag"
+  );
+
   sheet.style.display="block";
-  sheet.style.removeProperty("transition");
-  sheet.style.removeProperty("--sheet-drag");
 
   draft=restoredDraft
     ? cloneShiftDraft(restoredDraft)
@@ -5514,7 +5559,11 @@ function openDatePicker(
   const picker=document.getElementById("datePicker");
   const veil=document.getElementById("dateVeil");
   clearTimeout(datePickerHideTimer);
-  picker.style.removeProperty("--date-drag");
+
+  prepareBottomSheetOpen(
+    picker,
+    "--date-drag"
+  );
 
   datePickerValue=
     target==="shift"
@@ -5527,7 +5576,6 @@ function openDatePicker(
 
   picker.style.display="block";
   picker.classList.remove("on");
-  picker.style.removeProperty("transition");
   picker.setAttribute("aria-hidden","false");
   veil.setAttribute("aria-hidden","false");
   document.body.classList.add("date-picker-open");
@@ -5601,10 +5649,13 @@ function openPointPicker(){
   const veil=document.getElementById("pointVeil");
   clearTimeout(pointPickerHideTimer);
 
+  prepareBottomSheetOpen(
+    picker,
+    "--point-drag"
+  );
+
   picker.style.display="block";
   picker.classList.remove("on");
-  picker.style.removeProperty("transition");
-  picker.style.removeProperty("--point-drag");
   picker.setAttribute("aria-hidden","false");
   veil.setAttribute("aria-hidden","false");
 
@@ -5677,14 +5728,13 @@ function openEmployeePicker(){
     pointPickerHideTimer
   );
 
-  picker.style.display="block";
-  picker.classList.remove("on");
-  picker.style.removeProperty(
-    "transition"
-  );
-  picker.style.removeProperty(
+  prepareBottomSheetOpen(
+    picker,
     "--point-drag"
   );
+
+  picker.style.display="block";
+  picker.classList.remove("on");
   picker.setAttribute(
     "aria-hidden",
     "false"
@@ -6318,8 +6368,11 @@ function openMonthPicker(){
   const picker=document.getElementById("monthPicker");
   const veil=document.getElementById("monthVeil");
   clearTimeout(monthPickerHideTimer);
-  picker.style.removeProperty("--month-drag");
-  picker.style.removeProperty("transition");
+
+  prepareBottomSheetOpen(
+    picker,
+    "--month-drag"
+  );
 
   monthPickerValue=cursor;
   monthPickerYear=Math.min(MAX_YEAR,Math.max(MIN_YEAR,Number(monthPickerValue.slice(0,4))));
@@ -7306,6 +7359,7 @@ function bindBottomSheetDismiss({
   let snapTimer=0;
   let suppressClickUntil=0;
   let wheelTimer=0;
+  let wheelSequence=null;
 
   const blockedTarget=target=>
     target instanceof Element &&
@@ -7379,6 +7433,35 @@ function bindBottomSheetDismiss({
       }
     },440);
   };
+
+  const resetInteraction=()=>{
+    clearTimeout(snapTimer);
+    clearTimeout(wheelTimer);
+
+    snapTimer=0;
+    wheelTimer=0;
+    wheelSequence=null;
+    gesture=null;
+
+    if(dragFrame){
+      cancelAnimationFrame(
+        dragFrame
+      );
+
+      dragFrame=0;
+    }
+
+    pendingDistance=0;
+
+    element.style.removeProperty(
+      dragProperty
+    );
+  };
+
+  element.addEventListener(
+    "bottomsheetopen",
+    resetInteraction
+  );
 
   const animateClose=distance=>{
     const endDistance=
@@ -7801,11 +7884,13 @@ function bindBottomSheetDismiss({
       }
 
       if(event.deltaY>=0){
+        clearTimeout(wheelTimer);
+        wheelTimer=0;
+        wheelSequence=null;
+
         if(
           gesture?.kind==="wheel"
         ){
-          clearTimeout(wheelTimer);
-          wheelTimer=0;
           finishDrag({
             allowClose:false
           });
@@ -7814,7 +7899,34 @@ function bindBottomSheetDismiss({
         return;
       }
 
-      if(!canStart(event.target)){
+      const now=performance.now();
+
+      if(
+        !wheelSequence ||
+        now-wheelSequence.lastAt>130
+      ){
+        wheelSequence={
+          lastAt:now,
+          canDismiss:
+            canStart(event.target)
+        };
+      }else{
+        wheelSequence.lastAt=now;
+      }
+
+      clearTimeout(wheelTimer);
+      wheelTimer=setTimeout(()=>{
+        wheelTimer=0;
+        wheelSequence=null;
+
+        if(
+          gesture?.kind==="wheel"
+        ){
+          finishDrag();
+        }
+      },90);
+
+      if(!wheelSequence.canDismiss){
         return;
       }
 
@@ -7842,12 +7954,6 @@ function bindBottomSheetDismiss({
       queueDistance(
         gesture.distance
       );
-
-      clearTimeout(wheelTimer);
-      wheelTimer=setTimeout(()=>{
-        wheelTimer=0;
-        finishDrag();
-      },90);
     },
     {passive:false}
   );
@@ -8272,7 +8378,6 @@ monthSwipeArea.addEventListener(
     if(
       !["shifts","stats"].includes(tab) ||
       activeModal() ||
-      monthSwipeStartBlocked(event.target) ||
       Math.abs(event.deltaX)<=
         Math.abs(event.deltaY)
     ){
@@ -8288,7 +8393,7 @@ monthSwipeArea.addEventListener(
         monthWheelX=0;
         monthWheelY=0;
         monthWheelGestureLocked=false;
-      },220);
+      },140);
 
     if(
       monthTransitionRunning ||
@@ -8968,14 +9073,12 @@ dateGrid.addEventListener("pointercancel",e=>{
 let dateWheelX=0;
 let dateWheelY=0;
 let dateWheelTimer=0;
-let dateWheelBlockedUntil=0;
+let dateWheelGestureLocked=false;
 
 dateGrid.addEventListener(
   "wheel",
   event=>{
     if(
-      performance.now()<
-        dateWheelBlockedUntil ||
       Math.abs(event.deltaX)<=
         Math.abs(event.deltaY)
     ){
@@ -8993,7 +9096,16 @@ dateGrid.addEventListener(
       window.setTimeout(()=>{
         dateWheelX=0;
         dateWheelY=0;
+        dateWheelGestureLocked=false;
       },140);
+
+    if(dateWheelGestureLocked){
+      if(event.cancelable){
+        event.preventDefault();
+      }
+
+      return;
+    }
 
     if(
       Math.abs(dateWheelX)<42 ||
@@ -9014,8 +9126,7 @@ dateGrid.addEventListener(
 
     dateWheelX=0;
     dateWheelY=0;
-    dateWheelBlockedUntil=
-      performance.now()+460;
+    dateWheelGestureLocked=true;
 
     changeDateCalendarMonth(
       shiftMonth(

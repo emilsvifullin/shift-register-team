@@ -390,7 +390,7 @@ test(
 
     assert.match(
       styles,
-      /@media \(min-width:900px\)[\s\S]*max-width:840px/
+      /@media \(min-width:900px\)[\s\S]*max-width:720px/
     );
   }
 );
@@ -464,6 +464,66 @@ test(
     assert.match(
       styles,
       /\.tariff-tier-head[\s\S]*\.shift-employee-row \.t/
+    );
+  }
+);
+
+test(
+  "desktop sheets and repeated gestures keep their regression guards",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    const employeeUi=
+      await read(
+        "src/employee-ui.js"
+      );
+
+    const styles=
+      await read(
+        "styles.css"
+      );
+
+    assert.match(
+      app,
+      /function prepareBottomSheetOpen[\s\S]*getAnimations/
+    );
+
+    assert.match(
+      app,
+      /wheelSequence[\s\S]*canDismiss:[\s\S]*canStart\(event\.target\)/
+    );
+
+    assert.match(
+      app,
+      /wheelSequence\.canDismiss/
+    );
+
+    assert.doesNotMatch(
+      employeeUi,
+      /function employeesManageView/
+    );
+
+    assert.match(
+      employeeUi,
+      /function manageSubsectionView[\s\S]*"manageBack"/
+    );
+
+    assert.match(
+      styles,
+      /@media \(min-width:900px\)[\s\S]*max-width:720px/
+    );
+
+    assert.match(
+      styles,
+      /\.point-picker[\s\S]*max-width:604px[\s\S]*\.month-picker[\s\S]*max-width:604px/
+    );
+
+    assert.match(
+      styles,
+      /\.tariff-tier-fields input[\s\S]*border-radius:10px/
     );
   }
 );

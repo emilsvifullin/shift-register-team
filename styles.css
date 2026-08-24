@@ -1696,6 +1696,15 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
   letter-spacing:0;
 }
 
+.stats-filter-row:disabled{
+  opacity:1;
+  cursor:default;
+}
+
+.stats-filter-row:disabled .point-value{
+  color:var(--ink3);
+}
+
 .stats-filter-row:first-child{
   border-top:0;
 }

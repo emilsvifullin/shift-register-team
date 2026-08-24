@@ -408,6 +408,16 @@ test(
       /id="statsEmployeeOpen"/
     );
 
+    assert.match(
+      styles,
+      /\.stats-filter-row:disabled\{\s*opacity:1;\s*cursor:default;\s*\}/
+    );
+
+    assert.match(
+      styles,
+      /\.stats-filter-row:disabled \.point-value\{\s*color:var\(--ink3\);\s*\}/
+    );
+
     assert.doesNotMatch(
       app,
       /<select[\s\S]{0,120}id="stats(?:Point|Employee)"/

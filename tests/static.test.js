@@ -65,12 +65,17 @@ test(
 
     assert.match(
       html,
-      /autocomplete="username"/
+      /id="authForm"[\s\S]*autocomplete="off"/
     );
 
     assert.match(
       html,
-      /autocomplete="current-password"/
+      /data-1p-ignore="true"/
+    );
+
+    assert.doesNotMatch(
+      html,
+      /autocomplete="(?:username|current-password|new-password)"/
     );
 
     assert.equal(
@@ -336,6 +341,56 @@ test(
     assert.match(
       app,
       /datePickerTarget/
+    );
+  }
+);
+
+test(
+  "desktop forms and accumulated shift UX guards stay explicit",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    const styles=
+      await read(
+        "styles.css"
+      );
+
+    assert.match(
+      app,
+      /syncEmployeeDraftFromForm\(\)/
+    );
+
+    assert.match(
+      app,
+      /employeePasswordToggle/
+    );
+
+    assert.match(
+      app,
+      /monthWheelGestureLocked/
+    );
+
+    assert.match(
+      app,
+      /id="statsPoint"/
+    );
+
+    assert.match(
+      app,
+      /id="f-employee-open"/
+    );
+
+    assert.match(
+      app,
+      /FULL_HOURS-0\.5/
+    );
+
+    assert.match(
+      styles,
+      /@media \(min-width:900px\)[\s\S]*max-width:840px/
     );
   }
 );

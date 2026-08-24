@@ -1098,6 +1098,64 @@ nav.tabs button.on{
   margin-top:10px;
 }
 
+.employee-password-row{
+  cursor:default;
+}
+
+.employee-password-control{
+  min-width:0;
+  flex:1;
+
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.employee-password-control input{
+  min-width:0;
+  flex:1;
+}
+
+.employee-password-toggle{
+  width:36px;
+  height:36px;
+  flex:none;
+
+  display:grid;
+  place-items:center;
+
+  padding:0;
+  border:0;
+  border-radius:10px;
+
+  background:transparent;
+  color:var(--ink2);
+
+  cursor:pointer;
+}
+
+.employee-password-toggle svg{
+  width:20px;
+  height:20px;
+
+  overflow:visible;
+
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.employee-password-slash{
+  display:none;
+}
+
+.employee-password-toggle[aria-pressed="true"]
+.employee-password-slash{
+  display:block;
+}
+
 .employee-points{
   overflow:hidden;
 }
@@ -1208,6 +1266,44 @@ nav.tabs button.on{
   width:100%;
   border-top:1px solid var(--line);
   font-size:12px;
+}
+
+.adjustment-add-row{
+  width:100%;
+  min-height:50px;
+
+  padding:
+    12px
+    15px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+
+  border:0;
+  border-top:1px solid var(--line);
+
+  background:transparent;
+  color:var(--ink);
+
+  font:inherit;
+  font-size:14px;
+  font-weight:500;
+  text-align:left;
+
+  cursor:pointer;
+}
+
+.adjustment-add-row:first-child{
+  border-top:0;
+}
+
+.adjustment-add-plus{
+  color:var(--gold);
+  font-size:20px;
+  font-weight:400;
+  line-height:1;
 }
 
 .tariff-tier{
@@ -1410,6 +1506,20 @@ body.sheet-open{
 }
 
 .sbody{padding:4px 16px 0;max-width:620px;margin:0 auto}
+
+@media (min-width:900px){
+  .sheet{
+    left:24px;
+    right:24px;
+
+    width:auto;
+    max-width:840px;
+    margin:0 auto;
+
+    border-left:1px solid var(--line2);
+    border-right:1px solid var(--line2);
+  }
+}
 
 /* поля */
 label.row{display:flex;cursor:text}

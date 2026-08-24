@@ -146,6 +146,7 @@ let legacyMigrationEmployeeId="";
 let legacyMigrationRunning=false;
 let legacyMigrationProgress="";
 let statsEmployeeId="";
+let statsPointId="";
 let manageEditorKind=null;
 let manageEditorDraft=null;
 let manageEditorSaving=false;
@@ -165,6 +166,58 @@ const manageEditorSheetElement=
   document.getElementById(
     "manageEditorSheet"
   );
+
+function disableFieldSuggestions(
+  root=document
+){
+  const fields=
+    root instanceof HTMLInputElement ||
+    root instanceof HTMLTextAreaElement
+      ? [root]
+      : root.querySelectorAll?.(
+          "input,textarea"
+        ) || [];
+
+  fields.forEach(field=>{
+    field.setAttribute(
+      "autocomplete",
+      "off"
+    );
+
+    field.setAttribute(
+      "data-1p-ignore",
+      "true"
+    );
+
+    field.setAttribute(
+      "data-lpignore",
+      "true"
+    );
+
+    field.setAttribute(
+      "data-form-type",
+      "other"
+    );
+  });
+}
+
+disableFieldSuggestions();
+
+new MutationObserver(records=>{
+  records.forEach(record=>{
+    record.addedNodes.forEach(node=>{
+      if(node instanceof Element){
+        disableFieldSuggestions(node);
+      }
+    });
+  });
+}).observe(
+  document.body,
+  {
+    childList:true,
+    subtree:true
+  }
+);
 
 function availableTabs(){
   return isAdmin
@@ -232,6 +285,16 @@ async function refreshTeamData({
         )?.id ||
         teamData.employees[0]?.id ||
         "";
+    }
+
+    if(
+      statsPointId &&
+      !teamData.points.some(
+        point=>
+          point.id===statsPointId
+      )
+    ){
+      statsPointId="";
     }
 
     return true;
@@ -1241,7 +1304,12 @@ function viewStats(){
       ? shifts.filter(
           shift=>
             shift.employeeId===
-            selectedEmployee.id
+              selectedEmployee.id &&
+            (
+              !statsPointId ||
+              shift.dbPointId===
+                statsPointId
+            )
         )
       : [];
 
@@ -1532,13 +1600,13 @@ function viewStats(){
       })
       .join("");
 
-  const employeePicker=
+  const statsFilters=
     isAdmin
       ? `
-        <div class="ml">Сотрудник</div>
+        <div class="ml">Фильтры</div>
         <div class="card employee-editor">
           <label class="row">
-            <div class="t">Итоги</div>
+            <div class="t">Сотрудник</div>
             <select
               id="statsEmployee"
               aria-label="Сотрудник для итогов"
@@ -1553,12 +1621,33 @@ function viewStats(){
               `).join("")}
             </select>
           </label>
+
+          <label class="row">
+            <div class="t">ПВЗ</div>
+            <select
+              id="statsPoint"
+              aria-label="Пункт выдачи для итогов"
+            >
+              <option value="">
+                Все ПВЗ
+              </option>
+
+              ${teamData.points.map(point=>`
+                <option
+                  value="${esc(point.id)}"
+                  ${point.id===statsPointId ? "selected" : ""}
+                >
+                  ${esc(point.name)}${point.active===false ? " · архив" : ""}
+                </option>
+              `).join("")}
+            </select>
+          </label>
         </div>
       `
       : "";
 
   return `
-    ${employeePicker}
+    ${statsFilters}
 
     <div class="card">
       <div class="hero">
@@ -3638,7 +3727,7 @@ function drawEmployeeSheet(){
           type="tel"
           id="employeePhone"
           inputmode="tel"
-          autocomplete="tel"
+          autocomplete="off"
           dir="ltr"
           value="${esc(employeeDraft.phone)}"
           placeholder="+7 999 123-45-67"
@@ -3741,16 +3830,40 @@ function drawEmployeeSheet(){
     </div>
 
     <div class="card employee-editor employee-password-card">
-      <label class="row">
+      <div class="row employee-password-row">
         <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
-        <input
-          type="password"
-          id="employeePassword"
-          autocomplete="new-password"
-          value=""
-          placeholder="${employeeDraft.userId ? "Не менять" : "Необязательно"}"
-        >
-      </label>
+
+        <div class="employee-password-control">
+          <input
+            type="password"
+            id="employeePassword"
+            autocomplete="off"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-form-type="other"
+            value="${esc(employeeDraft.password || "")}"
+            placeholder="${employeeDraft.userId ? "Не менять" : "Необязательно"}"
+            aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
+          >
+
+          <button
+            type="button"
+            class="employee-password-toggle"
+            id="employeePasswordToggle"
+            aria-label="Показать пароль"
+            aria-pressed="false"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+              <circle cx="12" cy="12" r="2.7"></circle>
+              <path class="employee-password-slash" d="M4 4l16 16"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="employee-help">
@@ -4326,6 +4439,8 @@ async function saveEmployeeDraft(){
   ){
     return;
   }
+
+  syncEmployeeDraftFromForm();
 
   const name=
     employeeDraft.fullName
@@ -5508,9 +5623,12 @@ function selectDate(ymd){
 
 let pointPickerHideTimer;
 let pointPickerValue="";
+let pointPickerKind="point";
 
 function openPointPicker(){
   if(!draft) return;
+
+  pointPickerKind="point";
 
   pointPreviousFocus=document.activeElement;
   const list=document.getElementById("pointList");
@@ -5528,12 +5646,19 @@ function openPointPicker(){
   pointPickerValue=
     draft.dbPointId;
 
+  document
+    .getElementById(
+      "pointPickerTitle"
+    )
+    .textContent=
+      "Выберите пункт";
+
   list.innerHTML=shiftPointOptions()
     .map(point=>`
     <button
       type="button"
       class="point-option ${point.id===pointPickerValue?"on":""}"
-      data-point="${esc(point.id)}"
+      data-picker-value="${esc(point.id)}"
     >
       <span class="point-check">
         ${point.id===pointPickerValue?"✓":""}
@@ -5554,6 +5679,105 @@ function openPointPicker(){
     const selected=list.querySelector(".point-option.on") || list.querySelector(".point-option");
     if(selected){
       selected.scrollIntoView({block:"center"});
+      selected.focus();
+    }
+  });
+}
+
+function openEmployeePicker(){
+  if(!draft){
+    return;
+  }
+
+  pointPickerKind="employee";
+  pointPreviousFocus=
+    document.activeElement;
+
+  const list=
+    document.getElementById(
+      "pointList"
+    );
+
+  const picker=
+    document.getElementById(
+      "pointPicker"
+    );
+
+  const veil=
+    document.getElementById(
+      "pointVeil"
+    );
+
+  clearTimeout(
+    pointPickerHideTimer
+  );
+
+  picker.style.display="block";
+  picker.classList.remove("on");
+  picker.style.removeProperty(
+    "transition"
+  );
+  picker.style.removeProperty(
+    "--point-drag"
+  );
+  picker.setAttribute(
+    "aria-hidden",
+    "false"
+  );
+  veil.setAttribute(
+    "aria-hidden",
+    "false"
+  );
+
+  pointPickerValue=
+    draft.employeeId;
+
+  document
+    .getElementById(
+      "pointPickerTitle"
+    )
+    .textContent=
+      "Выберите сотрудника";
+
+  list.innerHTML=
+    shiftEmployeeOptions()
+      .map(employee=>`
+        <button
+          type="button"
+          class="point-option ${employee.id===pointPickerValue ? "on" : ""}"
+          data-picker-value="${esc(employee.id)}"
+        >
+          <span class="point-check">
+            ${employee.id===pointPickerValue ? "✓" : ""}
+          </span>
+
+          <span class="point-name">
+            ${esc(employee.full_name)}${employee.status==="inactive" ? " · в архиве" : ""}
+          </span>
+        </button>
+      `)
+      .join("");
+
+  document.body.classList.add(
+    "point-picker-open"
+  );
+  veil.classList.add("on");
+  void picker.offsetHeight;
+  picker.classList.add("on");
+
+  requestAnimationFrame(()=>{
+    const selected=
+      list.querySelector(
+        ".point-option.on"
+      ) ||
+      list.querySelector(
+        ".point-option"
+      );
+
+    if(selected){
+      selected.scrollIntoView({
+        block:"center"
+      });
       selected.focus();
     }
   });
@@ -5693,13 +5917,18 @@ function adjustmentEditorHTML(
       ? "Премия"
       : "Штраф";
 
+  const addLabel=
+    kind==="bonuses"
+      ? "Добавить премию"
+      : "Добавить штраф";
+
   return `
     <div class="card adjustment-list">
       ${(rows || []).map((item,index)=>`
         <div class="adjustment-row" data-adjustment-kind="${kind}" data-adjustment-index="${index}">
           <label class="row">
             <div class="t">${label}</div>
-            <input type="text" inputmode="decimal" data-adjustment-amount value="${esc(String(item.amount ?? "").replace(".",","))}" placeholder="0">
+            <input type="text" inputmode="decimal" data-adjustment-amount value="${esc(String(item.amount ?? "").replace(".",","))}" placeholder="0" autocomplete="off">
           </label>
           <label class="row">
             <div class="t">Комментарий</div>
@@ -5710,9 +5939,15 @@ function adjustmentEditorHTML(
           </button>
         </div>
       `).join("")}
-      ${rows?.length ? "" : `
-        <div class="employee-empty">Не добавлено.</div>
-      `}
+
+      <button
+        type="button"
+        class="adjustment-add-row"
+        data-adjustment-add="${kind}"
+      >
+        <span>${rows?.length ? "Добавить ещё" : addLabel}</span>
+        <span class="adjustment-add-plus" aria-hidden="true">+</span>
+      </button>
     </div>
   `;
 }
@@ -5793,24 +6028,27 @@ function drawSheet(isEdit){
     return;
   }
 
-  const employeeOptions=
+  const selectedEmployee=
     shiftEmployeeOptions()
-      .map(employee=>`
-        <option value="${esc(employee.id)}" ${employee.id===draft.employeeId ? "selected" : ""}>
-          ${esc(employee.full_name)}${employee.status==="inactive" ? " · архив" : ""}
-        </option>
-      `)
-      .join("");
+      .find(
+        employee=>
+          employee.id===
+          draft.employeeId
+      );
 
   document.getElementById("sheetBody").innerHTML=`
     <div class="ml">Смена</div>
     <div class="card">
-      <label class="row">
+      <button
+        type="button"
+        class="row point-row"
+        id="f-employee-open"
+      >
         <div class="t">Сотрудник</div>
-        <select id="f-employee" aria-label="Сотрудник">
-          ${employeeOptions}
-        </select>
-      </label>
+        <div class="point-value">
+          ${esc(selectedEmployee?.full_name || "Выберите сотрудника")}
+        </div>
+      </button>
       <button type="button" class="row point-row" id="f-date-open">
         <div class="t">Дата</div>
         <div class="point-value">${esc(dateLabel(draft.date))}</div>
@@ -5822,7 +6060,7 @@ function drawSheet(isEdit){
       ${fixed ? "" : `
         <label class="row">
           <div class="t">ШК</div>
-          <input type="number" inputmode="numeric" id="f-shk" min="0" max="${MAX_SHK}" step="1" value="${esc(draft.shk)}" placeholder="0" aria-label="ШК">
+          <input type="number" inputmode="numeric" id="f-shk" min="0" max="${MAX_SHK}" step="1" value="${esc(draft.shk)}" placeholder="0" aria-label="ШК" autocomplete="off">
         </label>
       `}
     </div>
@@ -5839,16 +6077,14 @@ function drawSheet(isEdit){
         <button type="button" data-part="0" class="${!draft.partial?"on":""}">Полная смена</button>
         <button type="button" data-part="1" class="${draft.partial?"on":""}">Неполная смена</button>
       </div></div>
-      ${draft.partial?`<label class="row"><div class="t">Часов</div><input type="text" inputmode="decimal" id="f-hours" value="${esc(draft.hours==="" ? "" : String(draft.hours).replace(".",","))}" placeholder="0" aria-label="Часов"></label>`:""}
+      ${draft.partial?`<label class="row"><div class="t">Часов</div><input type="text" inputmode="decimal" id="f-hours" min="0.5" max="${FULL_HOURS-0.5}" step="0.5" value="${esc(draft.hours==="" ? "" : String(draft.hours).replace(".",","))}" placeholder="0" aria-label="Часов" autocomplete="off"></label>`:""}
     </div>
 
     <div class="ml">Премии</div>
     ${adjustmentEditorHTML("bonuses",draft.bonuses)}
-    <button type="button" class="btn" data-adjustment-add="bonuses">Добавить премию</button>
 
     <div class="ml">Штрафы</div>
     ${adjustmentEditorHTML("penalties",draft.penalties)}
-    <button type="button" class="btn" data-adjustment-add="penalties">Добавить штраф</button>
 
     <div class="ml">Расчёт</div>
     <div class="calc" id="calcBox">${calcHTML()}</div>
@@ -5876,11 +6112,6 @@ function readForm(){
         : Number(
             value.replace(",",".")
           );
-  }
-
-  if(get("f-employee")){
-    draft.employeeId=
-      get("f-employee").value;
   }
 
   document
@@ -5964,7 +6195,7 @@ function validateMoneyField(value,label,{allowEmpty=true,max=MAX_MONEY}={}){
 
 function validateDraft(value){
   if(!isValidDateString(value.date)) return {message:`Выберите дату с ${MIN_YEAR} по ${MAX_YEAR} год`,fieldId:"f-date-open"};
-  if(!shiftEmployeeOptions(value).some(employee=>employee.id===value.employeeId)) return {message:"Выберите сотрудника",fieldId:"f-employee"};
+  if(!shiftEmployeeOptions(value).some(employee=>employee.id===value.employeeId)) return {message:"Выберите сотрудника",fieldId:"f-employee-open"};
   if(!shiftPointOptions(value).some(point=>point.id===value.dbPointId)) return {message:"Выберите назначенный ПВЗ",fieldId:"f-point-open"};
 
   if(!previewCalc(value).fixed){
@@ -8000,16 +8231,13 @@ monthSwipeArea.addEventListener(
 let monthWheelX=0;
 let monthWheelY=0;
 let monthWheelTimer=0;
-let monthWheelBlockedUntil=0;
+let monthWheelGestureLocked=false;
 
 monthSwipeArea.addEventListener(
   "wheel",
   event=>{
     if(
-      performance.now()<
-        monthWheelBlockedUntil ||
       !["shifts","stats"].includes(tab) ||
-      monthTransitionRunning ||
       activeModal() ||
       monthSwipeStartBlocked(event.target) ||
       Math.abs(event.deltaX)<=
@@ -8017,9 +8245,6 @@ monthSwipeArea.addEventListener(
     ){
       return;
     }
-
-    monthWheelX+=event.deltaX;
-    monthWheelY+=event.deltaY;
 
     window.clearTimeout(
       monthWheelTimer
@@ -8029,7 +8254,22 @@ monthSwipeArea.addEventListener(
       window.setTimeout(()=>{
         monthWheelX=0;
         monthWheelY=0;
-      },140);
+        monthWheelGestureLocked=false;
+      },220);
+
+    if(
+      monthTransitionRunning ||
+      monthWheelGestureLocked
+    ){
+      if(event.cancelable){
+        event.preventDefault();
+      }
+
+      return;
+    }
+
+    monthWheelX+=event.deltaX;
+    monthWheelY+=event.deltaY;
 
     if(
       Math.abs(monthWheelX)<48 ||
@@ -8050,8 +8290,7 @@ monthSwipeArea.addEventListener(
 
     monthWheelX=0;
     monthWheelY=0;
-    monthWheelBlockedUntil=
-      performance.now()+520;
+    monthWheelGestureLocked=true;
 
     changeMonth(
       shiftMonth(cursor,direction),
@@ -9050,6 +9289,48 @@ employeeSheetElement.addEventListener(
       return;
     }
 
+    syncEmployeeDraftFromForm();
+
+    if(
+      button.id===
+      "employeePasswordToggle"
+    ){
+      const field=
+        document.getElementById(
+          "employeePassword"
+        );
+
+      if(!field){
+        return;
+      }
+
+      const visible=
+        field.type==="text";
+
+      field.type=
+        visible
+          ? "password"
+          : "text";
+
+      button.setAttribute(
+        "aria-pressed",
+        String(!visible)
+      );
+
+      button.setAttribute(
+        "aria-label",
+        visible
+          ? "Показать пароль"
+          : "Скрыть пароль"
+      );
+
+      field.focus({
+        preventScroll:true
+      });
+
+      return;
+    }
+
     if(
       button.id===
       "employeeDelete"
@@ -9309,6 +9590,12 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     return;
   }
 
+  if(t.id==="f-employee-open"){
+    readForm();
+    openEmployeePicker();
+    return;
+  }
+
   if(t.id==="f-point-open"){
     readForm();
     openPointPicker();
@@ -9406,52 +9693,23 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
   }
 });
 
-document.getElementById("sheetBody").addEventListener("change",event=>{
-  if(
-    !draft ||
-    event.target.id!=="f-employee"
-  ){
-    return;
-  }
-
-  readForm();
-
-  draft.dbPointId="";
-
-  const point=
-    shiftPointOptions(draft)[0] ||
-    null;
-
-  draft.dbPointId=
-    point?.id || "";
-  draft.pointId=
-    point?.code || point?.id || "";
-  draft.point=
-    point?.name || "ПВЗ не назначен";
-  draft.shk="";
-
-  drawSheet(
-    shifts.some(
-      item=>item.id===draft.id
-    )
-  );
-  saveUIState();
-});
-
 document
   .getElementById("pointList")
   .addEventListener(
     "click",
     e=>{
       const option=
-        e.target.closest("[data-point]");
+        e.target.closest(
+          "[data-picker-value]"
+        );
 
       if(!option || !draft){
         return;
       }
 
       pointPickerValue=
-        option.dataset.point;
+        option.dataset
+          .pickerValue;
 
       document
         .querySelectorAll(
@@ -9459,8 +9717,9 @@ document
         )
         .forEach(button=>{
           const selected=
-            button.dataset.point===
-            pointPickerValue;
+            button.dataset
+              .pickerValue===
+              pointPickerValue;
 
           button.classList.toggle(
             "on",
@@ -9493,6 +9752,51 @@ document
       !draft ||
       !pointPickerValue
     ){
+      return;
+    }
+
+    if(pointPickerKind==="employee"){
+      const employee=
+        shiftEmployeeOptions()
+          .find(
+            item=>
+              item.id===
+              pointPickerValue
+          );
+
+      if(!employee){
+        return;
+      }
+
+      readForm();
+
+      draft.employeeId=
+        employee.id;
+      draft.dbPointId="";
+
+      const point=
+        shiftPointOptions(draft)[0] ||
+        null;
+
+      draft.dbPointId=
+        point?.id || "";
+      draft.pointId=
+        point?.code ||
+        point?.id || "";
+      draft.point=
+        point?.name ||
+        "ПВЗ не назначен";
+      draft.shk="";
+
+      closePointPicker();
+
+      drawSheet(
+        shifts.some(
+          item=>
+            item.id===draft.id
+        )
+      );
+      saveUIState();
       return;
     }
 
@@ -9538,6 +9842,9 @@ document
 
 document.getElementById("sheetBody").addEventListener("input",e=>{
   if(e.target.id==="f-hours"){
+    const maxHours=
+      FULL_HOURS-0.5;
+
     let value=
       e.target.value
         .replace(/\./g,",")
@@ -9558,6 +9865,22 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
           )
           .replace(/,/g,"")
           .slice(0,1);
+    }
+
+    const numericValue=
+      Number(
+        value.replace(",",".")
+      );
+
+    if(
+      value &&
+      !value.endsWith(",") &&
+      Number.isFinite(numericValue) &&
+      numericValue>maxHours
+    ){
+      value=
+        String(maxHours)
+          .replace(".",",");
     }
 
     e.target.value=value;
@@ -9714,6 +10037,16 @@ function updateEmployeeDraftField(
     employeeDraft.password=
       target.value;
   }
+}
+
+function syncEmployeeDraftFromForm(){
+  employeeSheetElement
+    .querySelectorAll(
+      "input,select"
+    )
+    .forEach(
+      updateEmployeeDraftField
+    );
 }
 
 employeeSheetElement.addEventListener(
@@ -10052,6 +10385,14 @@ app.addEventListener("click",async event=>{
 app.addEventListener("change",event=>{
   if(event.target.id==="statsEmployee"){
     statsEmployeeId=
+      event.target.value;
+
+    render();
+    return;
+  }
+
+  if(event.target.id==="statsPoint"){
+    statsPointId=
       event.target.value;
 
     render();

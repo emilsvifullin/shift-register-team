@@ -5973,6 +5973,7 @@ function openChoicePicker({
     "--point-drag"
   );
 
+  picker.style.transition="none";
   picker.style.display="block";
   picker.classList.remove("on");
   picker.setAttribute("aria-hidden","false");
@@ -6021,6 +6022,8 @@ function openChoicePicker({
 
   document.body.classList.add("point-picker-open");
   veil.classList.add("on");
+  void picker.offsetHeight;
+  picker.style.removeProperty("transition");
   void picker.offsetHeight;
   picker.classList.add("on");
 

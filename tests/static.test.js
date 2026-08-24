@@ -450,6 +450,11 @@ test(
 
     assert.match(
       app,
+      /picker\.style\.transition="none";[\s\S]*positionAppPicker\([\s\S]*picker\.style\.removeProperty\("transition"\);[\s\S]*picker\.classList\.add\("on"\)/
+    );
+
+    assert.match(
+      app,
       /veil\.classList\.remove\("on"\);[\s\S]*void veil\.offsetHeight;[\s\S]*veil\.classList\.remove\([\s\S]*"app-picker-anchored-veil"/
     );
 

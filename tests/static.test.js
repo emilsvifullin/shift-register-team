@@ -435,7 +435,17 @@ test(
 
     assert.match(
       styles,
-      /body\.app-picker-anchored-open \.point-veil\{[\s\S]*background:transparent;[\s\S]*transition:none;/
+      /\.point-veil\.app-picker-anchored-veil\{[\s\S]*background:transparent;[\s\S]*transition:none;/
+    );
+
+    assert.match(
+      styles,
+      /\.point-picker\.app-picker-anchored\{[\s\S]*opacity:0;[\s\S]*transform \.16s ease-out,[\s\S]*opacity \.13s ease-out;/
+    );
+
+    assert.match(
+      app,
+      /app-picker-anchored-veil[\s\S]*pointPickerHideTimer=setTimeout\([\s\S]*finishClose,[\s\S]*160/
     );
 
     assert.match(

@@ -6009,6 +6009,11 @@ function openChoicePicker({
       pointPreviousFocus
     );
 
+  veil.classList.toggle(
+    "app-picker-anchored-veil",
+    anchored
+  );
+
   document.body.classList.toggle(
     "app-picker-anchored-open",
     anchored
@@ -6127,12 +6132,16 @@ function closePointPicker(){
   picker.setAttribute("aria-hidden","true");
 
   const veil=document.getElementById("pointVeil");
-  veil.classList.remove("on");
-  veil.setAttribute("aria-hidden","true");
-  document.body.classList.remove("point-picker-open");
-  document.body.classList.remove(
-    "app-picker-anchored-open"
-  );
+
+  if(!anchored){
+    veil.classList.remove("on");
+    veil.setAttribute("aria-hidden","true");
+    document.body.classList.remove("point-picker-open");
+    document.body.classList.remove(
+      "app-picker-anchored-open"
+    );
+  }
+
   clearTimeout(pointPickerHideTimer);
 
   const previousFocus=pointPreviousFocus;
@@ -6144,13 +6153,25 @@ function closePointPicker(){
       resetAppPickerPosition(
         picker
       );
+      veil.classList.remove(
+        "on",
+        "app-picker-anchored-veil"
+      );
+      veil.setAttribute("aria-hidden","true");
+      document.body.classList.remove("point-picker-open");
+      document.body.classList.remove(
+        "app-picker-anchored-open"
+      );
     }
     picker.style.removeProperty("--point-drag");
     if(previousFocus && document.contains(previousFocus)) previousFocus.focus();
   };
 
   if(anchored){
-    finishClose();
+    pointPickerHideTimer=setTimeout(
+      finishClose,
+      160
+    );
     return;
   }
 

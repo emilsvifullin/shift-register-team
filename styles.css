@@ -1790,7 +1790,7 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
 }
 
 @media (min-width:760px) and (hover:hover) and (pointer:fine){
-  body.app-picker-anchored-open .point-veil{
+  .point-veil.app-picker-anchored-veil{
     background:transparent;
     transition:none;
   }
@@ -1807,22 +1807,25 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
 
     border-radius:14px;
 
-    transform:none;
+    transform:translate3d(0,4px,0) scale(.99);
     transform-origin:center;
 
-    opacity:1;
-    will-change:auto;
-    transition:none;
+    opacity:0;
+    will-change:transform,opacity;
+    transition:
+      transform .16s ease-out,
+      opacity .13s ease-out;
   }
 
   .point-picker.app-picker-anchored.app-picker-above{
-    transform:none;
+    transform:translate3d(0,-4px,0) scale(.99);
     transform-origin:bottom center;
   }
 
   .point-picker.app-picker-anchored.on,
   .point-picker.app-picker-anchored.app-picker-above.on{
-    transform:none;
+    transform:translate3d(0,0,0) scale(1);
+    opacity:1;
   }
 
   .point-picker.app-picker-anchored .point-list{

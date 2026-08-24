@@ -559,6 +559,16 @@ test(
       /<details class="tariff-history-item">/
     );
 
+    assert.doesNotMatch(
+      app,
+      /Система оплаты/
+    );
+
+    assert.match(
+      app,
+      /\? "Фиксированный"\s+: "По ШК";/
+    );
+
     assert.match(
       app,
       /Изменить тариф/

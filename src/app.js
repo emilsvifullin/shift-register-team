@@ -2878,7 +2878,6 @@ function tariffCardHTML(
     <div class="card tariff-info-card">
       <div class="tariff-info-head">
         <div>
-          <div class="s">Система оплаты</div>
           <div class="t">
             ${tariffTypeLabel(tariff)}
           </div>

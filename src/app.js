@@ -47,6 +47,7 @@ import {
   deleteAdminShift,
   importAdminLegacyShifts,
   loadTeamData,
+  rollbackAdminEmployeeCreation,
   saveAdminEmployee,
   saveAdminEmployeeAuth,
   saveAdminPoint,
@@ -114,6 +115,7 @@ let isAdmin=false;
 let currentUser=null;
 let currentProfile=null;
 let employeeLinked=true;
+let employeeArchived=false;
 let serverConnected=false;
 let serverDataError=null;
 let realtimeStatus="connecting";
@@ -131,7 +133,8 @@ let teamData={
   tariffs:[],
   shifts:[],
   employee:null,
-  linked:true
+  linked:true,
+  archived:false
 };
 
 let teamDataLoaded=false;
@@ -272,6 +275,8 @@ async function refreshTeamData({
     shifts=teamData.shifts;
     employeeLinked=
       teamData.linked!==false;
+    employeeArchived=
+      teamData.archived===true;
     serverConnected=true;
 
     teamDataLoaded=true;
@@ -863,6 +868,14 @@ function exportEnvelopeJson(){
       format:
         "shift-register-server-backup",
       version:1,
+      scope:
+        "operational-data",
+      containsPersonalData:true,
+      excludes:[
+        "auth_accounts",
+        "profiles",
+        "audit_log"
+      ],
       exportedAt:
         new Date().toISOString(),
       shifts,
@@ -1201,6 +1214,25 @@ function serverStateCard(){
           </div>
           <div class="manage-placeholder-detail">
             Обратитесь к администратору, чтобы он выбрал этот аккаунт в карточке сотрудника.
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if(
+    !isAdmin &&
+    employeeArchived
+  ){
+    return `
+      <div class="ml">Аккаунт</div>
+      <div class="card">
+        <div class="manage-placeholder">
+          <div class="manage-placeholder-title">
+            Сотрудник находится в архиве
+          </div>
+          <div class="manage-placeholder-detail">
+            Доступ к рабочим данным закрыт. Обратитесь к администратору, если сотрудника нужно восстановить.
           </div>
         </div>
       </div>
@@ -2001,17 +2033,17 @@ function viewData(){
     `}
 
     ${isAdmin ? `
-      <div class="ml">Резервная копия</div>
+      <div class="ml">Экспорт данных</div>
       <div class="card">
         <div class="row">
           <div class="l">
-            <div class="t">Копия данных</div>
-            <div class="s">Файл нужен только для ручного архива и восстановления вне приложения.</div>
+            <div class="t">Рабочие данные</div>
+            <div class="s">Файл содержит ФИО, телефоны и реквизиты. В него не входят аккаунты входа и журнал аудита; храните файл в защищённом месте.</div>
           </div>
         </div>
       </div>
       <button class="btn gold" id="doExport">
-        Скачать резервную копию
+        Скачать экспорт
       </button>
     ` : ""}
 
@@ -4188,6 +4220,15 @@ function employeeSaveError(
     ) ||
     message.includes(
       "employee_auth_http_"
+    ) ||
+    message.includes(
+      "employee_delete_begin_failed"
+    ) ||
+    message.includes(
+      "employee_delete_cancel_failed"
+    ) ||
+    message.includes(
+      "employee_delete_finalize_failed"
     )
   ){
     return "Сервер создания аккаунта недоступен. Повторите попытку.";
@@ -4878,6 +4919,11 @@ async function saveEmployeeDraft(){
       employeeDraft.id
     );
 
+  const hadLinkedAccount=
+    Boolean(
+      employeeDraft.userId
+    );
+
   const saveButton=
     document.getElementById(
       "employeeSheetSave"
@@ -4915,6 +4961,7 @@ async function saveEmployeeDraft(){
       employeeId;
 
     let authFailure=null;
+    let creationRolledBack=false;
 
     if(
       employeeDraft.userId ||
@@ -4932,21 +4979,70 @@ async function saveEmployeeDraft(){
       }
     }
 
+    if(
+      authFailure &&
+      !wasExisting &&
+      !hadLinkedAccount
+    ){
+      try{
+        await rollbackAdminEmployeeCreation(
+          employeeId
+        );
+
+        creationRolledBack=true;
+      }catch{}
+    }
+
     const refreshed=
       await refreshTeamData({
         renderAfter:false
       });
 
     if(!refreshed){
+      if(creationRolledBack){
+        employeeDraft.id=null;
+      }
+
       employeeSaving=false;
       saveButton.disabled=false;
 
       toast(
-        "Сотрудник сохранён, но список не удалось обновить",
-        4000
+        creationRolledBack
+          ? `Аккаунт не создан, карточка не сохранена: ${authFailure}`
+          : "Сотрудник сохранён, но список не удалось обновить",
+        creationRolledBack
+          ? 5600
+          : 4000
       );
 
       return;
+    }
+
+    if(creationRolledBack){
+      employeeDraft.id=null;
+      employeeSaving=false;
+      saveButton.disabled=false;
+
+      updateEmployeeList();
+
+      toast(
+        `Аккаунт не создан, карточка не сохранена: ${authFailure}`,
+        5600
+      );
+
+      return;
+    }
+
+    if(authFailure){
+      const savedEmployee=
+        teamData.employees.find(
+          employee=>
+            employee.id===employeeId
+        );
+
+      if(savedEmployee?.user_id){
+        authFailure=null;
+      }
     }
 
     employeeSaving=false;
@@ -5026,6 +5122,31 @@ function employeeDeleteError(
     return "Сотрудник больше не существует";
   }
 
+  if(
+    message.includes(
+      "employee_auth_delete_failed"
+    ) ||
+    message.includes(
+      "employee_history_read_failed"
+    ) ||
+    message.includes(
+      "employee_auth_request_failed"
+    ) ||
+    message.includes(
+      "employee_auth_http_"
+    )
+  ){
+    return "Не удалось полностью удалить аккаунт сотрудника. Повторите попытку.";
+  }
+
+  if(
+    message.includes(
+      "admin_account_protected"
+    )
+  ){
+    return "Аккаунт администратора нельзя удалить вместе с сотрудником";
+  }
+
   return (
     message ||
     "Не удалось удалить сотрудника"
@@ -5050,7 +5171,7 @@ async function deleteEmployeeDraft(){
         okText:"Удалить",
         danger:true,
         detail:
-          "Удаление возможно только если у сотрудника нет истории смен."
+          "Если у сотрудника нет истории смен, карточка и привязанный аккаунт входа будут удалены полностью."
       }
     );
 
@@ -10883,7 +11004,7 @@ app.addEventListener("click",async event=>{
 
   if(button.id==="doExport"){
     downloadText(exportEnvelopeJson(),backupFilename());
-    toast("Серверный export скачан");
+    toast("Экспорт скачан");
     return;
   }
 

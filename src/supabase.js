@@ -1,8 +1,8 @@
-const SUPABASE_URL=
-  "https://shift-register-supabase-proxy.vercel.app";
-
 const SUPABASE_PROJECT_URL=
   "https://rxosovinouuonwrrzigs.supabase.co";
+
+const SUPABASE_URL=
+  SUPABASE_PROJECT_URL;
 
 const SUPABASE_FUNCTIONS_URL=
   `${SUPABASE_PROJECT_URL}/functions/v1`;
@@ -53,7 +53,7 @@ export async function invokeSupabaseFunction(
     await supabaseClient.auth
       .getSession();
 
-  const accessToken=
+  let accessToken=
     data.session?.access_token;
 
   if(error || !accessToken){
@@ -63,28 +63,55 @@ export async function invokeSupabaseFunction(
     );
   }
 
-  let response;
+  const send=async token=>{
+    try{
+      return await fetch(
+        `${SUPABASE_FUNCTIONS_URL}/${encodeURIComponent(name)}`,
+        {
+          method:"POST",
+          headers:{
+            Authorization:
+              `Bearer ${token}`,
+            apikey:
+              SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type":
+              "application/json"
+          },
+          body:JSON.stringify(body)
+        }
+      );
+    }catch{
+      throw new Error(
+        "employee_auth_request_failed"
+      );
+    }
+  };
 
-  try{
-    response=await fetch(
-      `${SUPABASE_FUNCTIONS_URL}/${encodeURIComponent(name)}`,
-      {
-        method:"POST",
-        headers:{
-          Authorization:
-            `Bearer ${accessToken}`,
-          apikey:
-            SUPABASE_PUBLISHABLE_KEY,
-          "Content-Type":
-            "application/json"
-        },
-        body:JSON.stringify(body)
-      }
-    );
-  }catch{
-    throw new Error(
-      "employee_auth_request_failed"
-    );
+  let response=
+    await send(accessToken);
+
+  if(response.status===401){
+    const {
+      data:refreshData,
+      error:refreshError
+    }=await supabaseClient.auth
+      .refreshSession();
+
+    accessToken=
+      refreshData.session?.access_token;
+
+    if(
+      refreshError ||
+      !accessToken
+    ){
+      throw new Error(
+        refreshError?.message ||
+        "unauthorized"
+      );
+    }
+
+    response=
+      await send(accessToken);
   }
 
   let result=null;

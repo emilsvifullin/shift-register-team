@@ -357,8 +357,6 @@ export function pricingDriversChanged(
       next.point_id ||
     previous.shift_date!==
       next.shift_date ||
-    previous.shift_type!==
-      next.shift_type ||
     normalizedDriver(
       previous.shk
     )!==

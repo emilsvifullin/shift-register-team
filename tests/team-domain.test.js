@@ -192,7 +192,7 @@ test("pricing snapshot makes a historical shift independent of later tariffs",()
   assert.equal(calc(historical).base,3500);
 });
 
-test("pricing drivers include employee, point, date, type, SHK, partial and hours",()=>{
+test("pricing drivers exclude shift type when it does not affect the rate",()=>{
   const previous={
     employee_id:"employee-1",
     point_id:point.id,
@@ -211,11 +211,21 @@ test("pricing drivers include employee, point, date, type, SHK, partial and hour
     false
   );
 
+  assert.equal(
+    pricingDriversChanged(
+      previous,
+      {
+        ...previous,
+        shift_type:"extra"
+      }
+    ),
+    false
+  );
+
   for(const changed of [
     {employee_id:"employee-2"},
     {point_id:fixedPoint.id},
     {shift_date:"2026-08-06"},
-    {shift_type:"extra"},
     {shk:351},
     {partial:true,hours:6}
   ]){

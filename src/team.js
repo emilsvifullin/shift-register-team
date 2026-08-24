@@ -78,7 +78,11 @@ const ERROR_MESSAGES=Object.freeze({
   invalid_bonus:
     "Проверьте сумму и комментарий премии",
   invalid_penalty:
-    "Проверьте сумму и комментарий штрафа"
+    "Проверьте сумму и комментарий штрафа",
+  employee_creation_rollback_forbidden:
+    "Нельзя отменить создание сотрудника: карточка уже используется",
+  employee_deletion_pending:
+    "Удаление сотрудника уже выполняется"
 });
 
 function readableError(
@@ -258,6 +262,7 @@ export async function loadAdminTeamData(){
 
   return {
     linked:true,
+    archived:false,
     employee:null,
 
     employees,
@@ -333,8 +338,23 @@ export async function loadEmployeeTeamData(
   if(!employee){
     return {
       linked:false,
+      archived:false,
       employee:null,
       employees:[],
+      points:[],
+      employeePoints:[],
+      accounts:[],
+      tariffs:[],
+      shifts:[]
+    };
+  }
+
+  if(employee.status==="inactive"){
+    return {
+      linked:true,
+      archived:true,
+      employee,
+      employees:[employee],
       points:[],
       employeePoints:[],
       accounts:[],
@@ -350,6 +370,7 @@ export async function loadEmployeeTeamData(
 
   return {
     linked:true,
+    archived:false,
     employee,
     employees:[employee],
     points:[],
@@ -424,11 +445,30 @@ export async function saveAdminEmployeeAuth({
   return invokeSupabaseFunction(
     "admin-employee-auth",
     {
+      action:"save",
       employeeId,
       email,
       password:
         password || undefined
     }
+  );
+}
+
+export async function rollbackAdminEmployeeCreation(
+  id
+){
+  const result=
+    await supabaseClient
+      .rpc(
+        "admin_rollback_employee_creation",
+        {
+          p_employee_id:id
+        }
+      );
+
+  return resultData(
+    result,
+    "Не удалось отменить создание сотрудника"
   );
 }
 
@@ -506,18 +546,12 @@ export async function subscribeTeamChanges({
 export async function deleteAdminEmployee(
   id
 ){
-  const result=
-    await supabaseClient
-      .rpc(
-        "admin_delete_employee",
-        {
-          p_employee_id:id
-        }
-      );
-
-  return resultData(
-    result,
-    "Не удалось удалить сотрудника"
+  return invokeSupabaseFunction(
+    "admin-employee-auth",
+    {
+      action:"delete",
+      employeeId:id
+    }
   );
 }
 

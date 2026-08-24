@@ -49,7 +49,6 @@ begin
   end if;
 end;
 $$;
-
 create unique index if not exists employees_phone_uidx
   on public.employees(phone)
   where phone is not null;

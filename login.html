@@ -33,8 +33,13 @@
   >
 
   <meta
+    name="referrer"
+    content="no-referrer"
+  >
+
+  <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app; object-src 'none'; base-uri 'self'; form-action 'self'"
+    content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://rxosovinouuonwrrzigs.supabase.co; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'"
   >
 
   <meta
@@ -88,6 +93,8 @@
   >
 
   <title>Shift Register</title>
+
+  <script src="./src/frame-guard.js"></script>
 
   <link
     rel="stylesheet"

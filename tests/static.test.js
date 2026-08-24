@@ -454,6 +454,71 @@ test(
 );
 
 test(
+  "shifts empty state uses the management layout and a centered tab bar",
+  async()=>{
+    const html=
+      await read(
+        "index.html"
+      );
+
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    const styles=
+      await read(
+        "styles.css"
+      );
+
+    assert.doesNotMatch(
+      html,
+      /id="fab"|fab-slot/
+    );
+
+    assert.match(
+      app,
+      /class="manage-add"[\s\S]*id="shiftAdd"[\s\S]*Добавить смену/
+    );
+
+    assert.match(
+      app,
+      /<div class="ml">\$\{listLabel\}<\/div>[\s\S]*employee-empty[\s\S]*В этом месяце смен пока нет\./
+    );
+
+    assert.doesNotMatch(
+      app,
+      /emptyAdd|shouldShowFab|has-fab/
+    );
+
+    assert.doesNotMatch(
+      styles,
+      /\.fab(?:\{|\W)|has-fab|empty-add/
+    );
+
+    const bottomControls=
+      styles.match(
+        /(?:^|\n)\.bottom-controls\{([^}]*)\}/
+      )?.[1] || "";
+
+    assert.match(
+      bottomControls,
+      /left:0;/
+    );
+
+    assert.match(
+      bottomControls,
+      /right:0;/
+    );
+
+    assert.match(
+      bottomControls,
+      /justify-content:center;/
+    );
+  }
+);
+
+test(
   "management polish keeps the agreed information order and unified tariff flow",
   async()=>{
     const app=

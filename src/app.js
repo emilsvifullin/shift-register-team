@@ -950,15 +950,6 @@ const employeeUi=
       employeeSheetElement
   });
 
-function shouldShowFab(ym=cursor){
-  return (
-    isAdmin &&
-    tab==="shifts" &&
-    inMonth(ym).length>0 &&
-    !serverDataError
-  );
-}
-
 function render(){
   saveUIState();
 
@@ -1002,13 +993,6 @@ function render(){
       !monthTab
     );
   });
-
-  const showFab=shouldShowFab(cursor);
-  const bottomControls=document.querySelector(".bottom-controls");
-  const fab=document.getElementById("fab");
-
-  bottomControls.classList.toggle("has-fab",showFab);
-  fab.classList.toggle("is-hidden",!showFab);
 
   const manageTab=
     document.getElementById(
@@ -1235,25 +1219,41 @@ function viewShifts(){
 
   const list=inMonth(cursor);
 
+  const adminControls=
+    isAdmin
+      ? `
+        <div class="ml">Смены</div>
+        <button
+          type="button"
+          class="manage-add"
+          id="shiftAdd"
+        >
+          <span class="manage-add-plus" aria-hidden="true"></span>
+          Добавить смену
+        </button>
+      `
+      : "";
+
+  const listLabel=
+    isAdmin
+      ? "Список"
+      : shiftsWord(list.length);
+
   if(!list.length){
     return `
-      <div class="ml">${shiftsWord(0)}</div>
+      ${adminControls}
+      <div class="ml">${listLabel}</div>
       <div class="card">
-        <div class="empty">
-          <div>В этом месяце смен пока нет.</div>
-          ${isAdmin ? `
-            <button type="button" class="empty-add" id="emptyAdd">
-              <span class="empty-add-plus" aria-hidden="true"></span>
-              Добавить смену
-            </button>
-          ` : ""}
+        <div class="employee-empty">
+          В этом месяце смен пока нет.
         </div>
       </div>
     `;
   }
 
   let html=`
-    <div class="ml">${shiftsWord(list.length)}</div>
+    ${adminControls}
+    <div class="ml">${listLabel}</div>
 
     <div class="card shift-window">
       <div
@@ -9166,7 +9166,6 @@ ADMIN_TABS.forEach(name=>{
   );
 });
 
-document.getElementById("fab").onclick=()=>openSheet(null);
 document.getElementById("veil").onclick=closeSheet;
 document.getElementById("sheetCancel").onclick=closeSheet;
 document.getElementById("pointVeil").onclick=closePointPicker;
@@ -10803,7 +10802,7 @@ app.addEventListener("click",async event=>{
     return;
   }
 
-  if(button.id==="emptyAdd"){
+  if(button.id==="shiftAdd"){
     openSheet(null);
     return;
   }

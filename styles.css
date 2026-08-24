@@ -557,66 +557,6 @@ main.shifts-layout > .ml:first-child{
 .prog .track{height:4px;border-radius:2px;background:var(--tint2);overflow:hidden}
 .prog .fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--gold-d),var(--gold))}
 
-.empty{
-  padding:38px 24px 30px;
-  text-align:center;
-  color:var(--ink3);
-  font-size:14px;
-  line-height:1.55;
-}
-
-.empty-add{
-  min-height:42px;
-  margin:18px auto 0;
-  padding:0 18px;
-
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-
-  border:1px solid var(--gold-line);
-  border-radius:13px;
-
-  background:var(--gold-soft);
-  color:var(--gold);
-
-  font-size:14px;
-  font-weight:600;
-  cursor:pointer;
-}
-
-.empty-add-plus{
-  position:relative;
-  width:14px;
-  height:14px;
-  flex:none;
-}
-
-.empty-add-plus::before,
-.empty-add-plus::after{
-  content:"";
-  position:absolute;
-  left:50%;
-  top:50%;
-
-  width:13px;
-  height:1.5px;
-  border-radius:2px;
-  background:currentColor;
-
-  transform:translate(-50%,-50%);
-}
-
-.empty-add-plus::after{
-  transform:translate(-50%,-50%) rotate(90deg);
-}
-
-.empty-add.touch-active{
-  opacity:.7;
-  box-shadow:none !important;
-}
-
 /* таббар */
 .bottom-controls{
   position:fixed;
@@ -628,39 +568,11 @@ main.shifts-layout > .ml:first-child{
   display:flex;
   align-items:center;
   justify-content:center;
-  gap:0;
 
   pointer-events:none;
-
-  transition:
-    gap .36s cubic-bezier(.22,.72,.22,1);
 }
 
-.bottom-controls.has-fab{
-  gap:24px;
-}
-
-.fab-slot{
-  width:0;
-  height:50px;
-  flex:none;
-
-  display:grid;
-  place-items:center;
-
-  overflow:visible;
-  pointer-events:none;
-
-  transition:
-    width .36s cubic-bezier(.22,.72,.22,1);
-}
-
-.bottom-controls.has-fab .fab-slot{
-  width:50px;
-}
-
-nav.tabs,
-.fab{
+nav.tabs{
   pointer-events:auto;
 }
 
@@ -709,50 +621,6 @@ nav.tabs button{
 nav.tabs button.on{
   background:var(--tint2);
   color:var(--ink);
-}
-
-.fab{
-  position:relative;
-  z-index:1;
-
-  width:50px;
-  height:50px;
-  border-radius:50%;
-  padding:0;
-  cursor:pointer;
-
-  border:1px solid var(--line2);
-  background:var(--tabs);
-  color:var(--ink2);
-
-  backdrop-filter:blur(18px);
-  -webkit-backdrop-filter:blur(18px);
-  box-shadow:var(--shadow);
-
-  opacity:1;
-  transform:scale(1);
-
-  transition:
-    opacity .30s ease,
-    transform .36s cubic-bezier(.22,.72,.22,1),
-    visibility 0s;
-}
-
-.fab::before,
-.fab::after{
-  content:"";
-  position:absolute;
-  top:50%;
-  left:50%;
-  width:18px;
-  height:2px;
-  border-radius:2px;
-  background:currentColor;
-  transform:translate(-50%,-50%);
-}
-
-.fab::after{
-  transform:translate(-50%,-50%) rotate(90deg);
 }
 
 .tab-label-short{
@@ -1581,10 +1449,6 @@ nav.tabs button.on{
     max-width:135px;
   }
 
-  .bottom-controls.has-fab{
-    gap:14px;
-  }
-
   nav.tabs button{
     padding:
       8px
@@ -1593,10 +1457,6 @@ nav.tabs button.on{
 }
 
 @media (max-width:360px){
-  .bottom-controls.has-fab{
-    gap:10px;
-  }
-
   nav.tabs button{
     padding:
       8px
@@ -3005,13 +2865,6 @@ button:disabled{
     box-shadow:none !important;
   }
 
-  /*
-    Кнопка + Добавить смену.
-  */
-  .empty-add:active{
-    opacity:.7;
-    box-shadow:none !important;
-  }
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
@@ -3028,18 +2881,6 @@ button:disabled{
 .is-hidden{
   visibility:hidden !important;
   pointer-events:none !important;
-}
-
-#fab.is-hidden{
-  opacity:0 !important;
-  transform:scale(.88) !important;
-  visibility:hidden !important;
-  pointer-events:none !important;
-
-  transition:
-    opacity .30s ease,
-    transform .36s cubic-bezier(.22,.72,.22,1),
-    visibility 0s linear .36s;
 }
 
 .sh{
@@ -3247,17 +3088,12 @@ textarea{
   view-transition-name:month-period;
 }
 
-nav.tabs,
-#fab{
+nav.tabs{
   view-transition-name:none;
 }
 
 html[data-bottom-motion] nav.tabs{
   view-transition-name:bottom-tabs;
-}
-
-html[data-bottom-motion] #fab{
-  view-transition-name:bottom-fab;
 }
 
 ::view-transition-group(bottom-tabs){
@@ -3275,62 +3111,6 @@ html[data-bottom-motion] #fab{
   animation:none;
   opacity:1;
   mix-blend-mode:normal;
-}
-
-::view-transition-group(bottom-fab){
-  z-index:1001;
-  animation-duration:.36s;
-  animation-timing-function:var(--motion-ease);
-}
-
-html[data-bottom-motion="hide"]::view-transition-old(bottom-fab){
-  animation:
-    bottom-fab-out
-    .30s
-    ease
-    both;
-}
-
-html[data-bottom-motion="hide"]::view-transition-new(bottom-fab){
-  animation:none;
-  opacity:0;
-}
-
-html[data-bottom-motion="show"]::view-transition-old(bottom-fab){
-  animation:none;
-  opacity:0;
-}
-
-html[data-bottom-motion="show"]::view-transition-new(bottom-fab){
-  animation:
-    bottom-fab-in
-    .30s
-    var(--motion-ease)
-    both;
-}
-
-@keyframes bottom-fab-out{
-  from{
-    opacity:1;
-    transform:scale(1);
-  }
-
-  to{
-    opacity:0;
-    transform:scale(.88);
-  }
-}
-
-@keyframes bottom-fab-in{
-  from{
-    opacity:0;
-    transform:scale(.88);
-  }
-
-  to{
-    opacity:1;
-    transform:scale(1);
-  }
 }
 
 /*

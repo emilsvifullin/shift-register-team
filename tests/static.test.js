@@ -370,7 +370,7 @@ test(
 
     assert.match(
       app,
-      /monthWheelGestureLocked/
+      /pendingMonthWheelDirections/
     );
 
     assert.match(
@@ -476,6 +476,11 @@ test(
         "src/app.js"
       );
 
+    const html=
+      await read(
+        "index.html"
+      );
+
     const employeeUi=
       await read(
         "src/employee-ui.js"
@@ -499,6 +504,29 @@ test(
     assert.match(
       app,
       /wheelSequence\.canDismiss/
+    );
+
+    assert.match(
+      app,
+      /now-monthWheelLastAt>72/
+    );
+
+    assert.match(
+      app,
+      /flushPendingMonthWheel\(\)/
+    );
+
+    assert.match(
+      app,
+      /metadata\.full_name[\s\S]*ФИО не указано/
+    );
+
+    assert.ok(
+      html.indexOf(
+        'id="tab-manage"'
+      )<html.indexOf(
+        'id="tab-data"'
+      )
     );
 
     assert.doesNotMatch(

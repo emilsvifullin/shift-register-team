@@ -77,8 +77,10 @@ const BASE_TABS=Object.freeze([
 ]);
 
 const ADMIN_TABS=Object.freeze([
-  ...BASE_TABS,
-  "manage"
+  "shifts",
+  "stats",
+  "manage",
+  "data"
 ]);
 
 const MANAGE_SECTIONS=Object.freeze([
@@ -1827,6 +1829,23 @@ function viewStats(){
 }
 
 function viewData(){
+  const metadata=
+    currentUser?.user_metadata ||
+    {};
+
+  const accountName=
+    teamData.employee?.full_name ||
+    [
+      metadata.full_name,
+      metadata.fullName,
+      metadata.name,
+      metadata.display_name
+    ].find(value=>
+      typeof value==="string" &&
+      value.trim()
+    )?.trim() ||
+    "";
+
   const title=serverConnected
     ? realtimeStatus==="connected"
       ? "Синхронизация в реальном времени"
@@ -1972,6 +1991,9 @@ function viewData(){
         <div class="l">
           <div class="t">
             ${isAdmin ? "Администратор" : "Сотрудник"}
+          </div>
+          <div class="s">
+            ${esc(accountName || "ФИО не указано")}
           </div>
           <div class="s" dir="ltr">
             ${esc(
@@ -6720,6 +6742,7 @@ function changeMonth(
       );
 
       monthTransitionRunning=false;
+      flushPendingMonthWheel();
     });
   }catch{
     animations.forEach(
@@ -6739,6 +6762,7 @@ function changeMonth(
     );
 
     monthTransitionRunning=false;
+    flushPendingMonthWheel();
   }
 }
 
@@ -8370,7 +8394,66 @@ monthSwipeArea.addEventListener(
 let monthWheelX=0;
 let monthWheelY=0;
 let monthWheelTimer=0;
-let monthWheelGestureLocked=false;
+let monthWheelLastAt=0;
+let monthWheelDirection=0;
+let monthWheelGestureHandled=false;
+let pendingMonthWheelDirections=[];
+
+function resetMonthWheelGesture(){
+  monthWheelX=0;
+  monthWheelY=0;
+  monthWheelLastAt=0;
+  monthWheelDirection=0;
+  monthWheelGestureHandled=false;
+}
+
+function queueMonthWheelDirection(
+  direction
+){
+  if(
+    pendingMonthWheelDirections
+      .length>=4
+  ){
+    return;
+  }
+
+  pendingMonthWheelDirections.push(
+    direction
+  );
+}
+
+function flushPendingMonthWheel(){
+  if(
+    monthTransitionRunning ||
+    tabTransitionRunning ||
+    manageTransitionRunning
+  ){
+    return;
+  }
+
+  if(
+    !["shifts","stats"]
+      .includes(tab) ||
+    activeModal()
+  ){
+    pendingMonthWheelDirections=[];
+    return;
+  }
+
+  const direction=
+    pendingMonthWheelDirections
+      .shift();
+
+  if(!direction){
+    return;
+  }
+
+  changeMonth(
+    shiftMonth(cursor,direction),
+    direction,
+    {scrollTop:true}
+  );
+}
 
 monthSwipeArea.addEventListener(
   "wheel",
@@ -8384,20 +8467,39 @@ monthSwipeArea.addEventListener(
       return;
     }
 
+    const now=performance.now();
+
+    const direction=
+      event.deltaX>0
+        ? 1
+        : -1;
+
+    const newGesture=
+      !monthWheelLastAt ||
+      now-monthWheelLastAt>72 ||
+      (
+        monthWheelDirection &&
+        direction!==monthWheelDirection
+      );
+
+    if(newGesture){
+      resetMonthWheelGesture();
+      monthWheelDirection=direction;
+    }
+
+    monthWheelLastAt=now;
+
     window.clearTimeout(
       monthWheelTimer
     );
 
     monthWheelTimer=
       window.setTimeout(()=>{
-        monthWheelX=0;
-        monthWheelY=0;
-        monthWheelGestureLocked=false;
-      },140);
+        resetMonthWheelGesture();
+      },90);
 
     if(
-      monthTransitionRunning ||
-      monthWheelGestureLocked
+      monthWheelGestureHandled
     ){
       if(event.cancelable){
         event.preventDefault();
@@ -8421,14 +8523,17 @@ monthSwipeArea.addEventListener(
       event.preventDefault();
     }
 
-    const direction=
-      monthWheelX>0
-        ? 1
-        : -1;
-
     monthWheelX=0;
     monthWheelY=0;
-    monthWheelGestureLocked=true;
+    monthWheelGestureHandled=true;
+
+    if(monthTransitionRunning){
+      queueMonthWheelDirection(
+        direction
+      );
+
+      return;
+    }
 
     changeMonth(
       shiftMonth(cursor,direction),

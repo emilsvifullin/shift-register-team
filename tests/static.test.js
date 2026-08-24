@@ -423,6 +423,24 @@ test(
       /id="f-employee-open"/
     );
 
+    assert.ok(
+      app.indexOf(
+        'id="f-date-open"'
+      )<app.indexOf(
+        'id="f-point-open"'
+      ) &&
+      app.indexOf(
+        'id="f-point-open"'
+      )<app.indexOf(
+        'id="f-employee-open"'
+      ) &&
+      app.indexOf(
+        'id="f-employee-open"'
+      )<app.indexOf(
+        'id="f-shk"'
+      )
+    );
+
     assert.match(
       app,
       /FULL_HOURS-0\.5/
@@ -468,7 +486,27 @@ test(
 
     assert.match(
       app,
-      /function tariffHistoryHTML/
+      /function pointInformationHTML/
+    );
+
+    assert.match(
+      app,
+      /<details class="tariff-history-item">/
+    );
+
+    assert.match(
+      app,
+      /Изменить тариф/
+    );
+
+    assert.match(
+      app,
+      /editing:false/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /function pointPricingLabel/
     );
 
     assert.doesNotMatch(
@@ -503,7 +541,12 @@ test(
 
     assert.match(
       styles,
-      /\.tariff-tier-head[\s\S]*\.shift-employee-row \.t/
+      /\.tariff-info-card[\s\S]*\.tariff-history-item[\s\S]*\.shift-employee-row \.t/
+    );
+
+    assert.match(
+      styles,
+      /\.employee-password-row > \.t[\s\S]*font-size:14\.5px/
     );
   }
 );

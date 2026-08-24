@@ -529,6 +529,20 @@ function localYMD(date=new Date()){
     String(date.getDate()).padStart(2,"0");
 }
 
+function nextYMD(ymd){
+  const [year,month,day]=
+    ymd.split("-").map(Number);
+
+  return localYMD(
+    new Date(
+      year,
+      month-1,
+      day+1,
+      12
+    )
+  );
+}
+
 function dateLabel(ymd){
   const [year,month,day]=ymd.split("-").map(Number);
   return day+" "+MONTHS_G[month-1]+" "+year;
@@ -2783,32 +2797,6 @@ function applyEmployeeFilter(){
   render();
 }
 
-function pointPricingLabel(
-  point
-){
-  const tariff=
-    tariffForDate(
-      teamData.tariffs,
-      point.id,
-      localYMD()
-    );
-
-  if(!tariff){
-    return "Тариф не задан";
-  }
-
-  const label=
-    tariff.pricing_type===
-    "fixed"
-      ? "Фикс · "+
-        money(tariff.fixed_rate)
-      : "По ШК";
-
-  return point.advance_enabled
-    ? label+" · авансовый ПВЗ"
-    : label;
-}
-
 function pointTariffs(pointId){
   return teamData.tariffs
     .filter(
@@ -2823,24 +2811,232 @@ function pointTariffs(pointId){
     );
 }
 
-function tariffLabel(tariff){
+function tariffTypeLabel(tariff){
+  return tariff?.pricing_type===
+    "fixed"
+      ? "Фиксированный"
+      : "По ШК";
+}
+
+function tariffRateRowsHTML(tariff){
   if(!tariff){
-    return "Тариф не задан";
+    return "";
   }
 
   if(tariff.pricing_type==="fixed"){
-    return "Фикс · "+
-      money(tariff.fixed_rate);
+    return `
+      <div class="tariff-rate-row">
+        <span>Полная смена</span>
+        <strong>${money(tariff.fixed_rate)}</strong>
+      </div>
+    `;
   }
 
-  return "По ШК · "+
-    tariff.shk_tiers
-      .map(tier=>
+  let previousLimit=null;
+
+  return (tariff.shk_tiers || [])
+    .map(tier=>{
+      const range=
         tier.up_to===null
-          ? `от ${money(tier.rate)}`
-          : `до ${nf(tier.up_to)} — ${money(tier.rate)}`
-      )
-      .join(" · ");
+          ? previousLimit===null
+            ? "Без верхней границы"
+            : `Свыше ${nf(previousLimit)} ШК`
+          : `До ${nf(tier.up_to)} ШК`;
+
+      if(tier.up_to!==null){
+        previousLimit=
+          Number(tier.up_to);
+      }
+
+      return `
+        <div class="tariff-rate-row">
+          <span>${esc(range)}</span>
+          <strong>${money(tier.rate)}</strong>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function tariffCardHTML(
+  tariff,
+  {
+    datePrefix="Действует с"
+  }={}
+){
+  if(!tariff){
+    return `
+      <div class="card">
+        <div class="employee-empty">
+          Тариф пока не задан.
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card tariff-info-card">
+      <div class="tariff-info-head">
+        <div>
+          <div class="s">Система оплаты</div>
+          <div class="t">
+            ${tariffTypeLabel(tariff)}
+          </div>
+        </div>
+
+        <div class="tariff-info-date">
+          ${esc(datePrefix)}
+          ${esc(dateLabel(tariff.effective_from))}
+        </div>
+      </div>
+
+      <div class="tariff-rate-list">
+        ${tariffRateRowsHTML(tariff)}
+      </div>
+    </div>
+  `;
+}
+
+function nextTariffEffectiveFrom(pointId){
+  const occupied=
+    new Set(
+      pointTariffs(pointId)
+        .map(
+          tariff=>
+            tariff.effective_from
+        )
+    );
+
+  let value=localYMD();
+
+  while(occupied.has(value)){
+    value=nextYMD(value);
+  }
+
+  return value;
+}
+
+function tariffHistoryItemHTML(
+  tariff,
+  {
+    planned=false
+  }={}
+){
+  return `
+    <details class="tariff-history-item">
+      <summary>
+        <span>
+          <strong>${tariffTypeLabel(tariff)}</strong>
+          <small>
+            ${planned ? "Начнёт действовать" : "Действовал с"}
+            ${esc(dateLabel(tariff.effective_from))}
+          </small>
+        </span>
+        <span class="tariff-history-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="tariff-history-body">
+        ${tariffRateRowsHTML(tariff)}
+      </div>
+    </details>
+  `;
+}
+
+function pointTariffHistoryHTML(
+  pointId,
+  current
+){
+  const today=localYMD();
+  const tariffs=pointTariffs(pointId);
+  const planned=tariffs
+    .filter(
+      tariff=>
+        tariff.effective_from>today
+    )
+    .sort(
+      (a,b)=>
+        a.effective_from.localeCompare(
+          b.effective_from
+        )
+    );
+  const history=tariffs
+    .filter(
+      tariff=>
+        tariff.effective_from<=today &&
+        tariff.id!==current?.id
+    );
+
+  return `
+    ${planned.length ? `
+      <div class="ml">Запланированные тарифы</div>
+      <div class="card tariff-history-list">
+        ${planned
+          .map(tariff=>
+            tariffHistoryItemHTML(
+              tariff,
+              {planned:true}
+            )
+          )
+          .join("")}
+      </div>
+    ` : ""}
+
+    <div class="ml">История тарифов</div>
+    <div class="card tariff-history-list">
+      ${history.length
+        ? history
+          .map(tariff=>
+            tariffHistoryItemHTML(
+              tariff
+            )
+          )
+          .join("")
+        : `
+          <div class="employee-empty">
+            Предыдущих тарифов пока нет.
+          </div>
+        `}
+    </div>
+  `;
+}
+
+function pointInformationHTML(
+  point,
+  current
+){
+  return `
+    <div class="ml">Пункт выдачи</div>
+    <div class="card employee-detail point-info-card">
+      <div class="row">
+        <div class="l">
+          <div class="s">Название</div>
+          <div class="t">${esc(point.name)}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l">
+          <div class="s">Статус</div>
+          <div class="t">${point.active===false ? "В архиве" : "Активен"}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l">
+          <div class="s">Порядок</div>
+          <div class="t">${nf(Number(point.sort_order) || 1)}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l">
+          <div class="s">Аванс</div>
+          <div class="t">${point.advance_enabled===true ? "Включён" : "Выключен"}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ml">Текущий тариф</div>
+    ${tariffCardHTML(current)}
+    ${pointTariffHistoryHTML(point.id,current)}
+    <div class="sheet-spacer" aria-hidden="true"></div>
+  `;
 }
 
 function viewPoints(){
@@ -2892,11 +3088,7 @@ function viewPoints(){
 
   const rows=
     teamData.points
-      .map(point=>{
-        const inactive=
-          point.active===false;
-
-        return `
+      .map(point=>`
           <button
             type="button"
             class="manage-row"
@@ -2906,9 +3098,6 @@ function viewPoints(){
               <span class="manage-row-title">
                 ${esc(point.name)}
               </span>
-              <span class="manage-row-detail">
-                ${esc(pointPricingLabel(point))}${inactive ? " · В архиве" : ""}
-              </span>
             </span>
             <span class="manage-chevron" aria-hidden="true">
               <svg viewBox="0 0 12 16">
@@ -2916,8 +3105,7 @@ function viewPoints(){
               </svg>
             </span>
           </button>
-        `;
-      })
+        `)
       .join("");
 
   return `
@@ -3041,12 +3229,18 @@ function tierEditorHTML(tiers){
     return `
       <div class="row tariff-tier" data-tier-index="${index}">
         <div class="tariff-tier-fields">
-          ${final ? `
-            <span class="tariff-tier-open">Без верхней границы</span>
-          ` : `
-            <input type="number" inputmode="numeric" data-tier-limit value="${esc(tier.up_to)}" min="1" step="1" aria-label="ШК до">
-          `}
-          <input type="text" inputmode="decimal" data-tier-rate value="${esc(tier.rate)}" aria-label="Ставка">
+          <label class="tariff-tier-field">
+            <span>${final ? "Диапазон" : "ШК до"}</span>
+            ${final ? `
+              <strong class="tariff-tier-open">Без границы</strong>
+            ` : `
+              <input type="number" inputmode="numeric" data-tier-limit value="${esc(tier.up_to)}" min="1" step="1" aria-label="ШК до">
+            `}
+          </label>
+          <label class="tariff-tier-field">
+            <span>Ставка, ₽</span>
+            <input type="text" inputmode="decimal" data-tier-rate value="${esc(tier.rate)}" aria-label="Ставка">
+          </label>
         </div>
         ${!final && tiers.length>2 ? `
           <button type="button" class="tariff-tier-remove" data-tier-remove="${index}" aria-label="Удалить границу">×</button>
@@ -3056,32 +3250,25 @@ function tierEditorHTML(tiers){
   }).join("");
 }
 
-function tariffHistoryHTML(pointId){
-  const history=pointTariffs(pointId)
-    .map(tariff=>`
-      <div class="row tariff-history-row">
-        <div class="l">
-          <div class="tariff-history-head">
-            <div class="t">
-              ${tariff.pricing_type==="fixed" ? "Фикс" : "По ШК"}
-            </div>
-            <div class="tariff-history-date">
-              с ${esc(dateLabel(tariff.effective_from))}
-            </div>
-          </div>
-          <div class="s tariff-history-summary">
-            ${esc(tariffLabel(tariff).replace(/^(Фикс|По ШК) · /,""))}
-          </div>
-        </div>
-      </div>
-    `)
-    .join("");
+function updateManageEditorHeader(){
+  const viewing=
+    manageEditorDraft &&
+    !manageEditorDraft.isNew &&
+    !manageEditorDraft.editing;
 
-  return history || `
-    <div class="employee-empty">
-      История тарифов пока пуста.
-    </div>
-  `;
+  document.getElementById(
+    "manageEditorCancel"
+  ).textContent=
+    viewing
+      ? "Закрыть"
+      : "Отмена";
+
+  document.getElementById(
+    "manageEditorSave"
+  ).textContent=
+    viewing
+      ? "Изменить"
+      : "Готово";
 }
 
 function drawManageEditor(){
@@ -3094,6 +3281,8 @@ function drawManageEditor(){
       "manageEditorBody"
     );
 
+  updateManageEditorHeader();
+
   if(manageEditorKind==="point"){
     const current=
       manageEditorDraft.point
@@ -3103,6 +3292,18 @@ function drawManageEditor(){
             localYMD()
           )
         : null;
+
+    if(
+      !manageEditorDraft.isNew &&
+      !manageEditorDraft.editing
+    ){
+      body.innerHTML=
+        pointInformationHTML(
+          manageEditorDraft.point,
+          current
+        );
+      return;
+    }
 
     const tariffSection=
       manageEditorDraft.isNew
@@ -3116,47 +3317,29 @@ function drawManageEditor(){
         `
         : `
           <div class="ml">Тариф</div>
-          <div class="card tariff-current">
-            <div class="row">
-              <div class="l">
-                <div class="s tariff-current-label">
-                  Текущий тариф
-                </div>
-                <div class="t tariff-current-title">
-                  ${esc(tariffLabel(current))}
-                </div>
-                ${current ? `
-                  <div class="tariff-current-date">
-                    Действует с ${esc(dateLabel(current.effective_from))}
-                  </div>
-                ` : ""}
-              </div>
-            </div>
-          </div>
+          ${tariffCardHTML(current)}
 
           <button
             type="button"
             class="btn tariff-change-button"
             id="manageTariffAdd"
           >
-            ${manageEditorDraft.tariffOpen ? "Отменить изменение тарифа" : "Добавить новый тариф"}
+            ${manageEditorDraft.tariffOpen ? "Отменить" : "Изменить тариф"}
           </button>
 
           ${manageEditorDraft.tariffOpen ? `
             <div class="tariff-new-block">
-              <div class="ml">Новый тариф</div>
+              <div class="ml">Новая версия тарифа</div>
               <div class="card segbox"><div class="seg">
                 <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
                 <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
               </div></div>
               ${tariffDraftFields()}
+              <div class="employee-help">
+                После сохранения предыдущие тарифы и исторические смены не изменятся.
+              </div>
             </div>
           ` : ""}
-
-          <div class="ml">История тарифов</div>
-          <div class="card tariff-history">
-            ${tariffHistoryHTML(manageEditorDraft.point.id)}
-          </div>
         `;
 
     body.innerHTML=`
@@ -3214,11 +3397,6 @@ function tariffDraftFields(){
     ${manageEditorDraft.pricingType==="shk_tiers" ? `
       <div class="ml">Границы и ставки</div>
       <div class="card tariff-tiers">
-        <div class="tariff-tier-head" aria-hidden="true">
-          <span>ШК до</span>
-          <span>Ставка, ₽</span>
-          <span></span>
-        </div>
         ${tierEditorHTML(manageEditorDraft.tiers)}
       </div>
       <button type="button" class="btn" id="tierAdd">Добавить границу</button>
@@ -3256,6 +3434,7 @@ function openManageEditor(kind,id=null){
         id:point.id,
         point,
         isNew:false,
+        editing:false,
         name:point.name,
         sortOrder:point.sort_order || 1,
         active:point.active!==false,
@@ -3273,12 +3452,16 @@ function openManageEditor(kind,id=null){
                 tier=>({...tier})
               )
             : defaultTariffTiers(),
-        effectiveFrom:localYMD()
+        effectiveFrom:
+          nextTariffEffectiveFrom(
+            point.id
+          )
       }
     : {
         id:null,
         point:null,
         isNew:true,
+        editing:true,
         name:"",
         sortOrder:
           Math.max(
@@ -3352,6 +3535,21 @@ function closeManageEditor(){
     if(previous && document.contains(previous)) previous.focus();
     if(!manageEditorSheetElement.classList.contains("on")) manageEditorSheetElement.style.display="none";
   },100);
+}
+
+function manageEditorPrimaryAction(){
+  if(
+    manageEditorDraft &&
+    !manageEditorDraft.isNew &&
+    !manageEditorDraft.editing
+  ){
+    manageEditorDraft.editing=true;
+    drawManageEditor();
+    manageEditorSheetElement.scrollTop=0;
+    return;
+  }
+
+  void saveManageEditor();
 }
 
 async function saveManageEditor(){
@@ -6171,6 +6369,14 @@ function drawSheet(isEdit){
   document.getElementById("sheetBody").innerHTML=`
     <div class="ml">Смена</div>
     <div class="card">
+      <button type="button" class="row point-row" id="f-date-open">
+        <div class="t">Дата</div>
+        <div class="point-value">${esc(dateLabel(draft.date))}</div>
+      </button>
+      <button type="button" class="row point-row" id="f-point-open">
+        <div class="t">Пункт</div>
+        <div class="point-value">${esc(draft.point)}</div>
+      </button>
       <button
         type="button"
         class="row point-row shift-employee-row"
@@ -6180,14 +6386,6 @@ function drawSheet(isEdit){
         <div class="point-value">
           ${esc(selectedEmployee?.full_name || "Выберите сотрудника")}
         </div>
-      </button>
-      <button type="button" class="row point-row" id="f-date-open">
-        <div class="t">Дата</div>
-        <div class="point-value">${esc(dateLabel(draft.date))}</div>
-      </button>
-      <button type="button" class="row point-row" id="f-point-open">
-        <div class="t">Пункт</div>
-        <div class="point-value">${esc(draft.point)}</div>
       </button>
       ${fixed ? "" : `
         <label class="row">
@@ -9438,9 +9636,8 @@ document
   .getElementById(
     "manageEditorSave"
   )
-  .onclick=()=>{
-    void saveManageEditor();
-  };
+  .onclick=
+    manageEditorPrimaryAction;
 
 manageEditorSheetElement.addEventListener(
   "click",
@@ -9467,6 +9664,35 @@ manageEditorSheetElement.addEventListener(
     if(button.id==="manageTariffAdd"){
       manageEditorDraft.tariffOpen=
         !manageEditorDraft.tariffOpen;
+
+      if(
+        manageEditorDraft.tariffOpen
+      ){
+        const current=
+          tariffForDate(
+            teamData.tariffs,
+            manageEditorDraft.point.id,
+            localYMD()
+          );
+
+        manageEditorDraft.pricingType=
+          current?.pricing_type ||
+          "fixed";
+        manageEditorDraft.fixedRate=
+          current?.fixed_rate ||
+          3000;
+        manageEditorDraft.tiers=
+          current?.shk_tiers
+            ? current.shk_tiers.map(
+                tier=>({...tier})
+              )
+            : defaultTariffTiers();
+        manageEditorDraft.effectiveFrom=
+          nextTariffEffectiveFrom(
+            manageEditorDraft.point.id
+          );
+      }
+
       drawManageEditor();
       return;
     }

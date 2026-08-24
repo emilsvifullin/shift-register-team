@@ -548,6 +548,11 @@ test(
       styles,
       /\.employee-password-row > \.t[\s\S]*font-size:14\.5px/
     );
+
+    assert.match(
+      styles,
+      /\.employee-account-row,[\s\S]*\.employee-password-row[\s\S]*min-height:63px/
+    );
   }
 );
 

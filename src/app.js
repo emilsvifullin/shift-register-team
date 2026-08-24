@@ -4060,7 +4060,7 @@ function drawEmployeeSheet(){
     </div>
 
     <div class="card employee-editor">
-      <label class="row">
+      <label class="row employee-account-row">
         <div class="t">Почта</div>
         <input
           type="email"

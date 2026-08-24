@@ -1113,6 +1113,11 @@ nav.tabs button.on{
   cursor:default;
 }
 
+.employee-account-row,
+.employee-password-row{
+  min-height:63px;
+}
+
 .employee-password-row > .t{
   width:108px;
   flex:none;

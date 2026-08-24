@@ -380,14 +380,18 @@ function normalizePricing(value,index,shift){
   const rulesVersion=
     value.rulesVersion;
 
+  const rateCents=
+    Math.round(rate*100);
+
   if(
-    version!==1 ||
+    ![1,2].includes(version) ||
     typeof rulesVersion!=="string" ||
     !rulesVersion ||
     typeof fixed!=="boolean" ||
-    !Number.isSafeInteger(rate) ||
+    !Number.isFinite(rate) ||
     rate<0 ||
     rate>MAX_MONEY ||
+    Math.abs(rate*100-rateCents)>1e-7 ||
     !Number.isFinite(fullHours) ||
     fullHours<=0 ||
     fullHours>24
@@ -418,7 +422,8 @@ function normalizePricing(value,index,shift){
   }
 
   return {
-    version:1,
+    ...value,
+    version,
     rulesVersion,
     fixed,
     rate,
@@ -844,12 +849,18 @@ export function payouts(ym,shifts,{today}={}){
         shift.date.slice(8,10)
       );
 
-    if(
-      isAdvancePoint(
-        shift.pointId ||
-        shift.point
-      )
-    ){
+    const advanceEnabled=
+      typeof shift.pricing
+        ?.advanceEnabled===
+        "boolean"
+        ? shift.pricing
+            .advanceEnabled
+        : isAdvancePoint(
+            shift.pointId ||
+            shift.point
+          );
+
+    if(advanceEnabled){
       hasAdvancePoints=true;
 
       if(day<=15){

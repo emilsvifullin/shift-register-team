@@ -957,22 +957,35 @@ form.addEventListener(
       autofillTimer
     );
 
-    const emailValue=
+    const loginValue=
       email.value.trim();
 
     const passwordValue=
       password.value;
 
     if(
-      !emailValue ||
+      !loginValue ||
       !passwordValue
     ){
       setError(
-        "Введите email и пароль."
+        "Введите почту и пароль."
       );
 
       return;
     }
+
+    if(!email.validity.valid){
+      setError(
+        "Введите корректную почту."
+      );
+
+      return;
+    }
+
+    const credentials={
+      email:loginValue,
+      password:passwordValue
+    };
 
     setError();
 
@@ -992,10 +1005,9 @@ form.addEventListener(
       }=
         await supabaseClient
           .auth
-          .signInWithPassword({
-            email:emailValue,
-            password:passwordValue
-          }));
+          .signInWithPassword(
+            credentials
+          ));
     }catch(authRequestError){
       console.error(
         "Не удалось выполнить вход:",
@@ -1031,7 +1043,7 @@ form.addEventListener(
         password.value="";
 
         setError(
-          "Неверный email или пароль."
+          "Неверный телефон, email или пароль."
         );
 
         return;

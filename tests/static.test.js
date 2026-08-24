@@ -449,6 +449,11 @@ test(
     );
 
     assert.match(
+      app,
+      /veil\.classList\.remove\("on"\);[\s\S]*void veil\.offsetHeight;[\s\S]*veil\.classList\.remove\([\s\S]*"app-picker-anchored-veil"/
+    );
+
+    assert.match(
       styles,
       /\.point-picker\.app-picker-anchored \.picker-toolbar\{\s*display:none;/
     );

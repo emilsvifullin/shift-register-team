@@ -6153,11 +6153,16 @@ function closePointPicker(){
       resetAppPickerPosition(
         picker
       );
-      veil.classList.remove(
-        "on",
-        "app-picker-anchored-veil"
-      );
+      veil.classList.remove("on");
       veil.setAttribute("aria-hidden","true");
+
+      if(anchored){
+        void veil.offsetHeight;
+        veil.classList.remove(
+          "app-picker-anchored-veil"
+        );
+      }
+
       document.body.classList.remove("point-picker-open");
       document.body.classList.remove(
         "app-picker-anchored-open"

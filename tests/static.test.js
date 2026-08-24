@@ -396,6 +396,79 @@ test(
 );
 
 test(
+  "management polish keeps the agreed information order and unified tariff flow",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    const styles=
+      await read(
+        "styles.css"
+      );
+
+    assert.ok(
+      app.indexOf(
+        'id="statsPoint"'
+      )<app.indexOf(
+        'id="statsEmployee"'
+      )
+    );
+
+    assert.match(
+      app,
+      /Пункты выдачи и тарифы/
+    );
+
+    assert.match(
+      app,
+      /id="manageTariffAdd"/
+    );
+
+    assert.match(
+      app,
+      /function tariffHistoryHTML/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /data-manage-section="tariffs"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /placeholder="\+7 999 123-45-67"|placeholder="Если отличается"|placeholder="Например, СБП"|placeholder="ФИО получателя"/
+    );
+
+    assert.match(
+      app,
+      /class="card employee-detail"[\s\S]*ФИО[\s\S]*esc\(employee\.full_name\)/
+    );
+
+    assert.match(
+      app,
+      /kind:"wheel"/
+    );
+
+    assert.match(
+      app,
+      /class="row point-row shift-employee-row"/
+    );
+
+    assert.match(
+      app,
+      /class="adjustment-add-row"/
+    );
+
+    assert.match(
+      styles,
+      /\.tariff-tier-head[\s\S]*\.shift-employee-row \.t/
+    );
+  }
+);
+
+test(
   "package metadata matches application version",
   async()=>{
     const config=

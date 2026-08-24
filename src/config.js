@@ -1,4 +1,4 @@
-export const APP_VERSION = "6.2.0";
+export const APP_VERSION = "6.3.0";
 export const SCHEMA_VERSION = 3;
 export const RULES_VERSION = "2026-08-12-v3";
 

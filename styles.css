@@ -1058,6 +1058,17 @@ nav.tabs button.on{
   white-space:nowrap;
 }
 
+.employee-detail .s{
+  margin:
+    0
+    0
+    3px;
+}
+
+.employee-detail .t{
+  white-space:normal;
+}
+
 .employee-editor .row .t{
   width:108px;
 }
@@ -1307,10 +1318,32 @@ nav.tabs button.on{
 }
 
 .tariff-tier{
-  padding:10px 14px;
+  padding:11px 14px;
   display:flex;
   align-items:center;
   gap:10px;
+}
+
+.tariff-tier-head{
+  padding:
+    10px
+    14px
+    7px;
+
+  display:grid;
+  grid-template-columns:
+    minmax(0,1fr)
+    minmax(0,1fr)
+    36px;
+  gap:10px;
+
+  border-bottom:1px solid var(--line);
+
+  color:var(--ink2);
+
+  font-size:11px;
+  line-height:1.2;
+  text-align:right;
 }
 
 .tariff-tier-fields{
@@ -1320,17 +1353,6 @@ nav.tabs button.on{
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:10px;
   align-items:end;
-}
-
-.tariff-tier-fields label{
-  min-width:0;
-  display:grid;
-  gap:4px;
-}
-
-.tariff-tier-fields .s{
-  margin-top:0;
-  text-align:right;
 }
 
 .tariff-tier-fields input{
@@ -1360,10 +1382,62 @@ nav.tabs button.on{
   white-space:nowrap;
 }
 
-.tariff-tier-remove{
+.tariff-tier-remove,
+.tariff-tier-remove-space{
   width:36px;
   flex:none;
+}
+
+.tariff-tier-remove{
   font-size:22px;
+}
+
+.tariff-current-label{
+  margin-top:0 !important;
+}
+
+.tariff-current-title{
+  margin-top:4px;
+
+  overflow:visible !important;
+
+  white-space:normal !important;
+}
+
+.tariff-current-date,
+.tariff-history-date{
+  color:var(--ink2);
+
+  font-size:11px;
+  line-height:1.35;
+}
+
+.tariff-current-date{
+  margin-top:5px;
+}
+
+.tariff-change-button{
+  margin-top:10px;
+}
+
+.tariff-new-block{
+  margin-top:2px;
+}
+
+.tariff-history-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.tariff-history-summary{
+  margin-top:5px !important;
+
+  overflow:visible !important;
+
+  line-height:1.4;
+  white-space:normal !important;
 }
 
 @media (max-width:430px){
@@ -1590,10 +1664,18 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
 .point-value{
   flex:1;
   min-width:0;
+
+  overflow:hidden;
+
   text-align:right;
+  text-overflow:ellipsis;
   white-space:nowrap;
   font-size:clamp(11px,3vw,13px);
   letter-spacing:-.25px;
+}
+
+.shift-employee-row .t{
+  width:88px;
 }
 
 #f-employee{

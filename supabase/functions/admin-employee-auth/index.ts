@@ -33,18 +33,20 @@ function validUuid(value:unknown){
       .test(value);
 }
 
-function validPhone(value:unknown){
-  return typeof value==="string" &&
-    /^\+[1-9]\d{7,14}$/.test(value);
-}
+function normalizedEmail(value:unknown){
+  if(typeof value!=="string"){
+    return "";
+  }
 
-function phoneAuthEmail(
-  phone:string
-){
-  return (
-    `${phone.slice(1)}`+
-    "@phone.shift-register.example.com"
-  );
+  const email=value
+    .trim()
+    .toLowerCase();
+
+  return email.length<=254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/u
+      .test(email)
+    ? email
+    : "";
 }
 
 Deno.serve(async request=>{
@@ -155,11 +157,9 @@ Deno.serve(async request=>{
   }
 
   const employeeId=payload.employeeId;
-  const phone=payload.phone;
-  const email=
-    typeof phone==="string"
-      ? phoneAuthEmail(phone)
-      : "";
+  const email=normalizedEmail(
+    payload.email
+  );
   const password=
     typeof payload.password==="string"
       ? payload.password
@@ -167,7 +167,7 @@ Deno.serve(async request=>{
 
   if(
     !validUuid(employeeId) ||
-    !validPhone(phone) ||
+    !email ||
     (
       password &&
       (
@@ -187,7 +187,7 @@ Deno.serve(async request=>{
     error:employeeError
   }=await adminClient
     .from("employees")
-    .select("id, user_id")
+    .select("id, user_id, full_name")
     .eq("id",employeeId)
     .maybeSingle();
 
@@ -215,9 +215,37 @@ Deno.serve(async request=>{
       );
     }
 
+    const {
+      data:linkedProfile,
+      error:linkedProfileError
+    }=await adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id",authUserId)
+      .maybeSingle();
+
+    if(linkedProfileError){
+      return json(
+        {error:"employee_profile_read_failed"},
+        500
+      );
+    }
+
+    if(linkedProfile?.role==="admin"){
+      return json(
+        {error:"admin_account_protected"},
+        409
+      );
+    }
+
     const updatePayload:Record<string,unknown>={
       email,
       email_confirm:true,
+      user_metadata:{
+        ...existingUser.user.user_metadata,
+        full_name:employee.full_name,
+        display_name:employee.full_name
+      },
       app_metadata:{
         ...existingUser.user.app_metadata,
         role:"employee"
@@ -261,6 +289,10 @@ Deno.serve(async request=>{
         email,
         password,
         email_confirm:true,
+        user_metadata:{
+          full_name:employee.full_name,
+          display_name:employee.full_name
+        },
         app_metadata:{
           role:"employee"
         }
@@ -293,8 +325,7 @@ Deno.serve(async request=>{
     await adminClient
       .from("employees")
       .update({
-        user_id:authUserId,
-        phone
+        user_id:authUserId
       })
       .eq("id",employeeId);
 
@@ -314,6 +345,6 @@ Deno.serve(async request=>{
     ok:true,
     created,
     userId:authUserId,
-    login:phone
+    login:email
   });
 });

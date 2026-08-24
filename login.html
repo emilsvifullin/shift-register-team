@@ -119,8 +119,7 @@
       class="auth-form"
       id="authForm"
       method="post"
-      autocomplete="off"
-      data-form-type="other"
+      autocomplete="on"
       novalidate
     >
 
@@ -128,19 +127,16 @@
         class="auth-field"
         for="email"
       >
-        <span>Телефон или email</span>
+        <span>Почта</span>
 
         <input
-          type="text"
+          type="email"
           id="email"
-          name="shift-register-login-field"
-          autocomplete="off"
+          name="username"
+          autocomplete="username"
           autocapitalize="none"
           autocorrect="off"
           spellcheck="false"
-          data-1p-ignore="true"
-          data-lpignore="true"
-          data-form-type="other"
           enterkeyhint="next"
           dir="ltr"
           readonly
@@ -157,14 +153,11 @@
         <input
           type="password"
           id="current-password"
-          name="shift-register-secret-field"
-          autocomplete="off"
+          name="password"
+          autocomplete="current-password"
           autocapitalize="none"
           autocorrect="off"
           spellcheck="false"
-          data-1p-ignore="true"
-          data-lpignore="true"
-          data-form-type="other"
           enterkeyhint="go"
           dir="ltr"
           readonly

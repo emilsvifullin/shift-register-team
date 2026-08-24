@@ -67,6 +67,11 @@ import {
   initEmployeeUi
 } from "./employee-ui.js";
 
+import {
+  positionAppPicker,
+  resetAppPickerPosition
+} from "./picker-position.js";
+
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
 
@@ -1626,48 +1631,61 @@ function viewStats(){
       })
       .join("");
 
+  const selectedStatsPoint=
+    teamData.points.find(
+      point=>
+        point.id===statsPointId
+    ) || null;
+
+  const statsPointLabel=
+    selectedStatsPoint
+      ? selectedStatsPoint.name+
+        (
+          selectedStatsPoint.active===false
+            ? " · архив"
+            : ""
+        )
+      : "Все ПВЗ";
+
+  const statsEmployeeLabel=
+    selectedEmployee
+      ? selectedEmployee.full_name+
+        (
+          selectedEmployee.status==="inactive"
+            ? " · архив"
+            : ""
+        )
+      : "Сотрудники не добавлены";
+
   const statsFilters=
     isAdmin
       ? `
         <div class="ml">Фильтры</div>
         <div class="card employee-editor">
-          <label class="row">
+          <button
+            type="button"
+            class="row point-row stats-filter-row"
+            id="statsPointOpen"
+            aria-label="Пункт выдачи для итогов: ${esc(statsPointLabel)}"
+          >
             <div class="t">ПВЗ</div>
-            <select
-              id="statsPoint"
-              aria-label="Пункт выдачи для итогов"
-            >
-              <option value="">
-                Все ПВЗ
-              </option>
+            <div class="point-value">
+              ${esc(statsPointLabel)}
+            </div>
+          </button>
 
-              ${teamData.points.map(point=>`
-                <option
-                  value="${esc(point.id)}"
-                  ${point.id===statsPointId ? "selected" : ""}
-                >
-                  ${esc(point.name)}${point.active===false ? " · архив" : ""}
-                </option>
-              `).join("")}
-            </select>
-          </label>
-
-          <label class="row">
+          <button
+            type="button"
+            class="row point-row stats-filter-row"
+            id="statsEmployeeOpen"
+            aria-label="Сотрудник для итогов: ${esc(statsEmployeeLabel)}"
+            ${selectedEmployee ? "" : "disabled"}
+          >
             <div class="t">Сотрудник</div>
-            <select
-              id="statsEmployee"
-              aria-label="Сотрудник для итогов"
-            >
-              ${teamData.employees.map(employee=>`
-                <option
-                  value="${esc(employee.id)}"
-                  ${employee.id===statsEmployeeId ? "selected" : ""}
-                >
-                  ${esc(employee.full_name)}${employee.status==="inactive" ? " · архив" : ""}
-                </option>
-              `).join("")}
-            </select>
-          </label>
+            <div class="point-value">
+              ${esc(statsEmployeeLabel)}
+            </div>
+          </button>
         </div>
       `
       : "";
@@ -2092,6 +2110,20 @@ function employeeAccount(
         account.user_id===
         employee.user_id
     ) || null;
+}
+
+function employeeAccountEmail(
+  account
+){
+  const email=String(
+    account?.email || ""
+  ).trim();
+
+  return email.endsWith(
+    "@phone.shift-register.example.com"
+  )
+    ? ""
+    : email;
 }
 
 function employeePointsLabel(
@@ -3502,21 +3534,6 @@ async function saveManageEditor(){
   }
 }
 
-function employeeAvailableAccounts(){
-  return teamData
-    .accounts
-    .filter(account=>{
-      return (
-        account.role==="employee" &&
-        (
-          !account.employee_id ||
-          account.employee_id===
-            employeeDraft.id
-        )
-      );
-    });
-}
-
 function drawEmployeeSheet(){
   if(!employeeDraft){
     return;
@@ -3622,9 +3639,17 @@ function drawEmployeeSheet(){
 
             <div class="t">
               ${
-                account?.login
-                  ? esc(account.login)
-                  : "Не привязан"
+                employeeAccountEmail(
+                  account
+                )
+                  ? esc(
+                      employeeAccountEmail(
+                        account
+                      )
+                    )
+                  : account
+                    ? "Требуется email"
+                    : "Не привязан"
               }
             </div>
           </div>
@@ -3696,29 +3721,6 @@ function drawEmployeeSheet(){
     new Set(
       employeeDraft.pointIds
     );
-
-  const accountOptions=
-    employeeAvailableAccounts()
-      .map(account=>{
-        const selected=
-          account.user_id===
-          employeeDraft.userId;
-
-        const roleLabel=
-          account.role==="admin"
-            ? " · администратор"
-            : "";
-
-        return `
-          <option
-            value="${esc(account.user_id)}"
-            ${selected ? "selected" : ""}
-          >
-            ${esc((account.login || account.phone || account.email)+roleLabel)}
-          </option>
-        `;
-      })
-      .join("");
 
   const pointRows=
     teamData
@@ -3861,28 +3863,19 @@ function drawEmployeeSheet(){
 
     <div class="card employee-editor">
       <label class="row">
-        <div class="t">
-          Вход
-        </div>
-
-        <select
-          id="employeeAccount"
-          aria-label="Аккаунт сотрудника"
+        <div class="t">Почта</div>
+        <input
+          type="email"
+          id="employeeEmail"
+          autocomplete="off"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          value="${esc(employeeDraft.email || "")}"
+          aria-label="Почта сотрудника"
         >
-          <option value="">
-            Не привязан
-          </option>
-
-          ${accountOptions}
-        </select>
       </label>
-    </div>
 
-    <div class="employee-help">
-      Можно привязать существующий аккаунт или создать телефонный вход паролем ниже.
-    </div>
-
-    <div class="card employee-editor employee-password-card">
       <div class="row employee-password-row">
         <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
 
@@ -3898,7 +3891,6 @@ function drawEmployeeSheet(){
             data-lpignore="true"
             data-form-type="other"
             value="${esc(employeeDraft.password || "")}"
-            placeholder="${employeeDraft.userId ? "Не менять" : "Необязательно"}"
             aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
           >
 
@@ -3921,8 +3913,8 @@ function drawEmployeeSheet(){
 
     <div class="employee-help">
       ${employeeDraft.userId
-        ? "Телефон аккаунта обновится автоматически. Пароль можно оставить пустым."
-        : "Если задать пароль, приложение создаст подтверждённый аккаунт с телефоном сотрудника. Публичной регистрации нет."}
+        ? "Почту можно изменить. Пустой пароль сохранит текущий."
+        : "Почта и пароль создадут подтверждённый аккаунт с правами сотрудника. Публичной регистрации нет."}
     </div>
 
     <div class="ml">
@@ -3934,8 +3926,6 @@ function drawEmployeeSheet(){
     </div>
   `;
 
-  employeeUi
-    .enhanceAccountField();
 }
 
 function employeeSaveError(
@@ -3992,7 +3982,37 @@ function employeeSaveError(
       "password_required_for_new_account"
     )
   ){
-    return "Для нового телефонного аккаунта задайте пароль";
+    return "Для нового аккаунта задайте пароль";
+  }
+
+  if(
+    message.includes(
+      "email_exists"
+    ) ||
+    message.includes(
+      "user_already_exists"
+    )
+  ){
+    return "Аккаунт с этой почтой уже существует";
+  }
+
+  if(
+    message.includes(
+      "invalid_employee_auth_payload"
+    ) ||
+    message.includes(
+      "email_address_invalid"
+    )
+  ){
+    return "Проверьте почту и пароль сотрудника";
+  }
+
+  if(
+    message.includes(
+      "admin_account_protected"
+    )
+  ){
+    return "Аккаунт администратора нельзя назначить сотруднику";
   }
 
   if(
@@ -4022,6 +4042,7 @@ function createEmployeeDraft(
       status:"active",
       hiredAt:"",
       userId:null,
+      email:"",
       phone:"",
       transferPhone:"",
       transferBank:"",
@@ -4042,12 +4063,21 @@ function createEmployeeDraft(
     return null;
   }
 
+  const account=
+    employeeAccount(
+      employee
+    );
+
   return {
     id:employee.id,
     fullName:employee.full_name,
     status:employee.status,
     hiredAt:employee.hired_at || "",
     userId:employee.user_id || null,
+    email:
+      employeeAccountEmail(
+        account
+      ),
     phone:employee.phone || "",
     transferPhone:
       employee.transfer_phone || "",
@@ -4548,6 +4578,72 @@ async function saveEmployeeDraft(){
   const password=
     employeeDraft.password || "";
 
+  const email=
+    String(
+      employeeDraft.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  if(
+    email &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u
+      .test(email)
+  ){
+    toast(
+      "Введите корректную почту сотрудника",
+      3200
+    );
+
+    document
+      .getElementById(
+        "employeeEmail"
+      )
+      ?.focus();
+
+    return;
+  }
+
+  if(
+    employeeDraft.userId &&
+    !email
+  ){
+    toast(
+      "Укажите почту привязанного аккаунта",
+      3200
+    );
+
+    document
+      .getElementById(
+        "employeeEmail"
+      )
+      ?.focus();
+
+    return;
+  }
+
+  if(
+    !employeeDraft.userId &&
+    Boolean(email)!==Boolean(password)
+  ){
+    toast(
+      email
+        ? "Для нового аккаунта задайте пароль"
+        : "Для нового аккаунта укажите почту",
+      3200
+    );
+
+    document
+      .getElementById(
+        email
+          ? "employeePassword"
+          : "employeeEmail"
+      )
+      ?.focus();
+
+    return;
+  }
+
   if(
     password &&
     (
@@ -4614,12 +4710,12 @@ async function saveEmployeeDraft(){
 
     if(
       employeeDraft.userId ||
-      password
+      email
     ){
       try{
         await saveAdminEmployeeAuth({
           employeeId,
-          phone,
+          email,
           password
         });
       }catch(error){
@@ -5660,12 +5756,16 @@ let pointPickerHideTimer;
 let pointPickerValue="";
 let pointPickerKind="point";
 
-function openPointPicker(){
-  if(!draft) return;
+function openChoicePicker({
+  kind,
+  value,
+  title,
+  options
+}){
+  pointPickerKind=kind;
+  pointPreviousFocus=
+    document.activeElement;
 
-  pointPickerKind="point";
-
-  pointPreviousFocus=document.activeElement;
   const list=document.getElementById("pointList");
   const picker=document.getElementById("pointPicker");
   const veil=document.getElementById("pointVeil");
@@ -5681,32 +5781,35 @@ function openPointPicker(){
   picker.setAttribute("aria-hidden","false");
   veil.setAttribute("aria-hidden","false");
 
-  pointPickerValue=
-    draft.dbPointId;
+  pointPickerValue=value || "";
 
   document
     .getElementById(
       "pointPickerTitle"
     )
-    .textContent=
-      "Выберите пункт";
+    .textContent=title;
 
-  list.innerHTML=shiftPointOptions()
-    .map(point=>`
+  list.innerHTML=options
+    .map(option=>`
     <button
       type="button"
-      class="point-option ${point.id===pointPickerValue?"on":""}"
-      data-picker-value="${esc(point.id)}"
+      class="point-option ${option.value===pointPickerValue?"on":""}"
+      data-picker-value="${esc(option.value)}"
     >
       <span class="point-check">
-        ${point.id===pointPickerValue?"✓":""}
+        ${option.value===pointPickerValue?"✓":""}
       </span>
 
       <span class="point-name">
-        ${esc(point.name)}${point.active===false ? " · в архиве" : ""}
+        ${esc(option.label)}
       </span>
     </button>
   `).join("");
+
+  positionAppPicker(
+    picker,
+    pointPreviousFocus
+  );
 
   document.body.classList.add("point-picker-open");
   veil.classList.add("on");
@@ -5722,101 +5825,88 @@ function openPointPicker(){
   });
 }
 
+function openPointPicker(){
+  if(!draft) return;
+
+  openChoicePicker({
+    kind:"point",
+    value:draft.dbPointId,
+    title:"Выберите пункт",
+    options:shiftPointOptions()
+      .map(point=>({
+        value:point.id,
+        label:
+          point.name+
+          (
+            point.active===false
+              ? " · в архиве"
+              : ""
+          )
+      }))
+  });
+}
+
 function openEmployeePicker(){
-  if(!draft){
-    return;
-  }
+  if(!draft) return;
 
-  pointPickerKind="employee";
-  pointPreviousFocus=
-    document.activeElement;
+  openChoicePicker({
+    kind:"employee",
+    value:draft.employeeId,
+    title:"Выберите сотрудника",
+    options:shiftEmployeeOptions()
+      .map(employee=>({
+        value:employee.id,
+        label:
+          employee.full_name+
+          (
+            employee.status==="inactive"
+              ? " · в архиве"
+              : ""
+          )
+      }))
+  });
+}
 
-  const list=
-    document.getElementById(
-      "pointList"
-    );
+function openStatsPointPicker(){
+  openChoicePicker({
+    kind:"stats-point",
+    value:statsPointId,
+    title:"ПВЗ для итогов",
+    options:[
+      {
+        value:"",
+        label:"Все ПВЗ"
+      },
+      ...teamData.points.map(point=>({
+        value:point.id,
+        label:
+          point.name+
+          (
+            point.active===false
+              ? " · архив"
+              : ""
+          )
+      }))
+    ]
+  });
+}
 
-  const picker=
-    document.getElementById(
-      "pointPicker"
-    );
-
-  const veil=
-    document.getElementById(
-      "pointVeil"
-    );
-
-  clearTimeout(
-    pointPickerHideTimer
-  );
-
-  prepareBottomSheetOpen(
-    picker,
-    "--point-drag"
-  );
-
-  picker.style.display="block";
-  picker.classList.remove("on");
-  picker.setAttribute(
-    "aria-hidden",
-    "false"
-  );
-  veil.setAttribute(
-    "aria-hidden",
-    "false"
-  );
-
-  pointPickerValue=
-    draft.employeeId;
-
-  document
-    .getElementById(
-      "pointPickerTitle"
-    )
-    .textContent=
-      "Выберите сотрудника";
-
-  list.innerHTML=
-    shiftEmployeeOptions()
-      .map(employee=>`
-        <button
-          type="button"
-          class="point-option ${employee.id===pointPickerValue ? "on" : ""}"
-          data-picker-value="${esc(employee.id)}"
-        >
-          <span class="point-check">
-            ${employee.id===pointPickerValue ? "✓" : ""}
-          </span>
-
-          <span class="point-name">
-            ${esc(employee.full_name)}${employee.status==="inactive" ? " · в архиве" : ""}
-          </span>
-        </button>
-      `)
-      .join("");
-
-  document.body.classList.add(
-    "point-picker-open"
-  );
-  veil.classList.add("on");
-  void picker.offsetHeight;
-  picker.classList.add("on");
-
-  requestAnimationFrame(()=>{
-    const selected=
-      list.querySelector(
-        ".point-option.on"
-      ) ||
-      list.querySelector(
-        ".point-option"
-      );
-
-    if(selected){
-      selected.scrollIntoView({
-        block:"center"
-      });
-      selected.focus();
-    }
+function openStatsEmployeePicker(){
+  openChoicePicker({
+    kind:"stats-employee",
+    value:statsEmployeeId,
+    title:"Сотрудник для итогов",
+    options:teamData.employees
+      .map(employee=>({
+        value:employee.id,
+        label:
+          employee.full_name+
+          (
+            employee.status==="inactive"
+              ? " · архив"
+              : ""
+          )
+      }))
   });
 }
 
@@ -5837,7 +5927,12 @@ function closePointPicker(){
   const previousFocus=pointPreviousFocus;
   pointPreviousFocus=null;
   pointPickerHideTimer=setTimeout(()=>{
-    if(!picker.classList.contains("on")) picker.style.display="none";
+    if(!picker.classList.contains("on")){
+      picker.style.display="none";
+      resetAppPickerPosition(
+        picker
+      );
+    }
     picker.style.removeProperty("--point-drag");
     if(previousFocus && document.contains(previousFocus)) previousFocus.focus();
   },460);
@@ -9959,7 +10054,7 @@ document
           "[data-picker-value]"
         );
 
-      if(!option || !draft){
+      if(!option){
         return;
       }
 
@@ -10004,6 +10099,30 @@ document
 document
   .getElementById("pointDone")
   .onclick=()=>{
+    if(pointPickerKind==="stats-point"){
+      statsPointId=
+        pointPickerValue;
+
+      closePointPicker();
+      saveUIState();
+      render();
+      return;
+    }
+
+    if(pointPickerKind==="stats-employee"){
+      if(!pointPickerValue){
+        return;
+      }
+
+      statsEmployeeId=
+        pointPickerValue;
+
+      closePointPicker();
+      saveUIState();
+      render();
+      return;
+    }
+
     if(
       !draft ||
       !pointPickerValue
@@ -10269,6 +10388,11 @@ function updateEmployeeDraftField(
       null;
   }
 
+  if(target.id==="employeeEmail"){
+    employeeDraft.email=
+      target.value;
+  }
+
   if(target.id==="employeePhone"){
     employeeDraft.phone=
       target.value;
@@ -10353,6 +10477,16 @@ app.addEventListener("click",async event=>{
 
   const button=event.target.closest("button");
   if(!button) return;
+
+  if(button.id==="statsPointOpen"){
+    openStatsPointPicker();
+    return;
+  }
+
+  if(button.id==="statsEmployeeOpen"){
+    openStatsEmployeePicker();
+    return;
+  }
 
   if(
     [
@@ -10626,22 +10760,6 @@ app.addEventListener("click",async event=>{
 });
 
 app.addEventListener("change",event=>{
-  if(event.target.id==="statsEmployee"){
-    statsEmployeeId=
-      event.target.value;
-
-    render();
-    return;
-  }
-
-  if(event.target.id==="statsPoint"){
-    statsPointId=
-      event.target.value;
-
-    render();
-    return;
-  }
-
   if(event.target.id==="legacyEmployee"){
     legacyMigrationEmployeeId=
       event.target.value;

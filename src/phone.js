@@ -1,8 +1,5 @@
 const E164_PATTERN=/^\+[1-9]\d{7,14}$/;
 
-const PHONE_AUTH_DOMAIN=
-  "phone.shift-register.example.com";
-
 export function normalizePhone(
   value
 ){
@@ -54,15 +51,6 @@ export function optionalPhone(
   return String(value ?? "").trim()
     ? normalizePhone(value)
     : null;
-}
-
-export function phoneAuthEmail(
-  value
-){
-  const phone=
-    normalizePhone(value);
-
-  return `${phone.slice(1)}@${PHONE_AUTH_DOMAIN}`;
 }
 
 export function phoneLabel(

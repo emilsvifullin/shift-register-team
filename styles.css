@@ -1714,6 +1714,19 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
   width:88px;
 }
 
+.stats-filter-row .t{
+  width:92px;
+}
+
+.stats-filter-row .point-value{
+  font-size:14.5px;
+  letter-spacing:0;
+}
+
+.stats-filter-row:first-child{
+  border-top:0;
+}
+
 #f-employee{
   font-size:clamp(11px,3vw,13px);
   letter-spacing:-.25px;
@@ -1792,6 +1805,54 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
 
   opacity:1;
   pointer-events:auto;
+}
+
+@media (min-width:760px) and (hover:hover) and (pointer:fine){
+  .point-picker.app-picker-anchored{
+    left:var(--app-picker-left);
+    right:auto;
+    top:var(--app-picker-top);
+    bottom:auto;
+
+    width:var(--app-picker-width);
+    max-height:var(--app-picker-max-height);
+    margin:0;
+
+    transform:
+      translate3d(0,8px,0)
+      scale(.985);
+    transform-origin:top center;
+  }
+
+  .point-picker.app-picker-anchored.app-picker-above{
+    transform:
+      translate3d(0,-8px,0)
+      scale(.985);
+    transform-origin:bottom center;
+  }
+
+  .point-picker.app-picker-anchored.on,
+  .point-picker.app-picker-anchored.app-picker-above.on{
+    transform:
+      translate3d(
+        0,
+        var(--point-drag,0px),
+        0
+      )
+      scale(1);
+  }
+
+  .point-picker.app-picker-anchored .point-list{
+    max-height:
+      calc(
+        var(--app-picker-max-height) -
+        62px
+      );
+  }
+
+  .point-picker.app-picker-anchored .point-picker-handle{
+    display:none;
+  }
 }
 
 body.point-picker-open{

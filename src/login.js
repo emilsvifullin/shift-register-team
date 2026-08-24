@@ -1,7 +1,3 @@
-import {
-  phoneAuthEmail
-} from "./phone.js";
-
 const form=
   document.getElementById(
     "authForm"
@@ -972,36 +968,24 @@ form.addEventListener(
       !passwordValue
     ){
       setError(
-        "Введите телефон или email и пароль."
+        "Введите почту и пароль."
       );
 
       return;
     }
 
-    let credentials;
-
-    try{
-      credentials=
-        loginValue.includes("@")
-          ? {
-              email:loginValue,
-              password:passwordValue
-            }
-          : {
-              email:phoneAuthEmail(
-                loginValue
-              ),
-              password:passwordValue
-            };
-    }catch(error){
+    if(!email.validity.valid){
       setError(
-        error instanceof Error
-          ? error.message
-          : "Проверьте номер телефона."
+        "Введите корректную почту."
       );
 
       return;
     }
+
+    const credentials={
+      email:loginValue,
+      password:passwordValue
+    };
 
     setError();
 

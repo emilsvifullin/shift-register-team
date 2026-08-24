@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   normalizePhone,
   optionalPhone,
-  phoneAuthEmail,
   phoneLabel
 } from "../src/phone.js";
 
@@ -40,25 +39,6 @@ test(
     assert.equal(
       optionalPhone(""),
       null
-    );
-  }
-);
-
-test(
-  "phone login maps to a deterministic hidden email",
-  ()=>{
-    assert.equal(
-      phoneAuthEmail(
-        "8 (999) 123-45-67"
-      ),
-      "79991234567@phone.shift-register.example.com"
-    );
-
-    assert.equal(
-      phoneAuthEmail(
-        "+44 7700 900123"
-      ),
-      "447700900123@phone.shift-register.example.com"
     );
   }
 );

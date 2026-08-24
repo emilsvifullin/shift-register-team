@@ -417,7 +417,7 @@ export async function saveAdminEmployee({
 
 export async function saveAdminEmployeeAuth({
   employeeId,
-  phone,
+  email,
   password=""
 }){
   const result=
@@ -428,7 +428,7 @@ export async function saveAdminEmployeeAuth({
         {
           body:{
             employeeId,
-            phone,
+            email,
             password:
               password || undefined
           }

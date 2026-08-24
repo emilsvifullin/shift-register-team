@@ -65,17 +65,22 @@ test(
 
     assert.match(
       html,
-      /id="authForm"[\s\S]*autocomplete="off"/
-    );
-
-    assert.match(
-      html,
-      /data-1p-ignore="true"/
+      /id="authForm"[\s\S]*autocomplete="on"/
     );
 
     assert.doesNotMatch(
       html,
-      /autocomplete="(?:username|current-password|new-password)"/
+      /data-1p-ignore="true"/
+    );
+
+    assert.match(
+      html,
+      /name="username"[\s\S]*autocomplete="username"/
+    );
+
+    assert.match(
+      html,
+      /name="password"[\s\S]*autocomplete="current-password"/
     );
 
     assert.equal(
@@ -236,7 +241,7 @@ test(
 );
 
 test(
-  "phone authentication and realtime synchronization stay explicit",
+  "email authentication and realtime synchronization stay explicit",
   async()=>{
     const loginHtml=
       await read(
@@ -265,7 +270,7 @@ test(
 
     assert.match(
       loginHtml,
-      /Телефон или email/
+      /<span>Почта<\/span>/
     );
 
     assert.match(
@@ -273,19 +278,34 @@ test(
       /signInWithPassword\([\s\S]*credentials[\s\S]*\)/
     );
 
-    assert.match(
+    assert.doesNotMatch(
       login,
       /phoneAuthEmail/
     );
 
-    assert.match(
+    assert.doesNotMatch(
       employeeAuth,
       /phone\.shift-register\.example\.com/
     );
 
     assert.match(
       employeeAuth,
+      /normalizedEmail/
+    );
+
+    assert.match(
+      employeeAuth,
       /email_confirm:true/
+    );
+
+    assert.match(
+      employeeAuth,
+      /user_metadata:[\s\S]*full_name:employee\.full_name/
+    );
+
+    assert.match(
+      employeeAuth,
+      /linkedProfile\?\.role==="admin"[\s\S]*admin_account_protected/
     );
 
     assert.doesNotMatch(
@@ -311,6 +331,11 @@ test(
     assert.match(
       team,
       /point_tariffs/
+    );
+
+    assert.match(
+      team,
+      /saveAdminEmployeeAuth\([\s\S]*email[\s\S]*admin-employee-auth/
     );
   }
 );
@@ -375,7 +400,22 @@ test(
 
     assert.match(
       app,
-      /id="statsPoint"/
+      /id="statsPointOpen"/
+    );
+
+    assert.match(
+      app,
+      /id="statsEmployeeOpen"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /<select[\s\S]{0,120}id="stats(?:Point|Employee)"/
+    );
+
+    assert.match(
+      app,
+      /positionAppPicker\([\s\S]*pointPreviousFocus/
     );
 
     assert.match(
@@ -410,9 +450,9 @@ test(
 
     assert.ok(
       app.indexOf(
-        'id="statsPoint"'
+        'id="statsPointOpen"'
       )<app.indexOf(
-        'id="statsEmployee"'
+        'id="statsEmployeeOpen"'
       )
     );
 
@@ -766,6 +806,11 @@ test(
         "supabase/functions/admin-employee-auth/index.ts"
       );
 
+    const emailMigration=
+      await read(
+        "supabase/migrations/20260824151948_employee_email_accounts.sql"
+      );
+
     const team=
       await read(
         "src/team.js"
@@ -799,6 +844,16 @@ test(
     assert.match(
       edge,
       /profile\?\.role!=="admin"/
+    );
+
+    assert.match(
+      emailMigration,
+      /security definer[\s\S]*set search_path = ''/
+    );
+
+    assert.match(
+      emailMigration,
+      /grant execute on function public\.admin_account_options_v2\(\)[\s\S]*to authenticated/
     );
 
     assert.doesNotMatch(

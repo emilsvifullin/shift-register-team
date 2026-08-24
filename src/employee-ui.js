@@ -1,3 +1,8 @@
+import {
+  positionAppPicker,
+  resetAppPickerPosition
+} from "./picker-position.js";
+
 let employeeUiInstance=null;
 
 function esc(value){
@@ -240,6 +245,10 @@ export function initEmployeeUi({
         ){
           accountPicker.style.display=
             "none";
+
+          resetAppPickerPosition(
+            accountPicker
+          );
         }
       },360);
 
@@ -453,6 +462,11 @@ export function initEmployeeUi({
     accountPickerVeil.setAttribute(
       "aria-hidden",
       "false"
+    );
+
+    positionAppPicker(
+      accountPicker,
+      accountPickerPreviousFocus
     );
 
     document.body.classList.add(

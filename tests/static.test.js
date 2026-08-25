@@ -477,6 +477,23 @@ test(
 
     assert.match(
       app,
+      /class="shift-note-input"[^>]*placeholder="Комментарий"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /placeholder="Комментарий \.\.\."/
+    );
+
+    assert.match(
+      await read(
+        "styles.css"
+      ),
+      /\.shift-note-input\{\s*text-align:left;\s*\}[\s\S]*\.shift-note-input:focus::placeholder\{\s*color:transparent;/
+    );
+
+    assert.match(
+      app,
       /id="f-note"/
     );
 
@@ -603,37 +620,42 @@ test(
 
     assert.match(
       app,
-      /id="statsPointOpen"/
-    );
-
-    assert.match(
-      app,
       /id="statsEmployeeOpen"/
     );
 
     assert.match(
       app,
-      /function statsEmployeeOptions\(\)[\s\S]*pointId:statsPointId,[\s\S]*includeInactive:true/
-    );
-
-    assert.match(
-      app,
-      /const pointChanged=[\s\S]*statsPointId!==[\s\S]*pointPickerValue;[\s\S]*if\(pointChanged\)\{[\s\S]*statsEmployeeId="";/
+      /function statsEmployeeOptions\(\)\{\s*return teamData\.employees\.slice\(\);\s*\}/
     );
 
     assert.doesNotMatch(
       app,
-      /label:"Все ПВЗ"/
+      /statsPointId|statsPointOpen|stats-point/
     );
 
     assert.match(
-      styles,
-      /\.stats-filter-row:disabled\{\s*opacity:1;\s*cursor:default;\s*\}/
+      app,
+      /const statsShifts=[\s\S]*shift\.employeeId===[\s\S]*selectedEmployee\.id[\s\S]*: \[\];/
+    );
+
+    const statsView=
+      app.slice(
+        app.indexOf(
+          "function viewStats()"
+        ),
+        app.indexOf(
+          "function statsEmployeeOptions()"
+        )
+      );
+
+    assert.doesNotMatch(
+      statsView,
+      /shift\.dbPointId/
     );
 
     assert.match(
-      styles,
-      /\.stats-filter-row:disabled \.point-value\{\s*color:var\(--ink3\);\s*\}/
+      statsView,
+      /"Выберите сотрудника"[\s\S]*"Сотрудники не добавлены"/
     );
 
     assert.doesNotMatch(
@@ -804,12 +826,14 @@ test(
         "styles.css"
       );
 
-    assert.ok(
-      app.indexOf(
-        'id="statsPointOpen"'
-      )<app.indexOf(
-        'id="statsEmployeeOpen"'
-      )
+    assert.match(
+      app,
+      /<div class="ml">Фильтры<\/div>[\s\S]*id="statsEmployeeOpen"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /id="statsPointOpen"/
     );
 
     assert.match(
@@ -1419,12 +1443,17 @@ test(
 
     assert.match(
       app,
-      /id="f-base-override"[\s\S]*Причину другой суммы укажите в комментарии/
+      /data-pay-mode="tariff"[\s\S]*По тарифу[\s\S]*data-pay-mode="manual"[\s\S]*Корректировка оклада/
     );
 
-    assert.doesNotMatch(
+    assert.match(
       app,
-      />Корректировка</
+      /manualPayment \? `[\s\S]*id="f-base-override"[\s\S]*Укажите фактическую сумму за смену, а причину — в комментарии/
+    );
+
+    assert.match(
+      app,
+      /draft\.baseOverrideMode=[\s\S]*t\.dataset\.payMode[\s\S]*draft\.baseOverride="";/
     );
   }
 );

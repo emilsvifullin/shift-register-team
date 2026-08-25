@@ -158,7 +158,6 @@ let legacyMigrationEmployeeId="";
 let legacyMigrationRunning=false;
 let legacyMigrationProgress="";
 let statsEmployeeId="";
-let statsPointId="";
 let manageEditorKind=null;
 let manageEditorDraft=null;
 let manageEditorSaving=false;
@@ -285,19 +284,6 @@ async function refreshTeamData({
     teamDataLoaded=true;
 
     if(
-      statsPointId &&
-      !teamData.points.some(
-        point=>
-          point.id===statsPointId
-      )
-    ){
-      statsPointId="";
-      statsEmployeeId="";
-    }
-
-    if(!statsPointId){
-      statsEmployeeId="";
-    }else if(
       statsEmployeeId &&
       !statsEmployeeOptions()
         .some(
@@ -1382,12 +1368,7 @@ function viewStats(){
       ? shifts.filter(
           shift=>
             shift.employeeId===
-              selectedEmployee.id &&
-            (
-              !statsPointId ||
-              shift.dbPointId===
-                statsPointId
-            )
+              selectedEmployee.id
         )
       : [];
 
@@ -1678,22 +1659,6 @@ function viewStats(){
       })
       .join("");
 
-  const selectedStatsPoint=
-    teamData.points.find(
-      point=>
-        point.id===statsPointId
-    ) || null;
-
-  const statsPointLabel=
-    selectedStatsPoint
-      ? selectedStatsPoint.name+
-        (
-          selectedStatsPoint.active===false
-            ? " · архив"
-            : ""
-        )
-      : "Выберите ПВЗ";
-
   const availableStatsEmployees=
     statsEmployeeOptions();
 
@@ -1705,11 +1670,9 @@ function viewStats(){
             ? " · архив"
             : ""
         )
-      : !statsPointId
-        ? "Сначала выберите ПВЗ"
-        : availableStatsEmployees.length
-          ? "Выберите сотрудника"
-          : "Сотрудники не назначены";
+      : availableStatsEmployees.length
+        ? "Выберите сотрудника"
+        : "Сотрудники не добавлены";
 
   const statsFilters=
     isAdmin
@@ -1719,22 +1682,9 @@ function viewStats(){
           <button
             type="button"
             class="row point-row stats-filter-row"
-            id="statsPointOpen"
-            aria-label="Пункт выдачи для итогов: ${esc(statsPointLabel)}"
-          >
-            <div class="t">ПВЗ</div>
-            <div class="point-value">
-              ${esc(statsPointLabel)}
-            </div>
-          </button>
-
-          <button
-            type="button"
-            class="row point-row stats-filter-row"
             id="statsEmployeeOpen"
             aria-label="Сотрудник для итогов: ${esc(statsEmployeeLabel)}"
             ${
-              statsPointId &&
               availableStatsEmployees.length
                 ? ""
                 : "disabled"
@@ -5430,13 +5380,7 @@ function shiftPointOptions(
 }
 
 function statsEmployeeOptions(){
-  return shiftEmployeeChoices({
-    employees:teamData.employees,
-    employeePoints:
-      teamData.employeePoints,
-    pointId:statsPointId,
-    includeInactive:true
-  });
+  return teamData.employees.slice();
 }
 
 function cloneShiftDraft(value){
@@ -5505,10 +5449,26 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
           partial:false,
           hours:"",
           baseOverride:"",
+          baseOverrideMode:
+            "tariff",
           bonuses:[],
           penalties:[],
           note:""
         };
+
+  if(
+    ![
+      "tariff",
+      "manual"
+    ].includes(
+      draft.baseOverrideMode
+    )
+  ){
+    draft.baseOverrideMode=
+      draft.baseOverride===""
+        ? "tariff"
+        : "manual";
+  }
 
   const isEdit=Boolean(savedShift);
   document.getElementById("sheetTitle").textContent=isEdit ? "Смена" : "Новая смена";
@@ -6216,31 +6176,7 @@ function openEmployeePicker(){
   });
 }
 
-function openStatsPointPicker(){
-  openChoicePicker({
-    kind:"stats-point",
-    value:statsPointId,
-    title:"ПВЗ для итогов",
-    options:teamData.points
-      .map(point=>({
-        value:point.id,
-        label:
-          point.name+
-          (
-            point.active===false
-              ? " · архив"
-              : ""
-          )
-      }))
-  });
-}
-
 function openStatsEmployeePicker(){
-  if(!statsPointId){
-    toast("Сначала выберите ПВЗ");
-    return;
-  }
-
   openChoicePicker({
     kind:"stats-employee",
     value:statsEmployeeId,
@@ -6539,6 +6475,9 @@ function calcHTML(){
 function drawSheet(isEdit){
   const result=previewCalc(draft);
   const fixed=result.fixed;
+  const manualPayment=
+    draft.baseOverrideMode===
+      "manual";
 
   if(!isAdmin){
     document.getElementById("sheetBody").innerHTML=`
@@ -6624,17 +6563,33 @@ function drawSheet(isEdit){
     </div>
 
     <div class="ml">Оплата</div>
-    <div class="card">
-      <div class="row">
-        <div class="t">По тарифу</div>
-        <div class="v">${money(result.calculatedBase)}</div>
+    <div class="card segbox payment-mode-box">
+      <div class="seg">
+        <button
+          type="button"
+          data-pay-mode="tariff"
+          class="${manualPayment ? "" : "on"}"
+        >
+          По тарифу
+        </button>
+        <button
+          type="button"
+          data-pay-mode="manual"
+          class="${manualPayment ? "on" : ""}"
+        >
+          Корректировка оклада
+        </button>
       </div>
-      <label class="row">
-        <div class="t">За смену</div>
-        <input type="text" inputmode="decimal" id="f-base-override" value="${esc(draft.baseOverride==="" ? "" : String(draft.baseOverride).replace(".",","))}" aria-label="Оплата за смену" autocomplete="off">
-      </label>
     </div>
-    <div class="note">Оставьте сумму пустой для расчёта по тарифу. Причину другой суммы укажите в комментарии.</div>
+    ${manualPayment ? `
+      <div class="card payment-override-card">
+        <label class="row">
+          <div class="t">За смену</div>
+          <input type="text" inputmode="decimal" id="f-base-override" value="${esc(draft.baseOverride==="" ? "" : String(draft.baseOverride).replace(".",","))}" placeholder="0" aria-label="Оплата за смену" autocomplete="off">
+        </label>
+      </div>
+      <div class="note">Укажите фактическую сумму за смену, а причину — в комментарии.</div>
+    ` : ""}
 
     <div class="ml">Премии</div>
     ${adjustmentEditorHTML("bonuses",draft.bonuses)}
@@ -6644,9 +6599,8 @@ function drawSheet(isEdit){
 
     <div class="ml">Комментарий</div>
     <div class="card">
-      <label class="row">
-        <div class="t">Комментарий к смене</div>
-        <input type="text" id="f-note" value="${esc(draft.note || "")}" autocomplete="off">
+      <label class="row shift-note-row">
+        <input type="text" class="shift-note-input" id="f-note" value="${esc(draft.note || "")}" placeholder="Комментарий" aria-label="Комментарий к смене" autocomplete="off">
       </label>
     </div>
 
@@ -6835,7 +6789,9 @@ function validateDraft(value){
         value.baseOverride,
         "Оплата за смену",
         {
-          allowEmpty:true,
+          allowEmpty:
+            value.baseOverrideMode!==
+              "manual",
           max:MAX_MONEY
         }
       );
@@ -10501,6 +10457,36 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     saveUIState();
   }
 
+  else if(t.dataset.payMode){
+    readForm();
+
+    draft.baseOverrideMode=
+      t.dataset.payMode;
+
+    if(
+      draft.baseOverrideMode===
+        "tariff"
+    ){
+      draft.baseOverride="";
+    }
+
+    drawSheet(isEdit);
+    saveUIState();
+
+    if(
+      draft.baseOverrideMode===
+        "manual"
+    ){
+      requestAnimationFrame(()=>{
+        document
+          .getElementById(
+            "f-base-override"
+          )
+          ?.focus();
+      });
+    }
+  }
+
   else if(t.dataset.part){
     readForm();
 
@@ -10613,24 +10599,6 @@ document
   };
 
 function applyPointPickerValue(){
-    if(pointPickerKind==="stats-point"){
-      const pointChanged=
-        statsPointId!==
-        pointPickerValue;
-
-      statsPointId=
-        pointPickerValue;
-
-      if(pointChanged){
-        statsEmployeeId="";
-      }
-
-      closePointPicker();
-      saveUIState();
-      render();
-      return;
-    }
-
     if(pointPickerKind==="stats-employee"){
       if(!pointPickerValue){
         return;
@@ -11018,11 +10986,6 @@ app.addEventListener("click",async event=>{
 
   const button=event.target.closest("button");
   if(!button) return;
-
-  if(button.id==="statsPointOpen"){
-    openStatsPointPicker();
-    return;
-  }
 
   if(button.id==="statsEmployeeOpen"){
     openStatsEmployeePicker();

@@ -6527,12 +6527,12 @@ function drawSheet(isEdit){
     document.getElementById("sheetBody").innerHTML=`
       <div class="ml">Смена</div>
       <div class="card">
-        <div class="row"><div class="l"><div class="t">${esc(dateLabel(draft.date))}</div><div class="s">Дата</div></div></div>
-        <div class="row"><div class="l"><div class="t">${esc(draft.point)}</div><div class="s">ПВЗ</div></div></div>
-        <div class="row"><div class="l"><div class="t">${draft.type==="extra" ? "Дополнительная" : "Основная"}</div><div class="s">Тип</div></div></div>
-        <div class="row"><div class="l"><div class="t">${hoursWord(result.hours)}</div><div class="s">Часы</div></div></div>
-        ${fixed ? "" : `<div class="row"><div class="l"><div class="t">${nf(Number(draft.shk)||0)} ШК</div><div class="s">Объём</div></div></div>`}
-        <div class="row"><div class="l"><div class="t">${money(result.base)}</div><div class="s">Смена</div></div></div>
+        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Дата</div><div class="t">${esc(dateLabel(draft.date))}</div></div></div>
+        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">ПВЗ</div><div class="t">${esc(draft.point)}</div></div></div>
+        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Тип</div><div class="t">${draft.type==="extra" ? "Дополнительная" : "Основная"}</div></div></div>
+        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Часы</div><div class="t">${hoursWord(result.hours)}</div></div></div>
+        ${fixed ? "" : `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Объём</div><div class="t">${nf(Number(draft.shk)||0)} ШК</div></div></div>`}
+        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Смена</div><div class="t">${money(result.base)}</div></div></div>
       </div>
       ${adjustmentReadOnlyHTML("Премии",draft.bonuses)}
       ${adjustmentReadOnlyHTML("Штрафы",draft.penalties,true)}

@@ -1780,6 +1780,10 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
   padding-top:1px;
 }
 
+.shift-detail-readonly-row .s{
+  margin:0 0 3px;
+}
+
 .point-veil{
   position:fixed;
   inset:0;

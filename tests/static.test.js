@@ -452,7 +452,7 @@ test(
 );
 
 test(
-  "application uses its own calendar and keeps shift comments out of the editor",
+  "application uses its own calendar and keeps optional shift comments in the editor",
   async()=>{
     const html=
       await read(
@@ -469,9 +469,19 @@ test(
       /type="date"/
     );
 
-    assert.doesNotMatch(
+    assert.match(
       app,
       /Комментарий к смене/
+    );
+
+    assert.match(
+      app,
+      /id="f-note"/
+    );
+
+    assert.match(
+      app,
+      /draft\.note=\s*get\("f-note"\)\.value/
     );
 
     assert.match(

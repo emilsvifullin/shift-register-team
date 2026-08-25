@@ -61,6 +61,7 @@ import {
   createTeamId,
   legacyShiftPayload,
   normalizeShkTiers,
+  pricingDriversChanged,
   shiftEmployeeChoices,
   shiftPointChoices,
   tariffForDate
@@ -1932,7 +1933,7 @@ function viewData(){
     (
       serverConnected
         ? realtimeStatus==="connected"
-          ? "Изменения Supabase появляются автоматически на всех устройствах."
+          ? "Данные обновляются автоматически."
           : "Приложение автоматически проверяет изменения; ручное обновление не требуется."
         : "Проверьте подключение и повторите загрузку."
     );
@@ -6331,16 +6332,9 @@ function shiftPricingDriversEqual(
 ){
   return Boolean(
     existing &&
-    existing.employeeId===value.employeeId &&
-    existing.dbPointId===value.dbPointId &&
-    existing.date===value.date &&
-    existing.type===value.type &&
-    (Number(existing.shk) || 0)===(Number(value.shk) || 0) &&
-    existing.partial===value.partial &&
-    (
-      existing.partial
-        ? Number(existing.hours)===Number(value.hours)
-        : true
+    !pricingDriversChanged(
+      existing,
+      value
     )
   );
 }
@@ -6353,23 +6347,6 @@ function previewCalc(value){
         item.id===value.dbPointId
     );
 
-  if(!point){
-    return {
-      available:false,
-      error:"Выберите ПВЗ",
-      fixed:true,
-      rate:0,
-      hours:value.partial
-        ? Number(value.hours) || 0
-        : FULL_HOURS,
-      perHour:0,
-      base:0,
-      bonus:0,
-      fine:0,
-      total:0
-    };
-  }
-
   let pricing;
   let pricingError="";
 
@@ -6380,23 +6357,28 @@ function previewCalc(value){
         value
       );
 
-    const tariff=
-      point
-        ? tariffForDate(
-            teamData.tariffs,
-            point.id,
-            value.date
-          )
-        : null;
+    if(existing?.pricing && sameDrivers){
+      pricing=existing.pricing;
+    }else{
+      if(!point){
+        throw new Error(
+          "Выберите ПВЗ"
+        );
+      }
 
-    pricing=(existing?.pricing && sameDrivers)
-      ? existing.pricing
-      : createPricingSnapshot({
-          tariff,
-          point,
-          shiftDate:value.date,
-          shk:value.shk
-        });
+      const tariff=tariffForDate(
+        teamData.tariffs,
+        point.id,
+        value.date
+      );
+
+      pricing=createPricingSnapshot({
+        tariff,
+        point,
+        shiftDate:value.date,
+        shk:value.shk
+      });
+    }
   }catch(error){
     pricingError=
       error instanceof Error
@@ -6502,7 +6484,7 @@ function adjustmentReadOnlyHTML(
     <div class="ml">${title}</div>
     <div class="card">
       ${rows.map(item=>`
-        <div class="row">
+        <div class="row adjustment-readonly-row">
           <div class="l">
             <div class="t">${esc(item.comment)}</div>
           </div>

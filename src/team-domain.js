@@ -342,6 +342,15 @@ function normalizedDriver(
   return Number(value);
 }
 
+function driverValue(
+  value,
+  serverKey,
+  clientKey
+){
+  return value?.[serverKey] ??
+    value?.[clientKey];
+}
+
 export function pricingDriversChanged(
   previous,
   next
@@ -351,12 +360,36 @@ export function pricingDriversChanged(
   }
 
   return (
-    previous.employee_id!==
-      next.employee_id ||
-    previous.point_id!==
-      next.point_id ||
-    previous.shift_date!==
-      next.shift_date ||
+    driverValue(
+      previous,
+      "employee_id",
+      "employeeId"
+    )!==
+      driverValue(
+        next,
+        "employee_id",
+        "employeeId"
+      ) ||
+    driverValue(
+      previous,
+      "point_id",
+      "dbPointId"
+    )!==
+      driverValue(
+        next,
+        "point_id",
+        "dbPointId"
+      ) ||
+    driverValue(
+      previous,
+      "shift_date",
+      "date"
+    )!==
+      driverValue(
+        next,
+        "shift_date",
+        "date"
+      ) ||
     normalizedDriver(
       previous.shk
     )!==

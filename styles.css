@@ -1004,17 +1004,44 @@ nav.tabs button.on{
   gap:8px;
 }
 
-.employee-password-control input{
+.employee-secret-input{
+  position:relative;
+
   min-width:0;
   flex:1;
 }
 
-.employee-secret-field{
-  -webkit-text-security:disc;
+.employee-secret-input input{
+  width:100%;
+  min-width:0;
 }
 
-.employee-secret-field.is-visible{
-  -webkit-text-security:none;
+.employee-secret-input:not(.is-visible) input{
+  color:transparent;
+  -webkit-text-fill-color:transparent;
+
+  caret-color:var(--ink);
+}
+
+.employee-secret-mask{
+  position:absolute;
+  inset:0;
+
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+
+  overflow:hidden;
+
+  color:var(--ink);
+  white-space:nowrap;
+
+  pointer-events:none;
+}
+
+.employee-secret-input.is-visible
+.employee-secret-mask{
+  display:none;
 }
 
 .employee-password-toggle{

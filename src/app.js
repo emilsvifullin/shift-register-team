@@ -4109,20 +4109,26 @@ function drawEmployeeSheet(){
         <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
 
         <div class="employee-password-control">
-          <input
-            type="text"
-            id="employeePassword"
-            class="employee-secret-field"
-            autocomplete="off"
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            data-1p-ignore="true"
-            data-lpignore="true"
-            data-form-type="other"
-            value="${esc(employeeDraft.password || "")}"
-            aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
-          >
+          <div class="employee-secret-input">
+            <input
+              type="text"
+              id="employeePassword"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-form-type="other"
+              value="${esc(employeeDraft.password || "")}"
+              aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
+            >
+
+            <span
+              class="employee-secret-mask"
+              aria-hidden="true"
+            >${"•".repeat((employeeDraft.password || "").length)}</span>
+          </div>
 
           <button
             type="button"
@@ -10081,7 +10087,7 @@ employeeSheetElement.addEventListener(
       }
 
       const visible=
-        field.classList.toggle(
+        field.parentElement.classList.toggle(
           "is-visible"
         );
 
@@ -10853,6 +10859,18 @@ function updateEmployeeDraftField(
   if(target.id==="employeePassword"){
     employeeDraft.password=
       target.value;
+
+    const mask=
+      target.parentElement.querySelector(
+        ".employee-secret-mask"
+      );
+
+    if(mask){
+      mask.textContent=
+        "•".repeat(
+          target.value.length
+        );
+    }
   }
 }
 

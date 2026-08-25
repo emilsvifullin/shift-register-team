@@ -550,6 +550,21 @@ test(
     );
 
     assert.match(
+      app,
+      /function statsEmployeeOptions\(\)[\s\S]*pointId:statsPointId,[\s\S]*includeInactive:true/
+    );
+
+    assert.match(
+      app,
+      /const pointChanged=[\s\S]*statsPointId!==[\s\S]*pointPickerValue;[\s\S]*if\(pointChanged\)\{[\s\S]*statsEmployeeId="";/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /label:"Все ПВЗ"/
+    );
+
+    assert.match(
       styles,
       /\.stats-filter-row:disabled\{\s*opacity:1;\s*cursor:default;\s*\}/
     );

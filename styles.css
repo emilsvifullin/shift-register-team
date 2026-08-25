@@ -1682,6 +1682,14 @@ input::placeholder{
   color:var(--ink3);
 }
 
+.shift-note-input{
+  text-align:left;
+}
+
+.shift-note-input:focus::placeholder{
+  color:transparent;
+}
+
 select{
   appearance:none;
   text-align-last:right;
@@ -2657,6 +2665,10 @@ body.month-picker-open{
 
 .segbox{
   padding:5px;
+}
+
+.payment-mode-box .seg button{
+  min-width:0;
 }
 
 /* расчёт */

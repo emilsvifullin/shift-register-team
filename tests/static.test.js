@@ -516,7 +516,7 @@ test(
 
     assert.match(
       app,
-      /type="text"[\s\S]*id="employeePassword"[\s\S]*class="employee-secret-field"/
+      /class="employee-secret-input"[\s\S]*type="text"[\s\S]*id="employeePassword"/
     );
 
     assert.doesNotMatch(
@@ -525,8 +525,13 @@ test(
     );
 
     assert.match(
+      app,
+      /class="employee-secret-mask"[\s\S]*"•"\.repeat/
+    );
+
+    assert.match(
       styles,
-      /\.employee-secret-field\{[\s\S]*-webkit-text-security:disc;/
+      /\.employee-secret-input:not\(\.is-visible\) input\{[\s\S]*color:transparent;/
     );
 
     assert.match(
@@ -602,6 +607,16 @@ test(
     assert.match(
       app,
       /id="f-employee-open"/
+    );
+
+    assert.match(
+      app,
+      /employeeId:"",[\s\S]*employeeName:"",[\s\S]*dbPointId:"",[\s\S]*pointId:"",[\s\S]*point:""/
+    );
+
+    assert.match(
+      app,
+      /const pointChanged=[\s\S]*draft\.dbPointId!==point\.id;[\s\S]*if\(pointChanged\)\{[\s\S]*draft\.employeeId="";/
     );
 
     assert.ok(

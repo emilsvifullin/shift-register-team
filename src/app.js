@@ -61,6 +61,8 @@ import {
   createTeamId,
   legacyShiftPayload,
   normalizeShkTiers,
+  shiftEmployeeChoices,
+  shiftPointChoices,
   tariffForDate
 } from "./team-domain.js";
 
@@ -4109,20 +4111,26 @@ function drawEmployeeSheet(){
         <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
 
         <div class="employee-password-control">
-          <input
-            type="text"
-            id="employeePassword"
-            class="employee-secret-field"
-            autocomplete="off"
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            data-1p-ignore="true"
-            data-lpignore="true"
-            data-form-type="other"
-            value="${esc(employeeDraft.password || "")}"
-            aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
-          >
+          <div class="employee-secret-input">
+            <input
+              type="text"
+              id="employeePassword"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-form-type="other"
+              value="${esc(employeeDraft.password || "")}"
+              aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
+            >
+
+            <span
+              class="employee-secret-mask"
+              aria-hidden="true"
+            >${"•".repeat((employeeDraft.password || "").length)}</span>
+          </div>
 
           <button
             type="button"
@@ -5390,30 +5398,24 @@ function assignedPointIds(
 function shiftEmployeeOptions(
   value=draft
 ){
-  return teamData.employees
-    .filter(employee=>
-      employee.status==="active" ||
-      employee.id===value?.employeeId
-    );
+  return shiftEmployeeChoices({
+    employees:teamData.employees,
+    employeePoints:
+      teamData.employeePoints,
+    pointId:
+      value?.dbPointId || "",
+    selectedEmployeeId:
+      value?.employeeId || ""
+  });
 }
 
 function shiftPointOptions(
   value=draft
 ){
-  const assigned=new Set(
-    assignedPointIds(
-      value?.employeeId
-    )
+  return shiftPointChoices(
+    teamData.points,
+    value?.dbPointId || ""
   );
-
-  return teamData.points
-    .filter(point=>
-      (
-        assigned.has(point.id) &&
-        point.active!==false
-      ) ||
-      point.id===value?.dbPointId
-    );
 }
 
 function cloneShiftDraft(value){
@@ -5468,48 +5470,15 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
     ? cloneShiftDraft(restoredDraft)
     : savedShift
       ? cloneShiftDraft(savedShift)
-      : (()=>{
-          const employee=
-            teamData.employees.find(
-              item=>
-                item.status==="active" &&
-                assignedPointIds(item.id)
-                  .some(pointId=>
-                    teamData.points.some(
-                      point=>
-                        point.id===pointId &&
-                        point.active!==false
-                    )
-                  )
-            ) ||
-            teamData.employees.find(
-              item=>
-                item.status==="active"
-            );
-
-          const assigned=
-            new Set(
-              assignedPointIds(
-                employee.id
-              )
-            );
-
-          const point=
-            teamData.points.find(
-              item=>
-                item.active!==false &&
-                assigned.has(item.id)
-            ) || null;
-
-          return {
+      : {
           v:3,
           id:createTeamId(),
-          employeeId:employee.id,
-          employeeName:employee.full_name,
+          employeeId:"",
+          employeeName:"",
           date:defaultShiftDate(),
-          dbPointId:point?.id || "",
-          pointId:point?.code || point?.id || "",
-          point:point?.name || "ПВЗ не назначен",
+          dbPointId:"",
+          pointId:"",
+          point:"",
           type:"main",
           shk:"",
           partial:false,
@@ -5518,7 +5487,6 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
           penalties:[],
           note:""
         };
-        })();
 
   const isEdit=Boolean(savedShift);
   document.getElementById("sheetTitle").textContent=isEdit ? "Смена" : "Новая смена";
@@ -6193,6 +6161,21 @@ function openPointPicker(){
 function openEmployeePicker(){
   if(!draft) return;
 
+  if(!draft.dbPointId){
+    toast(
+      "Сначала выберите ПВЗ",
+      2600
+    );
+
+    document
+      .getElementById(
+        "f-point-open"
+      )
+      ?.focus();
+
+    return;
+  }
+
   openChoicePicker({
     kind:"employee",
     value:draft.employeeId,
@@ -6349,6 +6332,24 @@ function previewCalc(value){
       item=>
         item.id===value.dbPointId
     );
+
+  if(!point){
+    return {
+      available:false,
+      error:"Выберите ПВЗ",
+      fixed:true,
+      rate:0,
+      hours:value.partial
+        ? Number(value.hours) || 0
+        : FULL_HOURS,
+      perHour:0,
+      base:0,
+      bonus:0,
+      fine:0,
+      total:0
+    };
+  }
+
   let pricing;
   let pricingError="";
 
@@ -6500,7 +6501,7 @@ function calcHTML(){
   if(!result.available){
     return `
       <div class="calc-error">
-        ${esc(result.error)}. Добавьте исторический тариф в карточке ПВЗ.
+        ${esc(result.error)}${draft.dbPointId ? ". Добавьте исторический тариф в карточке ПВЗ." : ""}
       </div>
     `;
   }
@@ -6561,7 +6562,7 @@ function drawSheet(isEdit){
       </button>
       <button type="button" class="row point-row" id="f-point-open">
         <div class="t">Пункт</div>
-        <div class="point-value">${esc(draft.point)}</div>
+        <div class="point-value">${esc(draft.point || "Выберите пункт")}</div>
       </button>
       <button
         type="button"
@@ -6570,7 +6571,14 @@ function drawSheet(isEdit){
       >
         <div class="t">Сотрудник</div>
         <div class="point-value">
-          ${esc(selectedEmployee?.full_name || "Выберите сотрудника")}
+          ${esc(
+            selectedEmployee?.full_name ||
+            (
+              draft.dbPointId
+                ? "Выберите сотрудника"
+                : "Сначала выберите пункт"
+            )
+          )}
         </div>
       </button>
       ${fixed ? "" : `
@@ -6724,8 +6732,8 @@ function validateMoneyField(value,label,{allowEmpty=true,max=MAX_MONEY}={}){
 
 function validateDraft(value){
   if(!isValidDateString(value.date)) return {message:`Выберите дату с ${MIN_YEAR} по ${MAX_YEAR} год`,fieldId:"f-date-open"};
-  if(!shiftEmployeeOptions(value).some(employee=>employee.id===value.employeeId)) return {message:"Выберите сотрудника",fieldId:"f-employee-open"};
-  if(!shiftPointOptions(value).some(point=>point.id===value.dbPointId)) return {message:"Выберите назначенный ПВЗ",fieldId:"f-point-open"};
+  if(!shiftPointOptions(value).some(point=>point.id===value.dbPointId)) return {message:"Выберите ПВЗ",fieldId:"f-point-open"};
+  if(!shiftEmployeeOptions(value).some(employee=>employee.id===value.employeeId)) return {message:"Выберите сотрудника этого ПВЗ",fieldId:"f-employee-open"};
 
   if(!previewCalc(value).fixed){
     const error=validateWholeField(value.shk,"ШК",{allowEmpty:true,max:MAX_SHK});
@@ -10081,7 +10089,7 @@ employeeSheetElement.addEventListener(
       }
 
       const visible=
-        field.classList.toggle(
+        field.parentElement.classList.toggle(
           "is-visible"
         );
 
@@ -10575,21 +10583,8 @@ function applyPointPickerValue(){
 
       draft.employeeId=
         employee.id;
-      draft.dbPointId="";
-
-      const point=
-        shiftPointOptions(draft)[0] ||
-        null;
-
-      draft.dbPointId=
-        point?.id || "";
-      draft.pointId=
-        point?.code ||
-        point?.id || "";
-      draft.point=
-        point?.name ||
-        "ПВЗ не назначен";
-      draft.shk="";
+      draft.employeeName=
+        employee.full_name;
 
       closePointPicker();
 
@@ -10618,10 +10613,18 @@ function applyPointPickerValue(){
       return;
     }
 
+    const pointChanged=
+      draft.dbPointId!==point.id;
+
     draft.dbPointId=point.id;
     draft.pointId=
       point.code || point.id;
     draft.point=point.name;
+
+    if(pointChanged){
+      draft.employeeId="";
+      draft.employeeName="";
+    }
 
     const nowFixed=
       previewCalc(draft).fixed;
@@ -10853,6 +10856,18 @@ function updateEmployeeDraftField(
   if(target.id==="employeePassword"){
     employeeDraft.password=
       target.value;
+
+    const mask=
+      target.parentElement.querySelector(
+        ".employee-secret-mask"
+      );
+
+    if(mask){
+      mask.textContent=
+        "•".repeat(
+          target.value.length
+        );
+    }
   }
 }
 

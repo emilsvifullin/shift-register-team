@@ -415,6 +415,51 @@ export function filterEmployeeShifts(
     );
 }
 
+export function shiftPointChoices(
+  points,
+  selectedPointId=""
+){
+  return (points || [])
+    .filter(
+      point=>
+        point.active!==false ||
+        point.id===selectedPointId
+    );
+}
+
+export function shiftEmployeeChoices({
+  employees,
+  employeePoints,
+  pointId,
+  selectedEmployeeId=""
+}){
+  const assignedEmployeeIds=
+    new Set(
+      (employeePoints || [])
+        .filter(
+          item=>
+            item.point_id===pointId &&
+            item.active!==false
+        )
+        .map(
+          item=>item.employee_id
+        )
+    );
+
+  return (employees || [])
+    .filter(
+      employee=>
+        (
+          Boolean(pointId) &&
+          employee.status==="active" &&
+          assignedEmployeeIds.has(
+            employee.id
+          )
+        ) ||
+        employee.id===selectedEmployeeId
+    );
+}
+
 function adjustmentRows(
   value
 ){

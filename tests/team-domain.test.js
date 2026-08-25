@@ -15,6 +15,8 @@ import {
   pricingDriversChanged,
   rateForTariff,
   roleCapabilities,
+  shiftEmployeeChoices,
+  shiftPointChoices,
   tariffForDate
 } from "../src/team-domain.js";
 
@@ -393,5 +395,84 @@ test("employee ownership filtering and role capabilities are fail-closed",()=>{
   assert.equal(
     roleCapabilities("unknown").manageTeam,
     false
+  );
+});
+
+test("new shift choices start with a point and only show its active employees",()=>{
+  const points=[
+    {id:"point-1",active:true},
+    {id:"point-2",active:true},
+    {id:"point-archive",active:false}
+  ];
+
+  const employees=[
+    {id:"employee-1",status:"active"},
+    {id:"employee-2",status:"active"},
+    {id:"employee-archive",status:"inactive"}
+  ];
+
+  const employeePoints=[
+    {
+      employee_id:"employee-1",
+      point_id:"point-1",
+      active:true
+    },
+    {
+      employee_id:"employee-2",
+      point_id:"point-2",
+      active:true
+    },
+    {
+      employee_id:"employee-archive",
+      point_id:"point-1",
+      active:true
+    }
+  ];
+
+  assert.deepEqual(
+    shiftPointChoices(points)
+      .map(item=>item.id),
+    ["point-1","point-2"]
+  );
+
+  assert.deepEqual(
+    shiftEmployeeChoices({
+      employees,
+      employeePoints,
+      pointId:""
+    }),
+    []
+  );
+
+  assert.deepEqual(
+    shiftEmployeeChoices({
+      employees,
+      employeePoints,
+      pointId:"point-1"
+    }).map(item=>item.id),
+    ["employee-1"]
+  );
+
+  assert.deepEqual(
+    shiftEmployeeChoices({
+      employees,
+      employeePoints,
+      pointId:"point-1",
+      selectedEmployeeId:
+        "employee-archive"
+    }).map(item=>item.id),
+    ["employee-1","employee-archive"]
+  );
+
+  assert.deepEqual(
+    shiftPointChoices(
+      points,
+      "point-archive"
+    ).map(item=>item.id),
+    [
+      "point-1",
+      "point-2",
+      "point-archive"
+    ]
   );
 });

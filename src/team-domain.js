@@ -431,7 +431,8 @@ export function shiftEmployeeChoices({
   employees,
   employeePoints,
   pointId,
-  selectedEmployeeId=""
+  selectedEmployeeId="",
+  includeInactive=false
 }){
   const assignedEmployeeIds=
     new Set(
@@ -451,7 +452,10 @@ export function shiftEmployeeChoices({
       employee=>
         (
           Boolean(pointId) &&
-          employee.status==="active" &&
+          (
+            includeInactive ||
+            employee.status==="active"
+          ) &&
           assignedEmployeeIds.has(
             employee.id
           )

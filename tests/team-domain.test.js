@@ -458,6 +458,16 @@ test("new shift choices start with a point and only show its active employees",(
       employees,
       employeePoints,
       pointId:"point-1",
+      includeInactive:true
+    }).map(item=>item.id),
+    ["employee-1","employee-archive"]
+  );
+
+  assert.deepEqual(
+    shiftEmployeeChoices({
+      employees,
+      employeePoints,
+      pointId:"point-1",
       selectedEmployeeId:
         "employee-archive"
     }).map(item=>item.id),

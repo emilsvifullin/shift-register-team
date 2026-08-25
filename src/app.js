@@ -284,23 +284,6 @@ async function refreshTeamData({
     teamDataLoaded=true;
 
     if(
-      isAdmin &&
-      !teamData.employees.some(
-        employee=>
-          employee.id===
-          statsEmployeeId
-      )
-    ){
-      statsEmployeeId=
-        teamData.employees.find(
-          employee=>
-            employee.status==="active"
-        )?.id ||
-        teamData.employees[0]?.id ||
-        "";
-    }
-
-    if(
       statsPointId &&
       !teamData.points.some(
         point=>
@@ -308,6 +291,21 @@ async function refreshTeamData({
       )
     ){
       statsPointId="";
+      statsEmployeeId="";
+    }
+
+    if(!statsPointId){
+      statsEmployeeId="";
+    }else if(
+      statsEmployeeId &&
+      !statsEmployeeOptions()
+        .some(
+          employee=>
+            employee.id===
+            statsEmployeeId
+        )
+    ){
+      statsEmployeeId="";
     }
 
     return true;
@@ -1693,7 +1691,10 @@ function viewStats(){
             ? " · архив"
             : ""
         )
-      : "Все ПВЗ";
+      : "Выберите ПВЗ";
+
+  const availableStatsEmployees=
+    statsEmployeeOptions();
 
   const statsEmployeeLabel=
     selectedEmployee
@@ -1703,7 +1704,11 @@ function viewStats(){
             ? " · архив"
             : ""
         )
-      : "Сотрудники не добавлены";
+      : !statsPointId
+        ? "Сначала выберите ПВЗ"
+        : availableStatsEmployees.length
+          ? "Выберите сотрудника"
+          : "Сотрудники не назначены";
 
   const statsFilters=
     isAdmin
@@ -1727,7 +1732,12 @@ function viewStats(){
             class="row point-row stats-filter-row"
             id="statsEmployeeOpen"
             aria-label="Сотрудник для итогов: ${esc(statsEmployeeLabel)}"
-            ${selectedEmployee ? "" : "disabled"}
+            ${
+              statsPointId &&
+              availableStatsEmployees.length
+                ? ""
+                : "disabled"
+            }
           >
             <div class="t">Сотрудник</div>
             <div class="point-value">
@@ -5418,6 +5428,16 @@ function shiftPointOptions(
   );
 }
 
+function statsEmployeeOptions(){
+  return shiftEmployeeChoices({
+    employees:teamData.employees,
+    employeePoints:
+      teamData.employeePoints,
+    pointId:statsPointId,
+    includeInactive:true
+  });
+}
+
 function cloneShiftDraft(value){
   return {
     ...value,
@@ -6199,12 +6219,8 @@ function openStatsPointPicker(){
     kind:"stats-point",
     value:statsPointId,
     title:"ПВЗ для итогов",
-    options:[
-      {
-        value:"",
-        label:"Все ПВЗ"
-      },
-      ...teamData.points.map(point=>({
+    options:teamData.points
+      .map(point=>({
         value:point.id,
         label:
           point.name+
@@ -6214,16 +6230,20 @@ function openStatsPointPicker(){
               : ""
           )
       }))
-    ]
   });
 }
 
 function openStatsEmployeePicker(){
+  if(!statsPointId){
+    toast("Сначала выберите ПВЗ");
+    return;
+  }
+
   openChoicePicker({
     kind:"stats-employee",
     value:statsEmployeeId,
     title:"Сотрудник для итогов",
-    options:teamData.employees
+    options:statsEmployeeOptions()
       .map(employee=>({
         value:employee.id,
         label:
@@ -10536,8 +10556,16 @@ document
 
 function applyPointPickerValue(){
     if(pointPickerKind==="stats-point"){
+      const pointChanged=
+        statsPointId!==
+        pointPickerValue;
+
       statsPointId=
         pointPickerValue;
+
+      if(pointChanged){
+        statsEmployeeId="";
+      }
 
       closePointPicker();
       saveUIState();

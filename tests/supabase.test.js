@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 test(
-  "Supabase clients and Edge Function requests use the direct project URL",
+  "Supabase REST, Auth and Edge Functions use proxy while Realtime stays direct",
   async()=>{
     const originalSupabase=
       globalThis.supabase;
@@ -105,13 +105,13 @@ test(
 
       assert.equal(
         request.url,
-        "https://rxosovinouuonwrrzigs.supabase.co/functions/v1/admin-employee-auth"
+        "https://shift-register-supabase-proxy.vercel.app/functions/v1/admin-employee-auth"
       );
 
       assert.deepEqual(
         clientUrls,
         [
-          "https://rxosovinouuonwrrzigs.supabase.co",
+          "https://shift-register-supabase-proxy.vercel.app",
           "https://rxosovinouuonwrrzigs.supabase.co"
         ]
       );

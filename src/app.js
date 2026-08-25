@@ -4110,8 +4110,9 @@ function drawEmployeeSheet(){
 
         <div class="employee-password-control">
           <input
-            type="password"
+            type="text"
             id="employeePassword"
+            class="employee-secret-field"
             autocomplete="off"
             autocapitalize="none"
             autocorrect="off"
@@ -10080,23 +10081,20 @@ employeeSheetElement.addEventListener(
       }
 
       const visible=
-        field.type==="text";
-
-      field.type=
-        visible
-          ? "password"
-          : "text";
+        field.classList.toggle(
+          "is-visible"
+        );
 
       button.setAttribute(
         "aria-pressed",
-        String(!visible)
+        String(visible)
       );
 
       button.setAttribute(
         "aria-label",
         visible
-          ? "Показать пароль"
-          : "Скрыть пароль"
+          ? "Скрыть пароль"
+          : "Показать пароль"
       );
 
       field.focus({

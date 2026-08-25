@@ -315,7 +315,7 @@ test("server bonuses and penalties are included separately and together",()=>{
     partial:false,
     hours:null,
     full_hours:12,
-    base_amount:3000,
+    base_amount:3500,
     pricing_snapshot:createPricingSnapshot({
       tariff:tierTariff,
       point,
@@ -331,6 +331,55 @@ test("server bonuses and penalties are included separately and together",()=>{
   assert.equal(calc({...mapped,penalties:[],fine:""}).total,4000);
   assert.equal(calc({...mapped,bonuses:[],bonus:""}).total,3300);
   assert.equal(calc(mapped).total,3800);
+});
+
+test("server base amount can represent an explicit shift payment without changing tariff pricing",()=>{
+  const advancePoint={
+    ...point,
+    advance_enabled:true
+  };
+
+  const pricing=createPricingSnapshot({
+    tariff:tierTariff,
+    point:advancePoint,
+    shiftDate:"2026-08-01",
+    shk:126
+  });
+
+  const mapped=mapServerShift({
+    id:"99999999-9999-4999-8999-999999999999",
+    employee_id:"employee-1",
+    point_id:point.id,
+    shift_date:"2026-08-01",
+    shift_type:"extra",
+    shk:126,
+    partial:true,
+    hours:10,
+    full_hours:12,
+    base_amount:1500,
+    pricing_snapshot:pricing,
+    note:"Выплата подменному сотруднику за 2 часа",
+    point:advancePoint,
+    employee:{full_name:"Сотрудник",status:"active"},
+    bonuses:[],
+    penalties:[]
+  });
+
+  const result=calc(mapped);
+  const summary=payouts(
+    "2026-08",
+    [mapped],
+    {
+      today:"2026-08-25"
+    }
+  );
+
+  assert.equal(mapped.baseOverride,1500);
+  assert.equal(result.rate,3000);
+  assert.equal(result.calculatedBase,2500);
+  assert.equal(result.base,1500);
+  assert.equal(summary.payment25,1500);
+  assert.equal(summary.fine10,0);
 });
 
 test("advance cap and payment dates remain unchanged with a server snapshot",()=>{

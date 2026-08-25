@@ -153,6 +153,41 @@ test("fixed PVZ use fixed rate regardless of SHK",()=>{
   );
 });
 
+test("manual shift pay replaces the base and stays in the advance payment bucket",()=>{
+  const calculated=
+    shift({
+      date:"2026-08-01",
+      point:"Прокатная 2",
+      shk:126,
+      partial:true,
+      hours:10
+    });
+
+  const item={
+    ...calculated,
+    baseAmount:1500,
+    note:"Выплата подменному сотруднику за 2 часа"
+  };
+
+  const result=calc(item);
+  const summary=payouts(
+    "2026-08",
+    [item],
+    {
+      today:"2026-08-25"
+    }
+  );
+
+  assert.equal(result.calculatedBase,2500);
+  assert.equal(result.base,1500);
+  assert.equal(result.baseOverridden,true);
+  assert.equal(result.fine,0);
+  assert.equal(summary.specialFirstHalfBase,1500);
+  assert.equal(summary.payment25,1500);
+  assert.equal(summary.payment10,0);
+  assert.equal(summary.fine10,0);
+});
+
 test("advance PVZ cap the first-half payment and move bonuses to final settlement",()=>{
   const items=
     Array.from(

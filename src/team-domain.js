@@ -573,6 +573,24 @@ export function mapServerShift(
       TEAM_RULES_VERSION
   };
 
+  const calculatedBase=
+    row.partial===true
+      ? Math.round(
+          pricing.rate /
+          pricing.fullHours *
+          Number(row.hours)
+        )
+      : pricing.rate;
+
+  const savedBase=
+    Number(row.base_amount);
+
+  const baseAmount=
+    Number.isFinite(savedBase) &&
+    savedBase>=0
+      ? savedBase
+      : calculatedBase;
+
   return {
     v:3,
     id:row.id,
@@ -618,6 +636,11 @@ export function mapServerShift(
     bonuses,
     penalties,
     note:row.note || "",
+    baseAmount,
+    baseOverride:
+      baseAmount!==calculatedBase
+        ? baseAmount
+        : "",
     pricing
   };
 }

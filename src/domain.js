@@ -733,7 +733,19 @@ export function calc(shift){
   const hours=normalized.partial ? Number(normalized.hours) : pricing.fullHours;
   const perHour=pricing.rate/pricing.fullHours;
   // Бизнес-правило: неполная смена округляется до целого рубля отдельно по каждой смене.
-  const base=normalized.partial ? Math.round(perHour*hours) : pricing.rate;
+  const calculatedBase=normalized.partial ? Math.round(perHour*hours) : pricing.rate;
+  const savedBase=
+    normalized.baseAmount==="" ||
+    normalized.baseAmount===null ||
+    normalized.baseAmount===undefined
+      ? null
+      : Number(normalized.baseAmount);
+  const base=
+    savedBase!==null &&
+    Number.isFinite(savedBase) &&
+    savedBase>=0
+      ? savedBase
+      : calculatedBase;
   const bonus=normalized.bonus==="" ? 0 : Number(normalized.bonus);
   const fine=normalized.fine==="" ? 0 : Number(normalized.fine);
 
@@ -742,6 +754,9 @@ export function calc(shift){
     rate:pricing.rate,
     hours,
     perHour,
+    calculatedBase,
+    baseOverridden:
+      base!==calculatedBase,
     base,
     bonus,
     fine,

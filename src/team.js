@@ -250,16 +250,6 @@ export async function loadAdminTeamData(){
       "Не удалось загрузить аккаунты"
     ) || [];
 
-  const employeesById=
-    new Map(
-      employees.map(
-        employee=>[
-          employee.id,
-          employee
-        ]
-      )
-    );
-
   return {
     linked:true,
     archived:false,
@@ -279,24 +269,7 @@ export async function loadAdminTeamData(){
         "Не удалось загрузить назначения"
       ) || [],
 
-    accounts:
-      accounts.map(account=>{
-        const employee=
-          employeesById.get(
-            account.employee_id
-          );
-
-        if(!employee?.phone){
-          return account;
-        }
-
-        return {
-          ...account,
-          login:employee.phone,
-          phone:employee.phone,
-          email:null
-        };
-      }),
+    accounts,
 
     tariffs:
       resultData(

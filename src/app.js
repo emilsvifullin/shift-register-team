@@ -6601,6 +6601,14 @@ function drawSheet(isEdit){
     <div class="ml">Штрафы</div>
     ${adjustmentEditorHTML("penalties",draft.penalties)}
 
+    <div class="ml">Комментарий</div>
+    <div class="card">
+      <label class="row">
+        <div class="t">Комментарий к смене</div>
+        <input type="text" id="f-note" value="${esc(draft.note || "")}" autocomplete="off">
+      </label>
+    </div>
+
     <div class="ml">Расчёт</div>
     <div class="calc" id="calcBox">${calcHTML()}</div>
     ${isEdit?`<button type="button" class="btn warn" id="f-del">Удалить смену</button>`:""}
@@ -6627,6 +6635,11 @@ function readForm(){
         : Number(
             value.replace(",",".")
           );
+  }
+
+  if(get("f-note")){
+    draft.note=
+      get("f-note").value;
   }
 
   document
@@ -6798,6 +6811,7 @@ function normalizedDraft(value){
     employeeName:employee.full_name,
     shk:value.shk==="" ? "" : Number(value.shk),
     hours:value.partial ? Number(value.hours) : "",
+    note:String(value.note || "").trim(),
     bonuses:value.bonuses.map(item=>({
       ...item,
       amount:Number(item.amount),
@@ -10732,6 +10746,11 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
         calcHTML();
     }
 
+    saveUIState();
+  }
+
+  if(e.target.id==="f-note"){
+    readForm();
     saveUIState();
   }
 });

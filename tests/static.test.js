@@ -74,7 +74,8 @@ test(
       "20260823230333",
       "20260824151948",
       "20260824225714",
-      "20260824225728"
+      "20260824225728",
+      "20260825110804"
     ]){
       assert.ok(
         files.some(
@@ -1364,6 +1365,66 @@ test(
     assert.doesNotMatch(
       team,
       /SUPABASE_SERVICE_ROLE_KEY/
+    );
+  }
+);
+
+test(
+  "manual shift pay is admin-only, atomic and keeps the tariff snapshot intact",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260825110804_support_manual_shift_pay.sql"
+      );
+
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.match(
+      migration,
+      /admin_save_shift_v2[\s\S]*security definer[\s\S]*set search_path = ''/
+    );
+
+    assert.match(
+      migration,
+      /public\.admin_save_shift\([\s\S]*base_amount = v_effective_base/
+    );
+
+    assert.match(
+      migration,
+      /shift_base_amount_comment_required/
+    );
+
+    assert.match(
+      migration,
+      /revoke all on function public\.admin_save_shift_v2[\s\S]*from public, anon/
+    );
+
+    assert.doesNotMatch(
+      migration,
+      /pricing_snapshot\s*=/
+    );
+
+    assert.match(
+      team,
+      /\.rpc\(\s*"admin_save_shift_v2"[\s\S]*p_base_amount_override/
+    );
+
+    assert.match(
+      app,
+      /id="f-base-override"[\s\S]*Причину другой суммы укажите в комментарии/
+    );
+
+    assert.doesNotMatch(
+      app,
+      />Корректировка</
     );
   }
 );

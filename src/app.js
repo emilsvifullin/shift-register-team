@@ -5504,6 +5504,7 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
           shk:"",
           partial:false,
           hours:"",
+          baseOverride:"",
           bonuses:[],
           penalties:[],
           note:""
@@ -6397,9 +6398,21 @@ function previewCalc(value){
 
   const hours=value.partial ? (Number(value.hours)||0) : pricing.fullHours;
   const perHour=pricing.rate/pricing.fullHours;
-  const base=value.partial
+  const calculatedBase=value.partial
     ? Math.round(perHour*hours)
     : pricing.rate;
+  const override=
+    value.baseOverride==="" ||
+    value.baseOverride===null ||
+    value.baseOverride===undefined
+      ? null
+      : Number(value.baseOverride);
+  const base=
+    override!==null &&
+    Number.isFinite(override) &&
+    override>=0
+      ? override
+      : calculatedBase;
   const bonus=(value.bonuses || [])
     .reduce(
       (sum,item)=>
@@ -6420,6 +6433,9 @@ function previewCalc(value){
     rate:pricing.rate,
     hours,
     perHour,
+    calculatedBase,
+    baseOverridden:
+      base!==calculatedBase,
     base,
     bonus,
     fine,
@@ -6513,7 +6529,8 @@ function calcHTML(){
       <span>${result.fixed ? "Оклад смены" : "Ставка по объёму"}</span>
       <b>${money(result.rate)}</b>
     </div>
-    ${draft.partial?`<div class="ln"><span>${nf(result.perHour)} ₽/час × ${hoursWord(result.hours)}</span><b>${money(result.base)}</b></div>`:""}
+    ${draft.partial?`<div class="ln"><span>${nf(result.perHour)} ₽/час × ${hoursWord(result.hours)}</span><b>${money(result.calculatedBase)}</b></div>`:""}
+    ${result.baseOverridden?`<div class="ln"><span>Оплата за смену</span><b>${money(result.base)}</b></div>`:""}
     ${result.bonus?`<div class="ln"><span>Премии</span><b class="pos">+ ${money(result.bonus)}</b></div>`:""}
     ${result.fine?`<div class="ln"><span>Штрафы</span><b class="neg">− ${money(result.fine)}</b></div>`:""}
     <div class="tot"><span>За смену</span><span>${money(result.total)}</span></div>`;
@@ -6606,6 +6623,19 @@ function drawSheet(isEdit){
       ${draft.partial?`<label class="row"><div class="t">Часов</div><input type="text" inputmode="decimal" id="f-hours" min="0.5" max="${FULL_HOURS-0.5}" step="0.5" value="${esc(draft.hours==="" ? "" : String(draft.hours).replace(".",","))}" placeholder="0" aria-label="Часов" autocomplete="off"></label>`:""}
     </div>
 
+    <div class="ml">Оплата</div>
+    <div class="card">
+      <div class="row">
+        <div class="t">По тарифу</div>
+        <div class="v">${money(result.calculatedBase)}</div>
+      </div>
+      <label class="row">
+        <div class="t">За смену</div>
+        <input type="text" inputmode="decimal" id="f-base-override" value="${esc(draft.baseOverride==="" ? "" : String(draft.baseOverride).replace(".",","))}" aria-label="Оплата за смену" autocomplete="off">
+      </label>
+    </div>
+    <div class="note">Оставьте сумму пустой для расчёта по тарифу. Причину другой суммы укажите в комментарии.</div>
+
     <div class="ml">Премии</div>
     ${adjustmentEditorHTML("bonuses",draft.bonuses)}
 
@@ -6646,6 +6676,18 @@ function readForm(){
         : Number(
             value.replace(",",".")
           );
+  }
+
+  if(get("f-base-override")){
+    const value=
+      get("f-base-override")
+        .value
+        .trim();
+
+    draft.baseOverride=
+      value===""
+        ? ""
+        : value.replace(",",".");
   }
 
   if(get("f-note")){
@@ -6788,6 +6830,36 @@ function validateDraft(value){
       );
     }
 
+    const baseAmountError=
+      validateMoneyField(
+        value.baseOverride,
+        "Оплата за смену",
+        {
+          allowEmpty:true,
+          max:MAX_MONEY
+        }
+      );
+
+    if(baseAmountError){
+      return {
+        message:baseAmountError,
+        fieldId:"f-base-override"
+      };
+    }
+
+    const result=previewCalc(value);
+
+    if(
+      value.baseOverride!=="" &&
+      result.baseOverridden &&
+      !String(value.note || "").trim()
+    ){
+      return {
+        message:"Укажите причину изменения оплаты в комментарии к смене",
+        fieldId:"f-note"
+      };
+    }
+
     for(const [kind,label] of [["bonuses","Премия"],["penalties","Штраф"]]){
       for(const [index,item] of (value[kind] || []).entries()){
         const moneyError=validateMoneyField(item.amount,label,{allowEmpty:false,max:MAX_MONEY});
@@ -6822,6 +6894,10 @@ function normalizedDraft(value){
     employeeName:employee.full_name,
     shk:value.shk==="" ? "" : Number(value.shk),
     hours:value.partial ? Number(value.hours) : "",
+    baseOverride:
+      value.baseOverride===""
+        ? ""
+        : Number(value.baseOverride),
     note:String(value.note || "").trim(),
     bonuses:value.bonuses.map(item=>({
       ...item,
@@ -10707,6 +10783,7 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
   }
 
   if(
+    e.target.id==="f-base-override" ||
     e.target.matches(
       "[data-adjustment-amount]"
     )
@@ -10739,7 +10816,8 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
   if(
     [
       "f-shk",
-      "f-hours"
+      "f-hours",
+      "f-base-override"
     ].includes(e.target.id) ||
     e.target.matches(
       "[data-adjustment-amount]"
@@ -10769,7 +10847,8 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
 function moveFieldCaretToEnd(field){
   const allowed=[
     "f-shk",
-    "f-hours"
+    "f-hours",
+    "f-base-override"
   ];
 
   if(

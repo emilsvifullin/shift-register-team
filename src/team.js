@@ -79,6 +79,10 @@ const ERROR_MESSAGES=Object.freeze({
     "Проверьте сумму и комментарий премии",
   invalid_penalty:
     "Проверьте сумму и комментарий штрафа",
+  invalid_shift_base_amount:
+    "Проверьте сумму оплаты за смену",
+  shift_base_amount_comment_required:
+    "Укажите причину изменения оплаты в комментарии к смене",
   employee_creation_rollback_forbidden:
     "Нельзя отменить создание сотрудника: карточка уже используется",
   employee_deletion_pending:
@@ -547,7 +551,7 @@ export async function saveAdminShift(
   const result=
     await supabaseClient
       .rpc(
-        "admin_save_shift",
+        "admin_save_shift_v2",
         {
           p_shift_id:value.id,
           p_employee_id:
@@ -576,7 +580,15 @@ export async function saveAdminShift(
           p_penalties:
             adjustmentPayload(
               value.penalties
-            )
+            ),
+          p_base_amount_override:
+            value.baseOverride==="" ||
+            value.baseOverride===null ||
+            value.baseOverride===undefined
+              ? null
+              : Number(
+                  value.baseOverride
+                )
         }
       );
 

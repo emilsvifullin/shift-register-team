@@ -1,11 +1,14 @@
+const SUPABASE_PROXY_URL=
+  "https://shift-register-supabase-proxy.vercel.app";
+
 const SUPABASE_PROJECT_URL=
   "https://rxosovinouuonwrrzigs.supabase.co";
 
 const SUPABASE_URL=
-  SUPABASE_PROJECT_URL;
+  SUPABASE_PROXY_URL;
 
 const SUPABASE_FUNCTIONS_URL=
-  `${SUPABASE_PROJECT_URL}/functions/v1`;
+  `${SUPABASE_PROXY_URL}/functions/v1`;
 
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_f-tS0xagjlx2giW2k5u0hw_dxzEtV-v";

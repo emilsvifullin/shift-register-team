@@ -1009,6 +1009,14 @@ nav.tabs button.on{
   flex:1;
 }
 
+.employee-secret-field{
+  -webkit-text-security:disc;
+}
+
+.employee-secret-field.is-visible{
+  -webkit-text-security:none;
+}
+
 .employee-password-toggle{
   width:36px;
   height:36px;

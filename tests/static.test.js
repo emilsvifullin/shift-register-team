@@ -516,6 +516,21 @@ test(
 
     assert.match(
       app,
+      /type="text"[\s\S]*id="employeePassword"[\s\S]*class="employee-secret-field"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /type="password"/
+    );
+
+    assert.match(
+      styles,
+      /\.employee-secret-field\{[\s\S]*-webkit-text-security:disc;/
+    );
+
+    assert.match(
+      app,
       /pendingMonthWheelDirections/
     );
 

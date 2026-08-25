@@ -241,10 +241,14 @@ test(
 );
 
 test(
-  "Supabase REST, Auth, Realtime and Edge Functions use the direct project URL",
+test(
+  "Supabase REST, Auth and Edge Functions use proxy while Realtime stays direct",
   async()=>{
     const projectUrl=
       "https://rxosovinouuonwrrzigs.supabase.co";
+
+    const proxyUrl=
+      "https://shift-register-supabase-proxy.vercel.app";
 
     const supabase=
       await read(
@@ -261,22 +265,45 @@ test(
         "login.html"
       );
 
-    for(const source of [
-      supabase,
-      index,
-      login
-    ]){
-      assert.ok(
-        source.includes(
-          projectUrl
-        )
-      );
+    assert.ok(
+      supabase.includes(
+        proxyUrl
+      )
+    );
 
-      assert.doesNotMatch(
-        source,
-        /shift-register-supabase-proxy/
-      );
-    }
+    assert.ok(
+      supabase.includes(
+        projectUrl
+      )
+    );
+
+    assert.ok(
+      index.includes(
+        proxyUrl
+      )
+    );
+
+    assert.ok(
+      index.includes(
+        projectUrl
+      )
+    );
+
+    assert.ok(
+      login.includes(
+        proxyUrl
+      )
+    );
+
+    assert.match(
+      supabase,
+      /SUPABASE_PROXY_URL/
+    );
+
+    assert.match(
+      supabase,
+      /SUPABASE_PROJECT_URL/
+    );
 
     assert.match(
       supabase,

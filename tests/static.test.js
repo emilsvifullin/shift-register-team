@@ -609,6 +609,16 @@ test(
       /id="f-employee-open"/
     );
 
+    assert.match(
+      app,
+      /employeeId:"",[\s\S]*employeeName:"",[\s\S]*dbPointId:"",[\s\S]*pointId:"",[\s\S]*point:""/
+    );
+
+    assert.match(
+      app,
+      /const pointChanged=[\s\S]*draft\.dbPointId!==point\.id;[\s\S]*if\(pointChanged\)\{[\s\S]*draft\.employeeId="";/
+    );
+
     assert.ok(
       app.indexOf(
         'id="f-date-open"'

@@ -528,6 +528,27 @@ test(
       styles,
       /\.adjustment-readonly-row \.t\{[\s\S]*white-space:normal;[\s\S]*overflow-wrap:anywhere;/
     );
+
+    for(const label of [
+      "Дата",
+      "ПВЗ",
+      "Тип",
+      "Часы",
+      "Объём",
+      "Смена"
+    ]){
+      assert.match(
+        app,
+        new RegExp(
+          `class="row shift-detail-readonly-row"[^\\n]*class="s">${label}<\\/div><div class="t">`
+        )
+      );
+    }
+
+    assert.match(
+      styles,
+      /\.shift-detail-readonly-row \.s\{\s*margin:0 0 3px;/
+    );
   }
 );
 

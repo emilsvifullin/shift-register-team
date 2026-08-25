@@ -1154,6 +1154,16 @@ test(
       team,
       /admin-employee-auth/
     );
+
+    assert.match(
+      team,
+      /\n    accounts,\n/
+    );
+
+    assert.doesNotMatch(
+      team,
+      /email:null/
+    );
   }
 );
 

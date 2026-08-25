@@ -241,6 +241,40 @@ test("pricing drivers exclude shift type when it does not affect the rate",()=>{
   }
 });
 
+test("pricing drivers support mapped shifts used by the employee UI",()=>{
+  const previous={
+    employeeId:"employee-1",
+    dbPointId:"point-1",
+    date:"2026-08-01",
+    type:"main",
+    shk:350,
+    partial:false,
+    hours:""
+  };
+
+  assert.equal(
+    pricingDriversChanged(
+      previous,
+      {
+        ...previous,
+        type:"extra"
+      }
+    ),
+    false
+  );
+
+  assert.equal(
+    pricingDriversChanged(
+      previous,
+      {
+        ...previous,
+        dbPointId:"point-2"
+      }
+    ),
+    true
+  );
+});
+
 test("main, extra, partial and extra partial retain the same calculation",()=>{
   const pricing=createPricingSnapshot({
     tariff:tierTariff,

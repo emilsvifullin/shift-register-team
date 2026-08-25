@@ -492,6 +492,46 @@ test(
 );
 
 test(
+  "employee shift details reuse saved pricing and keep mobile content readable",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    const styles=
+      await read(
+        "styles.css"
+      );
+
+    assert.match(
+      app,
+      /if\(existing\?\.pricing && sameDrivers\)\{\s*pricing=existing\.pricing;/
+    );
+
+    assert.match(
+      app,
+      /class="row adjustment-readonly-row"/
+    );
+
+    assert.match(
+      app,
+      /Данные обновляются автоматически\./
+    );
+
+    assert.match(
+      styles,
+      /\.shead\{[^}]*grid-template-columns:minmax\(0,1fr\) auto minmax\(0,1fr\)/
+    );
+
+    assert.match(
+      styles,
+      /\.adjustment-readonly-row \.t\{[\s\S]*white-space:normal;[\s\S]*overflow-wrap:anywhere;/
+    );
+  }
+);
+
+test(
   "desktop forms and accumulated shift UX guards stay explicit",
   async()=>{
     const app=

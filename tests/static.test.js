@@ -241,7 +241,6 @@ test(
 );
 
 test(
-test(
   "Supabase REST, Auth and Edge Functions use proxy while Realtime stays direct",
   async()=>{
     const projectUrl=

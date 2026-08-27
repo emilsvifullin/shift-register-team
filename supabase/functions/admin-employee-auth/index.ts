@@ -5,6 +5,8 @@ import {
 } from "npm:@supabase/supabase-js@2.112.3";
 
 const ALLOWED_ORIGINS=new Set([
+  "https://shiftregister.ru",
+  "https://www.shiftregister.ru",
   "https://emilsvifullin.github.io",
   "https://shift-register-project-ready.emilsvifullin.chatgpt.site",
   "http://127.0.0.1:4173",

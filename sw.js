@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6121";
+  "sr-team-runtime-v6122";
 
 const INDEX_FILE=
   "./index.html";

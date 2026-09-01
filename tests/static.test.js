@@ -52,6 +52,26 @@ test(
 );
 
 test(
+  "confirmation dialogs pass text and options through the shared API",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.doesNotMatch(
+      app,
+      /appConfirm\(\s*\{/
+    );
+
+    assert.match(
+      app,
+      /appConfirm\(\s*"Закрыть без сохранения\?",\s*\{[\s\S]*?detail:"Внесённые в смену данные будут потеряны\."[\s\S]*?okText:"Закрыть"/
+    );
+  }
+);
+
+test(
   "repository contains the complete applied Supabase migration history",
   async()=>{
     const files=

@@ -900,6 +900,26 @@ test(
 
     assert.match(
       app,
+      /id="pointSearch"/
+    );
+
+    assert.match(
+      app,
+      /id="pointFilterOpen"[\s\S]*Авансные ПВЗ[\s\S]*Остальные ПВЗ/
+    );
+
+    assert.match(
+      app,
+      /function filteredManagePoints\(\)[\s\S]*point\.advance_enabled/
+    );
+
+    assert.match(
+      styles,
+      /\.point-manage-row\{[\s\S]*min-height:54px;/
+    );
+
+    assert.match(
+      app,
       /id="manageTariffAdd"/
     );
 

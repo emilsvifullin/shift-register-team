@@ -168,6 +168,8 @@ let employeeSearchQuery="";
 let employeeStatusFilter="active";
 let employeePointFilter=null;
 let pointStatusFilter="active";
+let pointSearchQuery="";
+let pointAdvanceFilter="all";
 let employeeFilterDraft=null;
 let employeeFilterSheetPreviousFocus=null;
 let shiftSearchQuery="";
@@ -3491,33 +3493,6 @@ function viewPoints(){
     `;
   }
 
-  const rows=
-    teamData.points
-      .filter(point=>
-        pointStatusFilter==="inactive"
-          ? point.active===false
-          : point.active!==false
-      )
-      .map(point=>`
-          <button
-            type="button"
-            class="manage-row"
-            data-point-id="${esc(point.id)}"
-          >
-            <span class="manage-row-copy">
-              <span class="manage-row-title">
-                ${esc(point.name)}
-              </span>
-            </span>
-            <span class="manage-chevron" aria-hidden="true">
-              <svg viewBox="0 0 12 16">
-                <path d="M3 3L9 8L3 13"></path>
-              </svg>
-            </span>
-          </button>
-        `)
-      .join("");
-
   return `
     ${manageBackButton()}
 
@@ -3538,26 +3513,185 @@ function viewPoints(){
       ${pointStatusFilter==="inactive" ? "Активные ПВЗ" : "Архив"}
     </button>
 
-    ${
-      rows
-        ? `
-          <div class="card manage-menu">
-            ${rows}
-          </div>
-        `
-        : `
-          <div class="card">
-            <div class="employee-empty">
-              ${
-                teamData.points.length
-                  ? "В этом разделе пунктов пока нет."
-                  : "Пунктов пока нет."
-              }
-            </div>
-          </div>
-        `
-    }
+    <div class="ml">
+      Поиск и фильтр
+    </div>
+
+    <div class="card employee-editor">
+      <label class="row">
+        <input
+          type="search"
+          id="pointSearch"
+          autocomplete="off"
+          spellcheck="false"
+          value="${esc(pointSearchQuery)}"
+          placeholder="Поиск"
+          aria-label="Поиск пунктов выдачи"
+        >
+      </label>
+
+      <button
+        type="button"
+        class="row point-row"
+        id="pointFilterOpen"
+      >
+        <div class="t">
+          Фильтр
+        </div>
+
+        <div class="point-value">
+          ${esc(pointAdvanceFilterLabel())}
+        </div>
+      </button>
+    </div>
+
+    <div class="ml">
+      Список
+    </div>
+
+    <div id="pointManageList">
+      ${pointManageListHTML()}
+    </div>
   `;
+}
+
+function pointAdvanceFilterLabel(){
+  if(pointAdvanceFilter==="advance"){
+    return "Авансные ПВЗ";
+  }
+
+  if(pointAdvanceFilter==="regular"){
+    return "Остальные ПВЗ";
+  }
+
+  return "Все ПВЗ";
+}
+
+function pointManageSearchText(point){
+  const tariffs=teamData.tariffs
+    .filter(tariff=>tariff.point_id===point.id)
+    .flatMap(tariff=>[
+      tariff.pricing_type==="fixed"
+        ? "фиксированный фикс"
+        : "по шк шк",
+      tariff.effective_from,
+      tariff.fixed_rate,
+      ...(tariff.shk_tiers || []).flatMap(
+        tier=>[tier.up_to,tier.rate]
+      )
+    ]);
+
+  return employeeSearchValue([
+    point.name,
+    point.code,
+    point.id,
+    point.sort_order,
+    point.active===false ? "архив" : "активен",
+    point.advance_enabled===true
+      ? "аванс авансный авансные"
+      : "остальные обычный без аванса",
+    ...tariffs
+  ].filter(value=>value!==null && value!==undefined).join(" "));
+}
+
+function filteredManagePoints(){
+  const query=employeeSearchValue(pointSearchQuery);
+
+  return teamData.points.filter(point=>{
+    const statusMatches=
+      pointStatusFilter==="inactive"
+        ? point.active===false
+        : point.active!==false;
+
+    if(!statusMatches){
+      return false;
+    }
+
+    if(
+      pointAdvanceFilter==="advance" &&
+      point.advance_enabled!==true
+    ){
+      return false;
+    }
+
+    if(
+      pointAdvanceFilter==="regular" &&
+      point.advance_enabled===true
+    ){
+      return false;
+    }
+
+    return !query || pointManageSearchText(point).includes(query);
+  });
+}
+
+function pointManageListHTML(){
+  const points=filteredManagePoints();
+
+  if(points.length){
+    return `
+      <div class="card manage-menu point-manage-menu">
+        ${points.map(point=>`
+          <button
+            type="button"
+            class="manage-row point-manage-row"
+            data-point-id="${esc(point.id)}"
+          >
+            <span class="manage-row-copy">
+              <span class="manage-row-title">
+                ${esc(point.name)}
+              </span>
+            </span>
+            <span class="manage-chevron" aria-hidden="true">
+              <svg viewBox="0 0 12 16">
+                <path d="M3 3L9 8L3 13"></path>
+              </svg>
+            </span>
+          </button>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="card">
+      <div class="employee-empty">
+        ${
+          teamData.points.length
+            ? "Ничего не найдено."
+            : "Пунктов пока нет."
+        }
+      </div>
+    </div>
+  `;
+}
+
+function updatePointManageList(){
+  if(
+    tab!=="manage" ||
+    manageSection!=="points"
+  ){
+    return;
+  }
+
+  const list=document.getElementById("pointManageList");
+
+  if(list){
+    list.innerHTML=pointManageListHTML();
+  }
+}
+
+function openManagePointFilterPicker(){
+  openChoicePicker({
+    kind:"manage-point-filter",
+    value:pointAdvanceFilter,
+    title:"Фильтр ПВЗ",
+    options:[
+      {value:"all",label:"Все ПВЗ"},
+      {value:"advance",label:"Авансные ПВЗ"},
+      {value:"regular",label:"Остальные ПВЗ"}
+    ]
+  });
 }
 
 function defaultTariffTiers(){
@@ -11573,6 +11707,25 @@ document
   };
 
 function applyPointPickerValue(){
+    if(pointPickerKind==="manage-point-filter"){
+      if(
+        ![
+          "all",
+          "advance",
+          "regular"
+        ].includes(pointPickerValue)
+      ){
+        return;
+      }
+
+      pointAdvanceFilter=
+        pointPickerValue;
+
+      closePointPicker();
+      render();
+      return;
+    }
+
     if(pointPickerKind==="stats-employee"){
       if(!pointPickerValue){
         return;
@@ -11944,7 +12097,11 @@ app.addEventListener(
         event.target instanceof
         HTMLInputElement
       ) ||
-      !["employeeSearch","shiftSearch"].includes(event.target.id)
+      ![
+        "employeeSearch",
+        "pointSearch",
+        "shiftSearch"
+      ].includes(event.target.id)
     ){
       return;
     }
@@ -11952,6 +12109,9 @@ app.addEventListener(
     if(event.target.id==="employeeSearch"){
       employeeSearchQuery=event.target.value;
       updateEmployeeList();
+    }else if(event.target.id==="pointSearch"){
+      pointSearchQuery=event.target.value;
+      updatePointManageList();
     }else{
       shiftSearchQuery=event.target.value;
       updateShiftList();
@@ -12043,6 +12203,16 @@ app.addEventListener("click",async event=>{
   if(button.id==="pointArchiveToggle"){
     pointStatusFilter=pointStatusFilter==="inactive" ? "active" : "inactive";
     render();
+    return;
+  }
+
+  if(
+    button.id==="pointFilterOpen" &&
+    isAdmin &&
+    tab==="manage" &&
+    manageSection==="points"
+  ){
+    openManagePointFilterPicker();
     return;
   }
 

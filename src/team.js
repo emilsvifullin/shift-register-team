@@ -177,7 +177,8 @@ export async function loadAdminTeamData(){
     employeePointsResult,
     accountsResult,
     tariffsResult,
-    shiftsResult
+    shiftsResult,
+    payoutsResult
   ]=
     await Promise.all([
       supabaseClient
@@ -239,7 +240,14 @@ export async function loadAdminTeamData(){
           }
         ),
 
-      loadShiftRows()
+      loadShiftRows(),
+
+      supabaseClient
+        .from("employee_payouts")
+        .select(
+          "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at"
+        )
+        .order("paid_on",{ascending:false})
     ]);
 
   const employees=
@@ -287,7 +295,13 @@ export async function loadAdminTeamData(){
           shiftsResult,
           "Не удалось загрузить смены"
         )
-      )
+      ),
+
+    payouts:
+      resultData(
+        payoutsResult,
+        "Не удалось загрузить выплаты"
+      ) || []
   };
 }
 
@@ -322,7 +336,8 @@ export async function loadEmployeeTeamData(
       employeePoints:[],
       accounts:[],
       tariffs:[],
-      shifts:[]
+      shifts:[],
+      payouts:[]
     };
   }
 
@@ -336,14 +351,24 @@ export async function loadEmployeeTeamData(
       employeePoints:[],
       accounts:[],
       tariffs:[],
-      shifts:[]
+      shifts:[],
+      payouts:[]
     };
   }
 
-  const shiftsResult=
-    await loadShiftRows(
-      employee.id
-    );
+  const [
+    shiftsResult,
+    payoutsResult
+  ]=await Promise.all([
+    loadShiftRows(employee.id),
+    supabaseClient
+      .from("employee_payouts")
+      .select(
+        "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at"
+      )
+      .eq("employee_id",employee.id)
+      .order("paid_on",{ascending:false})
+  ]);
 
   return {
     linked:true,
@@ -360,7 +385,12 @@ export async function loadEmployeeTeamData(
           shiftsResult,
           "Не удалось загрузить смены"
         )
-      )
+      ),
+    payouts:
+      resultData(
+        payoutsResult,
+        "Не удалось загрузить выплаты"
+      ) || []
   };
 }
 
@@ -463,13 +493,15 @@ export async function subscribeTeamChanges({
           "point_tariffs",
           "shifts",
           "shift_bonuses",
-          "shift_penalties"
+          "shift_penalties",
+          "employee_payouts"
         ]
       : [
           "employees",
           "shifts",
           "shift_bonuses",
-          "shift_penalties"
+          "shift_penalties",
+          "employee_payouts"
         ];
 
   const sessionResult=
@@ -688,6 +720,85 @@ export async function addAdminTariff({
   return resultData(
     result,
     "Не удалось добавить тариф"
+  );
+}
+
+export async function updateAdminTariff({
+  id,
+  effectiveFrom,
+  pricingType,
+  fixedRate=null,
+  shkTiers=null
+}){
+  const result=await supabaseClient.rpc(
+    "admin_update_point_tariff",
+    {
+      p_tariff_id:id,
+      p_effective_from:effectiveFrom,
+      p_pricing_type:pricingType,
+      p_fixed_rate:
+        fixedRate===null || fixedRate===""
+          ? null
+          : Number(fixedRate),
+      p_shk_tiers:shkTiers
+    }
+  );
+
+  return resultData(
+    result,
+    "Не удалось изменить тариф"
+  );
+}
+
+export async function deleteAdminTariff(id){
+  const result=await supabaseClient.rpc(
+    "admin_delete_point_tariff",
+    {p_tariff_id:id}
+  );
+
+  return resultData(
+    result,
+    "Не удалось удалить тариф"
+  );
+}
+
+export async function saveAdminPayout({
+  id=null,
+  employeeId,
+  periodMonth,
+  payoutKind,
+  amount,
+  paidOn,
+  comment=null
+}){
+  const result=await supabaseClient.rpc(
+    "admin_save_employee_payout",
+    {
+      p_payout_id:id,
+      p_employee_id:employeeId,
+      p_period_month:periodMonth,
+      p_payout_kind:payoutKind,
+      p_amount:Number(amount),
+      p_paid_on:paidOn,
+      p_comment:comment || null
+    }
+  );
+
+  return resultData(
+    result,
+    "Не удалось сохранить выплату"
+  );
+}
+
+export async function deleteAdminPayout(id){
+  const result=await supabaseClient.rpc(
+    "admin_delete_employee_payout",
+    {p_payout_id:id}
+  );
+
+  return resultData(
+    result,
+    "Не удалось удалить выплату"
   );
 }
 

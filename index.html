@@ -109,6 +109,11 @@ body{
   href="./src/employee-ui.js"
 >
 
+<link
+  rel="modulepreload"
+  href="./src/workflow.js"
+>
+
 <script
   src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
   integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC"
@@ -287,6 +292,30 @@ body{
     class="sbody"
     id="employeeFilterSheetBody"
   ></div>
+</div>
+
+<div
+  class="veil"
+  id="shiftFilterVeil"
+  aria-hidden="true"
+></div>
+
+<div
+  class="sheet"
+  id="shiftFilterSheet"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="shiftFilterSheetTitle"
+  aria-hidden="true"
+  tabindex="-1"
+>
+  <div class="grab"></div>
+  <div class="shead">
+    <button type="button" class="lnk" id="shiftFilterCancel">Отмена</button>
+    <div class="ttl" id="shiftFilterSheetTitle">Фильтр смен</div>
+    <button type="button" class="lnk b" id="shiftFilterDone">Готово</button>
+  </div>
+  <div class="sbody" id="shiftFilterSheetBody"></div>
 </div>
 
 <div

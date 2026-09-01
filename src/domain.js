@@ -786,6 +786,64 @@ export function sumUp(list){
   return aggregate;
 }
 
+function penaltyPayoutParts(
+  shift,
+  fine,
+  defaultKind
+){
+  const rows=
+    Array.isArray(shift.penalties)
+      ? shift.penalties
+      : [];
+
+  let firstHalf=0;
+  let secondHalf=0;
+  let defaultAmount=0;
+  let rowsTotal=0;
+
+  for(const row of rows){
+    const amount=
+      Number(row.amount) || 0;
+
+    if(amount<=0){
+      continue;
+    }
+
+    rowsTotal+=amount;
+
+    const payoutKind=
+      row.payoutKind ||
+      row.payout_kind ||
+      "";
+
+    if(payoutKind==="first_half"){
+      firstHalf+=amount;
+    }else if(payoutKind==="second_half"){
+      secondHalf+=amount;
+    }else{
+      defaultAmount+=amount;
+    }
+  }
+
+  defaultAmount+=
+    Math.max(
+      Number(fine || 0)-
+      rowsTotal,
+      0
+    );
+
+  if(defaultKind==="first_half"){
+    firstHalf+=defaultAmount;
+  }else{
+    secondHalf+=defaultAmount;
+  }
+
+  return {
+    firstHalf,
+    secondHalf
+  };
+}
+
 export function payouts(ym,shifts,{today}={}){
   const currentDay=
     today ||
@@ -841,7 +899,8 @@ export function payouts(ym,shifts,{today}={}){
   let specialFirstHalfBase=0;
   let specialSecondHalfBase=0;
   let specialBonus=0;
-  let specialFine=0;
+  let specialFirstHalfFine=0;
+  let specialSecondHalfFine=0;
 
   let regularFirstBase=0;
   let regularSecondBase=0;
@@ -851,6 +910,11 @@ export function payouts(ym,shifts,{today}={}){
 
   let regularFirstFine=0;
   let regularSecondFine=0;
+
+  let defaultFine25=0;
+  let defaultFine10=0;
+  let targetedFine25=0;
+  let targetedFine10=0;
 
   let hasAdvancePoints=false;
   let hasRegularPoints=false;
@@ -875,6 +939,66 @@ export function payouts(ym,shifts,{today}={}){
             shift.point
           );
 
+    const defaultFineKind=
+      advanceEnabled ||
+      day>15
+        ? "second_half"
+        : "first_half";
+
+    const penaltyParts=
+      penaltyPayoutParts(
+        shift,
+        result.fine,
+        defaultFineKind
+      );
+
+    const explicitPenaltyRows=
+      Array.isArray(
+        shift.penalties
+      )
+        ? shift.penalties
+        : [];
+
+    const explicitFirstHalf=
+      explicitPenaltyRows.reduce(
+        (sum,item)=>
+          (
+            item.payoutKind ||
+            item.payout_kind
+          )==="first_half"
+            ? sum+
+              (Number(item.amount)||0)
+            : sum,
+        0
+      );
+
+    const explicitSecondHalf=
+      explicitPenaltyRows.reduce(
+        (sum,item)=>
+          (
+            item.payoutKind ||
+            item.payout_kind
+          )==="second_half"
+            ? sum+
+              (Number(item.amount)||0)
+            : sum,
+        0
+      );
+
+    targetedFine25+=
+      explicitFirstHalf;
+
+    targetedFine10+=
+      explicitSecondHalf;
+
+    defaultFine25+=
+      penaltyParts.firstHalf-
+      explicitFirstHalf;
+
+    defaultFine10+=
+      penaltyParts.secondHalf-
+      explicitSecondHalf;
+
     if(advanceEnabled){
       hasAdvancePoints=true;
 
@@ -889,8 +1013,13 @@ export function payouts(ym,shifts,{today}={}){
       specialBonus+=
         result.bonus;
 
-      specialFine+=
-        result.fine;
+      if(day<=15){
+        specialFirstHalfFine+=
+          result.fine;
+      }else{
+        specialSecondHalfFine+=
+          result.fine;
+      }
 
       continue;
     }
@@ -938,12 +1067,42 @@ export function payouts(ym,shifts,{today}={}){
     specialBonus+
     regularSecondBonus;
 
+  const gross25=
+    specialAdvance+
+    regularFirstBase+
+    bonus25;
+
+  const gross10=
+    specialCarry+
+    specialSecondHalfBase+
+    regularSecondBase+
+    bonus10;
+
+  const targetedFine25Applied=
+    Math.min(
+      targetedFine25,
+      Math.max(
+        gross25-
+        defaultFine25,
+        0
+      )
+    );
+
+  const targetedFine25Carry=
+    Math.max(
+      targetedFine25-
+      targetedFine25Applied,
+      0
+    );
+
   const fine25=
-    regularFirstFine;
+    defaultFine25+
+    targetedFine25Applied;
 
   const fine10=
-    specialFine+
-    regularSecondFine;
+    defaultFine10+
+    targetedFine10+
+    targetedFine25Carry;
 
   const regularFirstGross=
     regularFirstBase+
@@ -957,17 +1116,6 @@ export function payouts(ym,shifts,{today}={}){
     specialCarry+
     specialSecondHalfBase+
     specialBonus;
-
-  const gross25=
-    specialAdvance+
-    regularFirstBase+
-    bonus25;
-
-  const gross10=
-    specialCarry+
-    specialSecondHalfBase+
-    regularSecondBase+
-    bonus10;
 
   const all=
     sumUp(list);
@@ -994,6 +1142,19 @@ export function payouts(ym,shifts,{today}={}){
     specialFirstHalfBase,
     specialSecondHalfBase,
     specialBonus,
+    specialFirstHalfFine,
+    specialSecondHalfFine,
+    specialFine25:
+      targetedFine25Applied,
+    specialFineCarry:
+      targetedFine25Carry,
+
+    defaultFine25,
+    defaultFine10,
+    targetedFine25,
+    targetedFine10,
+    targetedFine25Applied,
+    targetedFine25Carry,
 
     regularFirstBase,
     regularSecondBase,

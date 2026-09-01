@@ -82,8 +82,10 @@ import {
 
 import {
   employeeSearchText,
+  filterOptionSelected,
   filterMonthShifts,
-  paymentProgress
+  paymentProgress,
+  toggleFilterSelection
 } from "./workflow.js";
 
 const UI_KEY="shift-register-team-ui-v3";
@@ -165,6 +167,7 @@ let employeeSheetPreviousFocus=null;
 let employeeSearchQuery="";
 let employeeStatusFilter="active";
 let employeePointFilter=null;
+let pointStatusFilter="active";
 let employeeFilterDraft=null;
 let employeeFilterSheetPreviousFocus=null;
 let shiftSearchQuery="";
@@ -1445,10 +1448,63 @@ function payoutStateLabel(progress){
   return "Не выплачено";
 }
 
+function resolvedPenaltyPayoutKind(
+  shift,
+  penalty
+){
+  const explicit=
+    penalty?.payoutKind ||
+    penalty?.payout_kind ||
+    "";
+
+  if(explicit){
+    return explicit==="second_half"
+      ? "final"
+      : explicit;
+  }
+
+  const day=Number(
+    shift.date.slice(8,10)
+  );
+
+  const advanceEnabled=
+    typeof shift.pricing
+      ?.advanceEnabled===
+      "boolean"
+      ? shift.pricing
+          .advanceEnabled
+      : false;
+
+  return advanceEnabled || day>15
+    ? "final"
+    : "first_half";
+}
+
 function payoutSourceRows(shiftsList,kind){
   const matching=inMonth(cursor,shiftsList).filter(shift=>{
     const day=Number(shift.date.slice(8,10));
-    return kind==="first_half" ? day<=15 : true;
+    const advanceEnabled=
+      typeof shift.pricing
+        ?.advanceEnabled===
+        "boolean"
+        ? shift.pricing
+            .advanceEnabled
+        : false;
+    const penalties=
+      shift.penalties || [];
+    const baseMatches=
+      kind==="first_half"
+        ? day<=15
+        : advanceEnabled ||
+          day>15;
+
+    return baseMatches || penalties.some(
+      item=>
+        resolvedPenaltyPayoutKind(
+          shift,
+          item
+        )===kind
+    );
   });
 
   if(!matching.length){
@@ -1457,9 +1513,18 @@ function payoutSourceRows(shiftsList,kind){
 
   return matching.map(shift=>{
     const result=calc(shift);
+    const penalties=
+      (shift.penalties || [])
+        .filter(
+          item=>
+            resolvedPenaltyPayoutKind(
+              shift,
+              item
+            )===kind
+        );
     const adjustments=[
       ...(shift.bonuses || []).map(item=>`Премия: ${item.comment} (+${money(item.amount)})`),
-      ...(shift.penalties || []).map(item=>`Штраф: ${item.comment} (−${money(item.amount)})`),
+      ...penalties.map(item=>`Штраф: ${item.comment} (−${money(item.amount)})`),
       shift.note ? `Комментарий: ${shift.note}` : ""
     ].filter(Boolean);
     return `
@@ -2229,7 +2294,7 @@ function viewData(){
         <div class="row">
           <div class="l">
             <div class="t">Рабочие данные</div>
-            <div class="s">Файл содержит ФИО, телефоны и реквизиты. В него не входят аккаунты входа и журнал аудита; храните файл в защищённом месте.</div>
+            <div class="s">ФИО, телефоны и реквизиты сотрудников.</div>
           </div>
         </div>
       </div>
@@ -2765,7 +2830,10 @@ function shiftFilterChoiceRows(items,selectedIds,attribute,allLabel){
   ].map(item=>{
     const selected=!item.id
       ? selectedIds===null
-      : Array.isArray(selectedIds) && selectedIds.includes(item.id);
+      : filterOptionSelected(
+          selectedIds,
+          item.id
+        );
     return `
       <button type="button" class="employee-point ${selected ? "on" : ""}"
         ${attribute}="${esc(item.id)}">
@@ -2900,9 +2968,11 @@ function drawEmployeeFilterSheet(){
           !point.id
             ? employeeFilterDraft
                 .pointIds===null
-            : employeeFilterDraft
-                .pointIds
-                ?.includes(point.id);
+            : filterOptionSelected(
+                employeeFilterDraft
+                  .pointIds,
+                point.id
+              );
 
         return `
           <button
@@ -3423,6 +3493,11 @@ function viewPoints(){
 
   const rows=
     teamData.points
+      .filter(point=>
+        pointStatusFilter==="inactive"
+          ? point.active===false
+          : point.active!==false
+      )
       .map(point=>`
           <button
             type="button"
@@ -3459,6 +3534,10 @@ function viewPoints(){
       Добавить ПВЗ
     </button>
 
+    <button type="button" class="btn employee-archive-button" id="pointArchiveToggle">
+      ${pointStatusFilter==="inactive" ? "Активные ПВЗ" : "Архив"}
+    </button>
+
     ${
       rows
         ? `
@@ -3469,7 +3548,11 @@ function viewPoints(){
         : `
           <div class="card">
             <div class="employee-empty">
-              Пунктов пока нет.
+              ${
+                teamData.points.length
+                  ? "В этом разделе пунктов пока нет."
+                  : "Пунктов пока нет."
+              }
             </div>
           </div>
         `
@@ -3658,19 +3741,8 @@ function drawManageEditor(){
         `
         : `
           <div class="ml">Тариф</div>
-          ${tariffCardHTML(current)}
-
-          <button
-            type="button"
-            class="btn tariff-change-button"
-            id="manageTariffAdd"
-          >
-            ${manageEditorDraft.tariffOpen ? "Отменить" : "Изменить тариф"}
-          </button>
-
           ${manageEditorDraft.tariffOpen ? `
-            <div class="tariff-new-block">
-              <div class="ml">Новая версия тарифа</div>
+            <div class="tariff-current-editor">
               <div class="card segbox"><div class="seg">
                 <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
                 <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
@@ -3680,7 +3752,15 @@ function drawManageEditor(){
                 После сохранения предыдущие тарифы и исторические смены не изменятся.
               </div>
             </div>
-          ` : ""}
+          ` : tariffCardHTML(current)}
+
+          <button
+            type="button"
+            class="btn tariff-change-button"
+            id="manageTariffAdd"
+          >
+            ${manageEditorDraft.tariffOpen ? "Отменить" : "Изменить тариф"}
+          </button>
         `;
 
     body.innerHTML=`
@@ -6971,6 +7051,73 @@ function previewCalc(value){
   };
 }
 
+function penaltyPayoutLabel(
+  payoutKind,
+  shiftDate=draft?.date
+){
+  if(
+    !payoutKind ||
+    !shiftDate
+  ){
+    return "По умолчанию";
+  }
+
+  const month=
+    shiftDate.slice(0,7);
+
+  const payoutDate=
+    payoutKind==="first_half"
+      ? `${month}-25`
+      : `${shiftMonth(month,1)}-10`;
+
+  return dateLabel(payoutDate);
+}
+
+function penaltyPayoutControlsHTML(
+  item,
+  index
+){
+  const payoutKind=
+    item.payoutKind ||
+    "";
+
+  const options=[
+    ["","По умолчанию"],
+    [
+      "first_half",
+      penaltyPayoutLabel(
+        "first_half"
+      )
+    ],
+    [
+      "second_half",
+      penaltyPayoutLabel(
+        "second_half"
+      )
+    ]
+  ];
+
+  return `
+    <div class="adjustment-payout">
+      <div class="adjustment-payout-title">Удержать из выплаты</div>
+      <div class="segbox">
+        <div class="seg adjustment-payout-seg">
+          ${options.map(([value,label])=>`
+            <button
+              type="button"
+              data-penalty-payout-index="${index}"
+              data-penalty-payout-kind="${value}"
+              class="${payoutKind===value ? "on" : ""}"
+            >
+              ${esc(label)}
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function adjustmentEditorHTML(
   kind,
   rows
@@ -6997,6 +7144,12 @@ function adjustmentEditorHTML(
             <div class="t">Комментарий</div>
             <input type="text" data-adjustment-comment value="${esc(item.comment || "")}" autocomplete="off">
           </label>
+          ${kind==="penalties"
+            ? penaltyPayoutControlsHTML(
+                item,
+                index
+              )
+            : ""}
           <button type="button" class="adjustment-remove" data-adjustment-remove="${kind}:${index}">
             Удалить
           </button>
@@ -7031,6 +7184,15 @@ function adjustmentReadOnlyHTML(
         <div class="row adjustment-readonly-row">
           <div class="l">
             <div class="t">${esc(item.comment)}</div>
+            ${negative && item.payoutKind ? `
+              <div class="s">
+                Удержать ${esc(
+                  penaltyPayoutLabel(
+                    item.payoutKind
+                  )
+                )}
+              </div>
+            ` : ""}
           </div>
           <div class="v ${negative ? "neg" : "pos"}">
             ${negative ? "− " : "+ "}${money(item.amount)}
@@ -7426,6 +7588,23 @@ function validateDraft(value){
         if(!String(item.comment || "").trim()){
           return {message:`Добавьте комментарий: ${label.toLocaleLowerCase("ru-RU")} ${index+1}`,fieldId:null};
         }
+        if(
+          kind==="penalties" &&
+          ![
+            "",
+            "first_half",
+            "second_half"
+          ].includes(
+            item.payoutKind ||
+            ""
+          )
+        ){
+          return {
+            message:
+              `Выберите выплату для штрафа ${index+1}`,
+            fieldId:null
+          };
+        }
       }
     }
   }catch(error){
@@ -7464,7 +7643,10 @@ function normalizedDraft(value){
     penalties:value.penalties.map(item=>({
       ...item,
       amount:Number(item.amount),
-      comment:item.comment.trim()
+      comment:item.comment.trim(),
+      payoutKind:
+        item.payoutKind ||
+        ""
     }))
   };
 }
@@ -8223,7 +8405,7 @@ function bindYearSwipe(
   let swipe=null;
   let wheelDistance=0;
   let wheelTimer=0;
-  let wheelLockUntil=0;
+  let wheelHandled=false;
 
   element.addEventListener(
     "pointerdown",
@@ -8244,6 +8426,8 @@ function bindYearSwipe(
         time:performance.now(),
         axis:null
       };
+
+      e.stopPropagation();
 
       try{
         element.setPointerCapture(
@@ -8306,6 +8490,8 @@ function bindYearSwipe(
       if(e.cancelable){
         e.preventDefault();
       }
+
+      e.stopPropagation();
     }
   );
 
@@ -8374,6 +8560,8 @@ function bindYearSwipe(
       return;
     }
 
+    e.stopPropagation();
+
     changeYear(
       dx<0
         ? 1
@@ -8414,16 +8602,19 @@ function bindYearSwipe(
         event.preventDefault();
       }
 
-      const now=performance.now();
-      if(now<wheelLockUntil){
+      event.stopPropagation();
+
+      clearTimeout(wheelTimer);
+      wheelTimer=setTimeout(()=>{
+        wheelDistance=0;
+        wheelHandled=false;
+      },220);
+
+      if(wheelHandled){
         return;
       }
 
       wheelDistance+=event.deltaX;
-      clearTimeout(wheelTimer);
-      wheelTimer=setTimeout(()=>{
-        wheelDistance=0;
-      },120);
 
       if(Math.abs(wheelDistance)<42){
         return;
@@ -8435,7 +8626,7 @@ function bindYearSwipe(
           : -1;
 
       wheelDistance=0;
-      wheelLockUntil=now+420;
+      wheelHandled=true;
       changeYear(direction);
     },
     {passive:false}
@@ -10384,6 +10575,12 @@ dateGrid.addEventListener(
       return;
     }
 
+    if(event.cancelable){
+      event.preventDefault();
+    }
+
+    event.stopPropagation();
+
     dateWheelX+=event.deltaX;
     dateWheelY+=event.deltaY;
 
@@ -10399,10 +10596,6 @@ dateGrid.addEventListener(
       },140);
 
     if(dateWheelGestureLocked){
-      if(event.cancelable){
-        event.preventDefault();
-      }
-
       return;
     }
 
@@ -10412,10 +10605,6 @@ dateGrid.addEventListener(
         Math.abs(dateWheelY)*1.12
     ){
       return;
-    }
-
-    if(event.cancelable){
-      event.preventDefault();
     }
 
     const direction=
@@ -10759,28 +10948,14 @@ employeeFilterSheetElement.addEventListener(
         button.dataset
           .employeeFilterPoint;
 
-      if(!pointId){
-        employeeFilterDraft.pointIds=
-          null;
-      }else{
-        const selected=
-          employeeFilterDraft
-            .pointIds===null
-            ? new Set()
-            : new Set(
-                employeeFilterDraft
-                  .pointIds
-              );
-
-        if(selected.has(pointId)){
-          selected.delete(pointId);
-        }else{
-          selected.add(pointId);
-        }
-
-        employeeFilterDraft.pointIds=
-          Array.from(selected);
-      }
+      employeeFilterDraft.pointIds=
+        toggleFilterSelection(
+          employeeFilterDraft.pointIds,
+          pointId,
+          teamData.points.map(
+            point=>point.id
+          )
+        );
 
       drawEmployeeFilterSheet();
     }
@@ -10814,15 +10989,20 @@ shiftFilterSheetElement.addEventListener("click",event=>{
   }
 
   const updateSelection=(key,id)=>{
-    if(!id){
-      shiftFilterDraft[key]=null;
-    }else{
-      const selected=shiftFilterDraft[key]===null
-        ? new Set()
-        : new Set(shiftFilterDraft[key]);
-      selected.has(id) ? selected.delete(id) : selected.add(id);
-      shiftFilterDraft[key]=Array.from(selected);
-    }
+    const allIds=key==="pointIds"
+      ? teamData.points.map(
+          point=>point.id
+        )
+      : teamData.employees.map(
+          employee=>employee.id
+        );
+
+    shiftFilterDraft[key]=
+      toggleFilterSelection(
+        shiftFilterDraft[key],
+        id,
+        allIds
+      );
     drawShiftFilterSheet();
   };
 
@@ -11188,8 +11368,39 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     ].push({
       id:createTeamId(),
       amount:"",
-      comment:""
+      comment:"",
+      ...(t.dataset.adjustmentAdd===
+        "penalties"
+          ? {
+              payoutKind:""
+            }
+          : {})
     });
+
+    drawSheet(isEdit);
+    saveUIState();
+    return;
+  }
+
+  if(
+    t.hasAttribute(
+      "data-penalty-payout-kind"
+    )
+  ){
+    readForm();
+
+    const index=Number(
+      t.dataset
+        .penaltyPayoutIndex
+    );
+
+    if(draft.penalties[index]){
+      draft.penalties[index]
+        .payoutKind=
+          t.dataset
+            .penaltyPayoutKind ||
+          "";
+    }
 
     drawSheet(isEdit);
     saveUIState();
@@ -11825,6 +12036,12 @@ app.addEventListener("click",async event=>{
 
   if(button.id==="employeeArchiveToggle"){
     employeeStatusFilter=employeeStatusFilter==="inactive" ? "active" : "inactive";
+    render();
+    return;
+  }
+
+  if(button.id==="pointArchiveToggle"){
+    pointStatusFilter=pointStatusFilter==="inactive" ? "active" : "inactive";
     render();
     return;
   }

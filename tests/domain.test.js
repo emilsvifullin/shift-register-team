@@ -241,6 +241,88 @@ test("advance PVZ cap the first-half payment and move bonuses to final settlemen
   );
 });
 
+test("advance PVZ first-half fine stays in the final settlement by default",()=>{
+  const item=
+    shift(
+      {
+        date:"2026-08-01",
+        point:"Прокатная 2",
+        shk:650,
+        fine:8000
+      },
+      "2026-08-08"
+    );
+
+  const result=
+    payouts(
+      "2026-08",
+      [item],
+      {
+        today:"2026-09-10"
+      }
+    );
+
+  assert.equal(result.specialAdvance,6500);
+  assert.equal(result.targetedFine25,0);
+  assert.equal(result.payment25,6500);
+  assert.equal(result.fine10,8000);
+  assert.equal(result.payment10,-8000);
+});
+
+test("an explicitly targeted advance fine uses the 25th and carries only the excess",()=>{
+  const item={
+    ...shift(
+      {
+        date:"2026-08-01",
+        point:"Прокатная 2",
+        shk:650,
+        fine:8000
+      },
+      "2026-08-08"
+    ),
+    penalties:[{
+      amount:8000,
+      comment:"Удержать из аванса",
+      payoutKind:"first_half"
+    }]
+  };
+
+  const result=payouts(
+    "2026-08",
+    [item],
+    {today:"2026-09-10"}
+  );
+
+  assert.equal(result.targetedFine25,8000);
+  assert.equal(result.targetedFine25Applied,6500);
+  assert.equal(result.targetedFine25Carry,1500);
+  assert.equal(result.payment25,0);
+  assert.equal(result.fine10,1500);
+  assert.equal(result.payment10,-1500);
+});
+
+test("an explicitly targeted regular fine can be moved from the 25th to the final settlement",()=>{
+  const item={
+    ...shift({date:"2026-08-01",fine:500}),
+    penalties:[{
+      amount:500,
+      comment:"Удержать при окончательном расчёте",
+      payoutKind:"second_half"
+    }]
+  };
+
+  const result=payouts(
+    "2026-08",
+    [item],
+    {today:"2026-09-10"}
+  );
+
+  assert.equal(result.fine25,0);
+  assert.equal(result.payment25,3000);
+  assert.equal(result.targetedFine10,500);
+  assert.equal(result.payment10,-500);
+});
+
 test("regular PVZ pay first-half bonuses and registry fines on the 25th",()=>{
   const item=
     shift(

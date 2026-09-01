@@ -138,6 +138,16 @@ test(
       /\(hover:none\) and \(pointer:coarse\)/
     );
 
+    assert.match(
+      login,
+      /const IS_IOS=/
+    );
+
+    assert.match(
+      login,
+      /!USE_READONLY_FOCUS_GUARD[\s\S]*userInteracted=true;[\s\S]*setFocusEnabled\(true\);/
+    );
+
     assert.doesNotMatch(
       login,
       /animationstart[\s\S]*scheduleAutofillSubmit/
@@ -893,6 +903,11 @@ test(
       /id="manageTariffAdd"/
     );
 
+    assert.doesNotMatch(
+      app,
+      /Новая версия тарифа/
+    );
+
     assert.match(
       app,
       /function pointInformationHTML/
@@ -1501,6 +1516,51 @@ test(
     assert.match(
       app,
       /draft\.baseOverrideMode=[\s\S]*t\.dataset\.payMode[\s\S]*draft\.baseOverride="";/
+    );
+  }
+);
+
+test(
+  "penalty payout targeting is nullable, validated and saved atomically",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260901194500_add_penalty_payout_kind.sql"
+      );
+
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.match(
+      migration,
+      /add column if not exists payout_kind text/
+    );
+
+    assert.match(
+      migration,
+      /payout_kind is null[\s\S]*first_half[\s\S]*second_half/
+    );
+
+    assert.match(
+      migration,
+      /replace_shift_adjustments[\s\S]*set search_path = ''[\s\S]*payout_kind = excluded\.payout_kind/
+    );
+
+    assert.match(
+      team,
+      /penalties:shift_penalties\([\s\S]*payout_kind/
+    );
+
+    assert.match(
+      app,
+      /Удержать из выплаты[\s\S]*data-penalty-payout-kind/
     );
   }
 );

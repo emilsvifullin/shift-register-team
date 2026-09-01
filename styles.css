@@ -872,13 +872,14 @@ nav.tabs button.on{
   box-shadow:none !important;
 }
 
-#pointAdd + .manage-menu,
-#pointAdd + .card{
-  margin-top:12px;
-}
-
 .employee-row{
   min-height:76px;
+}
+
+.point-manage-row{
+  min-height:54px;
+  padding-top:10px;
+  padding-bottom:10px;
 }
 
 .employee-title-line{
@@ -946,12 +947,14 @@ nav.tabs button.on{
   min-width:0;
 }
 
-#employeeSearch{
+#employeeSearch,
+#pointSearch{
   direction:ltr;
   text-align:left;
 }
 
-#employeeSearch:focus::placeholder{
+#employeeSearch:focus::placeholder,
+#pointSearch:focus::placeholder{
   color:transparent;
 }
 

@@ -123,13 +123,34 @@ test(
       /name="password"[\s\S]*autocomplete="current-password"/
     );
 
-    assert.equal(
-      (
-        html.match(
-          /\sreadonly\b/g
-        ) || []
-      ).length,
-      2
+    assert.doesNotMatch(
+      html,
+      /\sreadonly\b/
+    );
+
+    const login=
+      await read(
+        "src/login.js"
+      );
+
+    assert.match(
+      login,
+      /\(hover:none\) and \(pointer:coarse\)/
+    );
+
+    assert.doesNotMatch(
+      login,
+      /animationstart[\s\S]*scheduleAutofillSubmit/
+    );
+
+    assert.doesNotMatch(
+      login,
+      /releaseAutofillFocus/
+    );
+
+    assert.match(
+      login,
+      /insertReplacementText[\s\S]*scheduleAutofillSubmit/
     );
 
     assert.match(
@@ -804,7 +825,7 @@ test(
 
     assert.match(
       app,
-      /<div class="ml">\$\{listLabel\}<\/div>[\s\S]*employee-empty[\s\S]*В этом месяце смен пока нет\./
+      /<div class="ml">\$\{label\}<\/div>[\s\S]*employee-empty[\s\S]*В этом месяце смен пока нет\./
     );
 
     assert.doesNotMatch(

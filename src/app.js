@@ -43,6 +43,8 @@ import {
 
 import {
   addAdminTariff,
+  deleteAdminPayout,
+  deleteAdminTariff,
   deleteAdminEmployee,
   deleteAdminShift,
   importAdminLegacyShifts,
@@ -51,8 +53,10 @@ import {
   saveAdminEmployee,
   saveAdminEmployeeAuth,
   saveAdminPoint,
+  saveAdminPayout,
   saveAdminShift,
-  subscribeTeamChanges
+  subscribeTeamChanges,
+  updateAdminTariff
 } from "./team.js";
 
 import {
@@ -75,6 +79,12 @@ import {
   positionAppPicker,
   resetAppPickerPosition
 } from "./picker-position.js";
+
+import {
+  employeeSearchText,
+  filterMonthShifts,
+  paymentProgress
+} from "./workflow.js";
 
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
@@ -108,6 +118,8 @@ let legacyShifts=[];
 let tab="shifts";
 let cursor=ymOf(new Date());
 let draft=null;
+let shiftSheetMode="create";
+let shiftOriginalDraft=null;
 let storageRevision=null;
 let loadError=null;
 let sheetPreviousFocus=null;
@@ -135,6 +147,7 @@ let teamData={
   accounts:[],
   tariffs:[],
   shifts:[],
+  payouts:[],
   employee:null,
   linked:true,
   archived:false
@@ -154,6 +167,19 @@ let employeeStatusFilter="active";
 let employeePointFilter=null;
 let employeeFilterDraft=null;
 let employeeFilterSheetPreviousFocus=null;
+let shiftSearchQuery="";
+let shiftFilter={
+  pointIds:null,
+  employeeIds:null,
+  fromDay:1,
+  toDay:31,
+  period:"all"
+};
+let shiftFilterDraft=null;
+let shiftFilterSheetPreviousFocus=null;
+let expandedPayoutKind="";
+let payoutEditor=null;
+let payoutSaving=false;
 let legacyMigrationEmployeeId="";
 let legacyMigrationRunning=false;
 let legacyMigrationProgress="";
@@ -171,6 +197,11 @@ const employeeSheetElement=
 const employeeFilterSheetElement=
   document.getElementById(
     "employeeFilterSheet"
+  );
+
+const shiftFilterSheetElement=
+  document.getElementById(
+    "shiftFilterSheet"
   );
 
 const manageEditorSheetElement=
@@ -634,7 +665,7 @@ function focusableElements(container){
 }
 
 function activeModal(){
-  const ids=["appConfirm","datePicker","pointPicker","monthPicker","manageEditorSheet","employeeFilterSheet","employeeSheet","sheet"];
+  const ids=["appConfirm","datePicker","pointPicker","monthPicker","manageEditorSheet","shiftFilterSheet","employeeFilterSheet","employeeSheet","sheet"];
   return ids.map(id=>document.getElementById(id)).find(element=>
     element && (element.classList.contains("on") || element.getAttribute("aria-hidden")==="false")
   ) || null;
@@ -754,6 +785,7 @@ document.addEventListener("keydown",event=>{
   if(document.getElementById("monthPicker").classList.contains("on")) return closeMonthPicker();
   if(document.getElementById("manageEditorSheet").classList.contains("on")) return closeManageEditor();
   if(document.getElementById("employeeFilterSheet").classList.contains("on")) return closeEmployeeFilterSheet();
+  if(document.getElementById("shiftFilterSheet").classList.contains("on")) return closeShiftFilterSheet();
   if(document.getElementById("employeeSheet").classList.contains("on")) return closeEmployeeEditor();
   if(document.getElementById("sheet").classList.contains("on")) return closeSheet();
 });
@@ -881,6 +913,10 @@ function exportEnvelopeJson(){
       employeePoints:
         isAdmin
           ? teamData.employeePoints
+          : undefined,
+      payouts:
+        isAdmin
+          ? teamData.payouts
           : undefined
     },
     null,
@@ -1229,56 +1265,72 @@ function serverStateCard(){
   return "";
 }
 
-function viewShifts(){
-  const state=serverStateCard();
+function filteredMonthShifts(){
+  return filterMonthShifts(
+    inMonth(cursor),
+    {
+      query:shiftSearchQuery,
+      pointIds:shiftFilter.pointIds,
+      employeeIds:isAdmin
+        ? shiftFilter.employeeIds
+        : null,
+      fromDay:shiftFilter.fromDay,
+      toDay:shiftFilter.toDay
+    },
+    shift=>{
+      const result=calc(shift);
+      return [
+        dateLabel(shift.date),
+        result.rate,
+        result.base,
+        result.total,
+        result.hours,
+        money(result.total)
+      ];
+    }
+  );
+}
 
-  if(state){
-    return state;
+function shiftFilterLabel(){
+  const labels=[];
+  if(shiftFilter.pointIds!==null){
+    labels.push(`${shiftFilter.pointIds.length} ПВЗ`);
   }
+  if(isAdmin && shiftFilter.employeeIds!==null){
+    labels.push(`${shiftFilter.employeeIds.length} сотр.`);
+  }
+  if(shiftFilter.period==="first") labels.push("1–15");
+  else if(shiftFilter.period==="second") labels.push("16–конец");
+  else if(shiftFilter.period==="custom"){
+    labels.push(`${shiftFilter.fromDay}–${shiftFilter.toDay}`);
+  }
+  return labels.length ? labels.join(" · ") : "Все смены";
+}
 
-  const list=inMonth(cursor);
-
-  const adminControls=
-    isAdmin
-      ? `
-        <div class="ml">Смены</div>
-        <button
-          type="button"
-          class="manage-add"
-          id="shiftAdd"
-        >
-          <span class="manage-add-plus" aria-hidden="true"></span>
-          Добавить смену
-        </button>
-      `
-      : "";
-
-  const listLabel=
-    isAdmin
-      ? "Список"
-      : shiftsWord(list.length);
+function shiftListAreaHTML(){
+  const all=inMonth(cursor);
+  const list=filteredMonthShifts();
+  const filtered=
+    shiftSearchQuery.trim() ||
+    shiftFilter.pointIds!==null ||
+    (isAdmin && shiftFilter.employeeIds!==null) ||
+    shiftFilter.period!=="all";
+  const label=isAdmin
+    ? `Список${filtered ? ` · ${list.length} из ${all.length}` : ""}`
+    : shiftsWord(list.length);
 
   if(!list.length){
     return `
-      ${adminControls}
-      <div class="ml">${listLabel}</div>
-      <div class="card">
-        <div class="employee-empty">
-          В этом месяце смен пока нет.
-        </div>
-      </div>
+      <div class="ml">${label}</div>
+      <div class="card"><div class="employee-empty">
+        ${filtered ? "По заданным условиям смен не найдено." : "В этом месяце смен пока нет."}
+      </div></div>
     `;
   }
 
   let html=`
-    ${adminControls}
-    <div class="ml">${listLabel}</div>
-
-    <div class="card shift-window">
-      <div
-        class="shift-scroll"
-        aria-label="Список смен"
-      >
+    <div class="ml">${label}</div>
+    <div class="card shift-window"><div class="shift-scroll" aria-label="Список смен">
   `;
 
   for(const shift of list){
@@ -1341,10 +1393,213 @@ function viewShifts(){
     `;
   }
 
-  return html+`
+  return html+`</div></div>`;
+}
+
+function updateShiftList(){
+  const area=document.getElementById("shiftListArea");
+  if(area) area.innerHTML=shiftListAreaHTML();
+}
+
+function viewShifts(){
+  const state=serverStateCard();
+  if(state) return state;
+
+  const adminControls=isAdmin ? `
+    <div class="ml">Смены</div>
+    <button type="button" class="manage-add" id="shiftAdd">
+      <span class="manage-add-plus" aria-hidden="true"></span>
+      Добавить смену
+    </button>
+  ` : "";
+
+  return `
+    ${adminControls}
+    <div class="ml">Поиск и фильтр</div>
+    <div class="card employee-editor">
+      <label class="row">
+        <input type="search" id="shiftSearch" autocomplete="off" spellcheck="false"
+          value="${esc(shiftSearchQuery)}" placeholder="Поиск" aria-label="Поиск смен">
+      </label>
+      <button type="button" class="row point-row" id="shiftFilterOpen">
+        <div class="t">Фильтр</div>
+        <div class="point-value">${esc(shiftFilterLabel())}</div>
+      </button>
+    </div>
+    <div id="shiftListArea">${shiftListAreaHTML()}</div>
+  `;
+}
+
+function payoutRecords(employeeId,kind){
+  const periodMonth=`${cursor}-01`;
+  return (teamData.payouts || []).filter(item=>
+    item.employee_id===employeeId &&
+    item.period_month===periodMonth &&
+    item.payout_kind===kind
+  ).sort((a,b)=>b.paid_on.localeCompare(a.paid_on));
+}
+
+function payoutStateLabel(progress){
+  if(progress.complete) return "Выплачено";
+  if(progress.paid>0) return "Частично выплачено";
+  return "Не выплачено";
+}
+
+function payoutSourceRows(shiftsList,kind){
+  const matching=inMonth(cursor,shiftsList).filter(shift=>{
+    const day=Number(shift.date.slice(8,10));
+    return kind==="first_half" ? day<=15 : true;
+  });
+
+  if(!matching.length){
+    return `<div class="payout-empty">В этой части месяца смен нет.</div>`;
+  }
+
+  return matching.map(shift=>{
+    const result=calc(shift);
+    const adjustments=[
+      ...(shift.bonuses || []).map(item=>`Премия: ${item.comment} (+${money(item.amount)})`),
+      ...(shift.penalties || []).map(item=>`Штраф: ${item.comment} (−${money(item.amount)})`),
+      shift.note ? `Комментарий: ${shift.note}` : ""
+    ].filter(Boolean);
+    return `
+      <div class="payout-source-row">
+        <div class="payout-source-main">
+          <strong>${esc(dateLabel(shift.date))} · ${esc(shift.point)}</strong>
+          <span>${shift.type==="extra" ? "Дополнительная" : "Основная"}${shift.partial ? ` · ${hoursWord(result.hours)}` : ""}${kind==="final" && Number(shift.date.slice(8,10))<=15 ? " · первая половина" : ""}</span>
+          ${adjustments.map(text=>`<small>${esc(text)}</small>`).join("")}
+        </div>
+        <b>${money(result.total)}</b>
       </div>
+    `;
+  }).join("");
+}
+
+function payoutExpandedHTML({kind,due,employee,statsShifts,summaryHTML}){
+  if(expandedPayoutKind!==kind) return "";
+  const records=payoutRecords(employee?.id,kind);
+  const progress=paymentProgress(due,records);
+  const editor=payoutEditor?.kind===kind ? payoutEditor : null;
+  return `
+    <div class="payout-expanded">
+      <div class="payout-breakdown">
+        <div class="payout-detail-title">Из чего сформирована сумма</div>
+        ${summaryHTML}
+        <div class="payout-source-list">${payoutSourceRows(statsShifts,kind)}</div>
+      </div>
+      <div class="payout-progress">
+        <span>${payoutStateLabel(progress)}</span>
+        <strong>${money(progress.paid)} из ${money(progress.due)}</strong>
+      </div>
+      ${records.length ? `
+        <div class="payout-history">
+          ${records.map(record=>`
+            <div class="payout-record">
+              <div><strong>${esc(dateLabel(record.paid_on))}</strong>${record.comment ? `<small>${esc(record.comment)}</small>` : ""}</div>
+              <b>${money(record.amount)}</b>
+              ${isAdmin ? `<button type="button" data-payout-delete="${esc(record.id)}" aria-label="Удалить запись выплаты">×</button>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      ${isAdmin && employee ? `
+        ${editor ? `
+          <div class="payout-editor">
+            <label><span>Сумма</span><input id="payoutAmount" type="text" inputmode="decimal" value="${esc(editor.amount)}"></label>
+            <label><span>Дата выплаты</span><input id="payoutDate" type="date" value="${esc(editor.paidOn)}"></label>
+            <label><span>Комментарий</span><input id="payoutComment" type="text" maxlength="500" value="${esc(editor.comment)}" placeholder="Необязательно"></label>
+            <div class="payout-editor-actions">
+              <button type="button" class="btn" data-payout-cancel>Отмена</button>
+              <button type="button" class="btn primary" data-payout-save ${payoutSaving ? "disabled" : ""}>Сохранить</button>
+            </div>
+          </div>
+        ` : `
+          <button type="button" class="btn payout-add" data-payout-add="${kind}" ${progress.remaining<=0 ? "disabled" : ""}>
+            ${progress.paid ? "Добавить часть выплаты" : "Отметить выплату"}
+          </button>
+        `}
+      ` : ""}
     </div>
   `;
+}
+
+function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
+  const progress=paymentProgress(due,payoutRecords(employee?.id,kind));
+  const open=expandedPayoutKind===kind;
+  return `
+    <div class="payout-block ${open ? "open" : ""}">
+      <button type="button" class="row payout-summary" data-payout-toggle="${kind}" aria-expanded="${open}">
+        <div class="l"><div class="t">${label}</div>${content}</div>
+        <div class="payout-summary-right">
+          <span class="payout-status ${progress.complete ? "paid" : progress.paid ? "partial" : ""}">${payoutStateLabel(progress)}</span>
+          <span class="v ${due<0 ? "neg" : ""}">${money(due)}</span>
+        </div>
+      </button>
+      ${payoutExpandedHTML({kind,due,employee,statsShifts,summaryHTML:content})}
+    </div>
+  `;
+}
+
+function currentStatsPayoutContext(kind){
+  const employee=isAdmin
+    ? teamData.employees.find(item=>item.id===statsEmployeeId)
+    : teamData.employee;
+  if(!employee) return null;
+  const employeeShifts=shifts.filter(shift=>shift.employeeId===employee.id);
+  const calculated=payouts(cursor,employeeShifts);
+  return {
+    employee,
+    due:kind==="first_half" ? calculated.payment25 : calculated.payment10
+  };
+}
+
+async function persistPayout(){
+  if(!payoutEditor || payoutSaving) return;
+  const context=currentStatsPayoutContext(payoutEditor.kind);
+  if(!context) return;
+  const amount=Number(String(payoutEditor.amount).replace(",","."));
+  if(!Number.isFinite(amount) || amount<=0){
+    toast("Введите сумму выплаты больше 0");
+    return;
+  }
+  const progress=paymentProgress(
+    context.due,
+    payoutRecords(
+      context.employee.id,
+      payoutEditor.kind
+    )
+  );
+  if(amount>progress.remaining){
+    toast(
+      `Осталось выплатить ${money(progress.remaining)}`
+    );
+    return;
+  }
+  if(!isValidDateString(payoutEditor.paidOn)){
+    toast("Выберите дату выплаты");
+    return;
+  }
+  payoutSaving=true;
+  render();
+  try{
+    await saveAdminPayout({
+      employeeId:context.employee.id,
+      periodMonth:`${cursor}-01`,
+      payoutKind:payoutEditor.kind,
+      amount,
+      paidOn:payoutEditor.paidOn,
+      comment:payoutEditor.comment
+    });
+    payoutEditor=null;
+    await refreshTeamData({renderAfter:false});
+    render();
+    toast("Выплата сохранена");
+  }catch(error){
+    toast(error instanceof Error ? error.message : "Не удалось сохранить выплату",4200);
+    render();
+  }finally{
+    payoutSaving=false;
+  }
 }
 
 function viewStats(){
@@ -1734,50 +1989,23 @@ function viewStats(){
       Выплаты
     </div>
 
-    <div class="card">
-      <div class="row">
-        <div class="l">
-          <div class="t">
-            25 ${esc(monthGen(cursor))}
-          </div>
-
-          ${payment25Content}
-        </div>
-
-        <div class="v ${
-          payout.payment25<0
-            ? "neg"
-            : ""
-        }">
-          ${money(
-            payout.payment25
-          )}
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="l">
-          <div class="t">
-            10 ${esc(
-              monthGen(
-                payout.nextYm
-              )
-            )}
-          </div>
-
-          ${payment10Content}
-        </div>
-
-        <div class="v ${
-          payout.payment10<0
-            ? "neg"
-            : ""
-        }">
-          ${money(
-            payout.payment10
-          )}
-        </div>
-      </div>
+    <div class="card payout-card">
+      ${payoutSummaryRowHTML({
+        kind:"first_half",
+        label:`25 ${esc(monthGen(cursor))}`,
+        due:payout.payment25,
+        employee:selectedEmployee,
+        statsShifts,
+        content:payment25Content
+      })}
+      ${payoutSummaryRowHTML({
+        kind:"final",
+        label:`10 ${esc(monthGen(payout.nextYm))}`,
+        due:payout.payment10,
+        employee:selectedEmployee,
+        statsShifts,
+        content:payment10Content
+      })}
     </div>
 
     ${fineTransferNotes}
@@ -2246,15 +2474,14 @@ function filteredEmployees(){
         return true;
       }
 
-      const searchValue=
-        employeeSearchValue(
-          [
-            employee.full_name,
-            ...employeePointNames(
-              employee.id
-            )
-          ].join(" ")
-        );
+      const account=employeeAccount(employee);
+      const searchValue=employeeSearchText(
+        employee,
+        {
+          pointNames:employeePointNames(employee.id),
+          account:[account?.login,account?.email].filter(Boolean).join(" ")
+        }
+      );
 
       return searchValue.includes(
         query
@@ -2395,15 +2622,8 @@ function updateEmployeeList(){
 }
 
 function employeeFilterLabel(){
-  const statusLabel=
-    employeeStatusFilter==="active"
-      ? "Активные"
-      : employeeStatusFilter==="inactive"
-        ? "Архив"
-        : "Все";
-
   if(!employeePointFilter){
-    return statusLabel;
+    return "Все ПВЗ";
   }
 
   if(employeePointFilter.length===1){
@@ -2415,13 +2635,11 @@ function employeeFilterLabel(){
       );
 
     return point
-      ? statusLabel+" · "+point.name
-      : statusLabel;
+      ? point.name
+      : "Все ПВЗ";
   }
 
   return (
-    statusLabel+
-    " · "+
     employeePointFilter.length+
     " ПВЗ"
   );
@@ -2494,6 +2712,10 @@ function viewEmployees(){
       Добавить сотрудника
     </button>
 
+    <button type="button" class="btn employee-archive-button" id="employeeArchiveToggle">
+      ${employeeStatusFilter==="inactive" ? "Активные сотрудники" : "Архив"}
+    </button>
+
     <div class="ml">
       Поиск и фильтр
     </div>
@@ -2536,6 +2758,125 @@ function viewEmployees(){
   `;
 }
 
+function shiftFilterChoiceRows(items,selectedIds,attribute,allLabel){
+  return [
+    {id:"",name:allLabel},
+    ...items
+  ].map(item=>{
+    const selected=!item.id
+      ? selectedIds===null
+      : Array.isArray(selectedIds) && selectedIds.includes(item.id);
+    return `
+      <button type="button" class="employee-point ${selected ? "on" : ""}"
+        ${attribute}="${esc(item.id)}">
+        <span class="employee-point-check" aria-hidden="true">${selected ? "✓" : ""}</span>
+        <span class="employee-point-name">${esc(item.name)}</span>
+      </button>
+    `;
+  }).join("");
+}
+
+function applyShiftFilterPeriod(period){
+  shiftFilterDraft.period=period;
+  if(period==="all"){
+    shiftFilterDraft.fromDay=1;
+    shiftFilterDraft.toDay=31;
+  }else if(period==="first"){
+    shiftFilterDraft.fromDay=1;
+    shiftFilterDraft.toDay=15;
+  }else if(period==="second"){
+    shiftFilterDraft.fromDay=16;
+    shiftFilterDraft.toDay=31;
+  }
+}
+
+function drawShiftFilterSheet(){
+  if(!shiftFilterDraft) return;
+  const pointItems=teamData.points.map(point=>({id:point.id,name:point.name}));
+  const employeeItems=teamData.employees.map(employee=>({id:employee.id,name:employee.full_name}));
+  document.getElementById("shiftFilterSheetBody").innerHTML=`
+    <div class="ml">Период месяца</div>
+    <div class="card segbox"><div class="seg shift-period-seg">
+      <button type="button" data-shift-period="all" class="${shiftFilterDraft.period==="all" ? "on" : ""}">Весь</button>
+      <button type="button" data-shift-period="first" class="${shiftFilterDraft.period==="first" ? "on" : ""}">1–15</button>
+      <button type="button" data-shift-period="second" class="${shiftFilterDraft.period==="second" ? "on" : ""}">16–конец</button>
+      <button type="button" data-shift-period="custom" class="${shiftFilterDraft.period==="custom" ? "on" : ""}">Даты</button>
+    </div></div>
+    ${shiftFilterDraft.period==="custom" ? `
+      <div class="card shift-range-card">
+        <label class="row"><div class="t">С числа</div><input id="shiftFilterFrom" type="number" inputmode="numeric" min="1" max="31" value="${esc(shiftFilterDraft.fromDay)}"></label>
+        <label class="row"><div class="t">По число</div><input id="shiftFilterTo" type="number" inputmode="numeric" min="1" max="31" value="${esc(shiftFilterDraft.toDay)}"></label>
+      </div>
+    ` : ""}
+    <div class="ml">Пункты выдачи</div>
+    <div class="card employee-points">
+      ${shiftFilterChoiceRows(pointItems,shiftFilterDraft.pointIds,"data-shift-filter-point","Все ПВЗ")}
+    </div>
+    ${isAdmin ? `
+      <div class="ml">Сотрудники</div>
+      <div class="card employee-points">
+        ${shiftFilterChoiceRows(employeeItems,shiftFilterDraft.employeeIds,"data-shift-filter-employee","Все сотрудники")}
+      </div>
+    ` : ""}
+    <button type="button" class="btn" id="shiftFilterReset">Сбросить фильтр</button>
+    <div class="sheet-spacer" aria-hidden="true"></div>
+  `;
+}
+
+function openShiftFilterSheet(){
+  shiftFilterSheetPreviousFocus=document.activeElement;
+  shiftFilterDraft={
+    pointIds:shiftFilter.pointIds===null ? null : [...shiftFilter.pointIds],
+    employeeIds:shiftFilter.employeeIds===null ? null : [...shiftFilter.employeeIds],
+    fromDay:shiftFilter.fromDay,
+    toDay:shiftFilter.toDay,
+    period:shiftFilter.period
+  };
+  drawShiftFilterSheet();
+  const veil=document.getElementById("shiftFilterVeil");
+  prepareBottomSheetOpen(shiftFilterSheetElement,"--sheet-drag");
+  shiftFilterSheetElement.style.display="block";
+  shiftFilterSheetElement.classList.remove("on");
+  shiftFilterSheetElement.setAttribute("aria-hidden","false");
+  veil.setAttribute("aria-hidden","false");
+  setBackgroundInert(true);
+  void shiftFilterSheetElement.offsetHeight;
+  document.body.classList.add("sheet-open");
+  veil.classList.add("on");
+  shiftFilterSheetElement.classList.add("on");
+  requestAnimationFrame(()=>{
+    shiftFilterSheetElement.scrollTop=0;
+    shiftFilterSheetElement.focus({preventScroll:true});
+  });
+}
+
+function closeShiftFilterSheet(){
+  if(!shiftFilterSheetElement.classList.contains("on")) return;
+  const veil=document.getElementById("shiftFilterVeil");
+  veil.classList.remove("on");
+  veil.setAttribute("aria-hidden","true");
+  shiftFilterSheetElement.classList.remove("on");
+  shiftFilterSheetElement.setAttribute("aria-hidden","true");
+  document.body.classList.remove("sheet-open");
+  shiftFilterDraft=null;
+  if(!activeModal()) setBackgroundInert(false);
+  const previous=shiftFilterSheetPreviousFocus;
+  shiftFilterSheetPreviousFocus=null;
+  setTimeout(()=>{
+    if(previous && document.contains(previous)) previous.focus();
+    if(!shiftFilterSheetElement.classList.contains("on")) shiftFilterSheetElement.style.display="none";
+  },100);
+}
+
+function applyShiftFilter(){
+  if(!shiftFilterDraft) return;
+  const from=Math.max(1,Math.min(31,Number(shiftFilterDraft.fromDay)||1));
+  const to=Math.max(from,Math.min(31,Number(shiftFilterDraft.toDay)||31));
+  shiftFilter={...shiftFilterDraft,fromDay:from,toDay:to};
+  closeShiftFilterSheet();
+  render();
+}
+
 function drawEmployeeFilterSheet(){
   if(!employeeFilterDraft){
     return;
@@ -2560,10 +2901,8 @@ function drawEmployeeFilterSheet(){
             ? employeeFilterDraft
                 .pointIds===null
             : employeeFilterDraft
-                .pointIds===null ||
-              employeeFilterDraft
                 .pointIds
-                .includes(point.id);
+                ?.includes(point.id);
 
         return `
           <button
@@ -2591,38 +2930,6 @@ function drawEmployeeFilterSheet(){
       "employeeFilterSheetBody"
     )
     .innerHTML=`
-      <div class="ml">
-        Статус
-      </div>
-
-      <div class="card segbox">
-        <div class="seg">
-          <button
-            type="button"
-            data-employee-filter-status="active"
-            class="${employeeFilterDraft.status==="active" ? "on" : ""}"
-          >
-            Активные
-          </button>
-
-          <button
-            type="button"
-            data-employee-filter-status="inactive"
-            class="${employeeFilterDraft.status==="inactive" ? "on" : ""}"
-          >
-            Архив
-          </button>
-
-          <button
-            type="button"
-            data-employee-filter-status="all"
-            class="${employeeFilterDraft.status==="all" ? "on" : ""}"
-          >
-            Все
-          </button>
-        </div>
-      </div>
-
       <div class="ml">
         Пункт выдачи
       </div>
@@ -2659,8 +2966,6 @@ function openEmployeeFilterSheet(){
     document.activeElement;
 
   employeeFilterDraft={
-    status:
-      employeeStatusFilter,
     pointIds:
       employeePointFilter
         ? [...employeePointFilter]
@@ -2779,9 +3084,6 @@ function applyEmployeeFilter(){
   if(!employeeFilterDraft){
     return;
   }
-
-  employeeStatusFilter=
-    employeeFilterDraft.status;
 
   employeePointFilter=
     employeeFilterDraft.pointIds===null
@@ -2913,9 +3215,32 @@ function nextTariffEffectiveFrom(pointId){
 function tariffHistoryItemHTML(
   tariff,
   {
-    planned=false
+    planned=false,
+    editing=false
   }={}
 ){
+  if(editing){
+    return `
+      <div class="tariff-history-item tariff-history-editing">
+        <div class="tariff-history-edit-head">
+          <span>
+            <strong>${tariffTypeLabel(tariff)}</strong>
+            <small>${esc(dateLabel(tariff.effective_from))}</small>
+          </span>
+          <button type="button" class="tariff-inline-close" data-tariff-edit-cancel>Отмена</button>
+        </div>
+        <div class="tariff-history-edit-body">
+          <div class="card segbox"><div class="seg">
+            <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
+            <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
+          </div></div>
+          ${tariffDraftFields()}
+          <button type="button" class="btn b tariff-inline-save" data-tariff-edit-save>Сохранить тариф</button>
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <details class="tariff-history-item">
       <summary>
@@ -2930,6 +3255,10 @@ function tariffHistoryItemHTML(
       </summary>
       <div class="tariff-history-body">
         ${tariffRateRowsHTML(tariff)}
+        <div class="tariff-history-actions">
+          <button type="button" data-tariff-edit="${esc(tariff.id)}">Изменить</button>
+          <button type="button" class="warn" data-tariff-delete="${esc(tariff.id)}">Удалить</button>
+        </div>
       </div>
     </details>
   `;
@@ -2967,7 +3296,13 @@ function pointTariffHistoryHTML(
           .map(tariff=>
             tariffHistoryItemHTML(
               tariff,
-              {planned:true}
+              {
+                planned:true,
+                editing:
+                  manageEditorDraft
+                    ?.tariffInlineEditId===
+                  tariff.id
+              }
             )
           )
           .join("")}
@@ -2980,7 +3315,13 @@ function pointTariffHistoryHTML(
         ? history
           .map(tariff=>
             tariffHistoryItemHTML(
-              tariff
+              tariff,
+              {
+                editing:
+                  manageEditorDraft
+                    ?.tariffInlineEditId===
+                  tariff.id
+              }
             )
           )
           .join("")
@@ -3163,10 +3504,16 @@ function readManageEditor(){
       ?.value ?? "";
 
   if(manageEditorKind==="point"){
-    manageEditorDraft.name=
-      value("managePointName");
-    manageEditorDraft.sortOrder=
-      value("managePointSort");
+    if(
+      document.getElementById(
+        "managePointName"
+      )
+    ){
+      manageEditorDraft.name=
+        value("managePointName");
+      manageEditorDraft.sortOrder=
+        value("managePointSort");
+    }
   }
 
   if(
@@ -3434,6 +3781,7 @@ function openManageEditor(kind,id=null){
         active:point.active!==false,
         advanceEnabled:point.advance_enabled===true,
         tariffOpen:false,
+        tariffInlineEditId:null,
         pricingType:
           current?.pricing_type ||
           "fixed",
@@ -3467,6 +3815,7 @@ function openManageEditor(kind,id=null){
         active:true,
         advanceEnabled:false,
         tariffOpen:true,
+        tariffInlineEditId:null,
         pricingType:"fixed",
         fixedRate:3000,
         tiers:defaultTariffTiers(),
@@ -3723,6 +4072,161 @@ async function saveManageEditor(){
     manageEditorSaving=false;
     const button=document.getElementById("manageEditorSave");
     if(button) button.disabled=false;
+  }
+}
+
+function normalizedTariffEditorDraft({
+  excludeId=""
+}={}){
+  readManageEditor();
+
+  if(
+    !isValidDateString(
+      manageEditorDraft.effectiveFrom
+    )
+  ){
+    throw new Error(
+      `Выберите дату с ${MIN_YEAR} по ${MAX_YEAR} год`
+    );
+  }
+
+  if(
+    pointTariffs(
+      manageEditorDraft.point.id
+    ).some(
+      tariff=>
+        tariff.id!==excludeId &&
+        tariff.effective_from===
+          manageEditorDraft.effectiveFrom
+    )
+  ){
+    throw new Error(
+      "На эту дату тариф уже задан"
+    );
+  }
+
+  if(
+    manageEditorDraft.pricingType===
+    "fixed"
+  ){
+    const error=validateMoneyField(
+      manageEditorDraft.fixedRate,
+      "Ставка",
+      {
+        allowEmpty:false,
+        max:MAX_MONEY
+      }
+    );
+
+    const fixedRate=Number(
+      String(
+        manageEditorDraft.fixedRate
+      ).replace(",",".")
+    );
+
+    if(error || fixedRate<=0){
+      throw new Error(
+        error ||
+        "Ставка должна быть больше 0"
+      );
+    }
+
+    return {
+      effectiveFrom:
+        manageEditorDraft.effectiveFrom,
+      pricingType:"fixed",
+      fixedRate,
+      shkTiers:null
+    };
+  }
+
+  return {
+    effectiveFrom:
+      manageEditorDraft.effectiveFrom,
+    pricingType:"shk_tiers",
+    fixedRate:null,
+    shkTiers:normalizeShkTiers(
+      manageEditorDraft.tiers
+    )
+  };
+}
+
+async function saveInlineTariff(){
+  const id=
+    manageEditorDraft
+      ?.tariffInlineEditId;
+
+  if(!id || manageEditorSaving){
+    return;
+  }
+
+  try{
+    const payload=
+      normalizedTariffEditorDraft({
+        excludeId:id
+      });
+
+    manageEditorSaving=true;
+
+    await updateAdminTariff({
+      id,
+      ...payload
+    });
+
+    await refreshTeamData({
+      renderAfter:false
+    });
+
+    manageEditorDraft.point=
+      teamData.points.find(
+        point=>
+          point.id===
+          manageEditorDraft.id
+      ) || manageEditorDraft.point;
+    manageEditorDraft.tariffInlineEditId=null;
+    manageEditorDraft.tariffOpen=false;
+    drawManageEditor();
+    toast("Тариф изменён");
+  }catch(error){
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Не удалось изменить тариф",
+      4200
+    );
+  }finally{
+    manageEditorSaving=false;
+  }
+}
+
+async function removeHistoricalTariff(id){
+  if(
+    !await appConfirm({
+      title:"Удалить тариф из истории?",
+      message:"Удаление возможно только если тариф не используется сменами и у ПВЗ останется другая версия тарифа.",
+      confirmText:"Удалить",
+      danger:true
+    })
+  ){
+    return;
+  }
+
+  try{
+    await deleteAdminTariff(id);
+    await refreshTeamData({
+      renderAfter:false
+    });
+    manageEditorDraft.tariffInlineEditId=null;
+    manageEditorDraft.tariffOpen=false;
+    drawManageEditor();
+    toast("Тариф удалён");
+  }catch(error){
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Не удалось удалить тариф",
+      4400
+    );
   }
 }
 
@@ -5456,6 +5960,16 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
           note:""
         };
 
+  shiftOriginalDraft=savedShift
+    ? cloneShiftDraft(savedShift)
+    : null;
+
+  shiftSheetMode=savedShift
+    ? restoredDraft
+      ? "edit"
+      : "view"
+    : "create";
+
   if(
     ![
       "tariff",
@@ -5472,6 +5986,16 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
 
   const isEdit=Boolean(savedShift);
   document.getElementById("sheetTitle").textContent=isEdit ? "Смена" : "Новая смена";
+  document.getElementById("sheetCancel").textContent=
+    shiftSheetMode==="view"
+      ? "Закрыть"
+      : shiftSheetMode==="edit"
+        ? "Назад"
+        : "Отмена";
+  document.getElementById("sheetSave").textContent=
+    shiftSheetMode==="view"
+      ? "Изменить"
+      : "Готово";
   document.getElementById("sheetSave").hidden=!isAdmin;
   drawSheet(isEdit);
 
@@ -5543,6 +6067,8 @@ function closeSheet(){
   document.body.classList.remove("sheet-open");
 
   draft=null;
+  shiftOriginalDraft=null;
+  shiftSheetMode="create";
   saveUIState();
   if(!activeModal()) setBackgroundInert(false);
 
@@ -5555,6 +6081,72 @@ function closeSheet(){
     sheet.style.removeProperty("--sheet-drag");
     if(previousFocus && document.contains(previousFocus)) previousFocus.focus();
   },500);
+}
+
+function shiftDraftChanged(){
+  if(!draft){
+    return false;
+  }
+
+  readForm();
+
+  if(shiftOriginalDraft){
+    return JSON.stringify(draft)!==
+      JSON.stringify(shiftOriginalDraft);
+  }
+
+  return Boolean(
+    draft.dbPointId ||
+    draft.employeeId ||
+    draft.shk!=="" ||
+    draft.partial ||
+    draft.baseOverride!=="" ||
+    draft.bonuses?.length ||
+    draft.penalties?.length ||
+    draft.note?.trim()
+  );
+}
+
+async function requestCloseShiftSheet(){
+  if(!draft){
+    closeSheet();
+    return;
+  }
+
+  if(shiftSheetMode==="view"){
+    closeSheet();
+    return;
+  }
+
+  if(
+    shiftDraftChanged() &&
+    !await appConfirm({
+      title:"Закрыть без сохранения?",
+      message:"Внесённые в смену данные будут потеряны.",
+      confirmText:"Закрыть",
+      danger:true
+    })
+  ){
+    return;
+  }
+
+  if(
+    shiftSheetMode==="edit" &&
+    shiftOriginalDraft
+  ){
+    draft=cloneShiftDraft(
+      shiftOriginalDraft
+    );
+    shiftSheetMode="view";
+    document.getElementById("sheetCancel").textContent="Закрыть";
+    document.getElementById("sheetSave").textContent="Изменить";
+    drawSheet(true);
+    document.getElementById("sheet").scrollTop=0;
+    saveUIState();
+    return;
+  }
+
+  closeSheet();
 }
 
 let datePickerHideTimer;
@@ -6479,12 +7071,21 @@ function drawSheet(isEdit){
     draft.baseOverrideMode===
       "manual";
 
-  if(!isAdmin){
+  if(
+    !isAdmin ||
+    shiftSheetMode==="view"
+  ){
+    const employee=
+      teamData.employees.find(
+        item=>item.id===draft.employeeId
+      );
+
     document.getElementById("sheetBody").innerHTML=`
       <div class="ml">Смена</div>
       <div class="card">
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Дата</div><div class="t">${esc(dateLabel(draft.date))}</div></div></div>
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">ПВЗ</div><div class="t">${esc(draft.point)}</div></div></div>
+        ${isAdmin ? `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Сотрудник</div><div class="t">${esc(employee?.full_name || draft.employeeName || "Не указан")}</div></div></div>` : ""}
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Тип</div><div class="t">${draft.type==="extra" ? "Дополнительная" : "Основная"}</div></div></div>
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Часы</div><div class="t">${hoursWord(result.hours)}</div></div></div>
         ${fixed ? "" : `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Объём</div><div class="t">${nf(Number(draft.shk)||0)} ШК</div></div></div>`}
@@ -7620,6 +8221,9 @@ function bindYearSwipe(
   changeYear
 ){
   let swipe=null;
+  let wheelDistance=0;
+  let wheelTimer=0;
+  let wheelLockUntil=0;
 
   element.addEventListener(
     "pointerdown",
@@ -7795,15 +8399,56 @@ function bindYearSwipe(
       swipe=null;
     }
   );
+
+  element.addEventListener(
+    "wheel",
+    event=>{
+      if(
+        Math.abs(event.deltaX)<=
+          Math.abs(event.deltaY)*1.15
+      ){
+        return;
+      }
+
+      if(event.cancelable){
+        event.preventDefault();
+      }
+
+      const now=performance.now();
+      if(now<wheelLockUntil){
+        return;
+      }
+
+      wheelDistance+=event.deltaX;
+      clearTimeout(wheelTimer);
+      wheelTimer=setTimeout(()=>{
+        wheelDistance=0;
+      },120);
+
+      if(Math.abs(wheelDistance)<42){
+        return;
+      }
+
+      const direction=
+        wheelDistance>0
+          ? 1
+          : -1;
+
+      wheelDistance=0;
+      wheelLockUntil=now+420;
+      changeYear(direction);
+    },
+    {passive:false}
+  );
 }
 
 bindYearSwipe(
-  document.getElementById("monthGrid"),
+  document.getElementById("monthPicker"),
   changeMonthPickerYear
 );
 
 bindYearSwipe(
-  document.getElementById("dateJumpMonths"),
+  document.getElementById("dateJump"),
   changeDateJumpYear
 );
 
@@ -7925,6 +8570,14 @@ function bindBottomSheetDismiss({
     Boolean(
       target.closest(
         'input,textarea,select,[contenteditable="true"]'
+      )
+    );
+
+  const dismissSurface=target=>
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        ".grab,.shead,.point-picker-handle,.month-picker-handle,.date-picker-handle,.picker-toolbar"
       )
     );
 
@@ -8181,7 +8834,8 @@ function bindBottomSheetDismiss({
       if(
         event.touches.length!==1 ||
         !element.classList.contains("on") ||
-        blockedTarget(event.target)
+        blockedTarget(event.target) ||
+        !dismissSurface(event.target)
       ){
         gesture=null;
         return;
@@ -8308,7 +8962,8 @@ function bindBottomSheetDismiss({
         event.pointerType==="touch" ||
         !event.isPrimary ||
         !element.classList.contains("on") ||
-        blockedTarget(event.target)
+        blockedTarget(event.target) ||
+        !dismissSurface(event.target)
       ){
         return;
       }
@@ -8432,6 +9087,7 @@ function bindBottomSheetDismiss({
     event=>{
       if(
         !element.classList.contains("on") ||
+        !dismissSurface(event.target) ||
         Math.abs(event.deltaX)>
           Math.abs(event.deltaY)*1.15 ||
         (
@@ -9408,8 +10064,12 @@ ADMIN_TABS.forEach(name=>{
   );
 });
 
-document.getElementById("veil").onclick=closeSheet;
-document.getElementById("sheetCancel").onclick=closeSheet;
+document.getElementById("veil").onclick=()=>{
+  void requestCloseShiftSheet();
+};
+document.getElementById("sheetCancel").onclick=()=>{
+  void requestCloseShiftSheet();
+};
 document.getElementById("pointVeil").onclick=closePointPicker;
 document.getElementById("dateVeil").onclick=closeDatePicker;
 
@@ -9897,6 +10557,62 @@ manageEditorSheetElement.addEventListener(
 
     readManageEditor();
 
+    if(button.dataset.tariffEdit){
+      const tariff=teamData.tariffs.find(
+        item=>
+          item.id===
+          button.dataset.tariffEdit
+      );
+
+      if(!tariff){
+        toast("Тариф не найден");
+        return;
+      }
+
+      manageEditorDraft.tariffInlineEditId=
+        tariff.id;
+      manageEditorDraft.tariffOpen=true;
+      manageEditorDraft.pricingType=
+        tariff.pricing_type;
+      manageEditorDraft.fixedRate=
+        tariff.fixed_rate || 3000;
+      manageEditorDraft.tiers=
+        tariff.shk_tiers
+          ? tariff.shk_tiers.map(
+              tier=>({...tier})
+            )
+          : defaultTariffTiers();
+      manageEditorDraft.effectiveFrom=
+        tariff.effective_from;
+      drawManageEditor();
+      return;
+    }
+
+    if(
+      button.dataset.tariffEditCancel!==
+      undefined
+    ){
+      manageEditorDraft.tariffInlineEditId=null;
+      manageEditorDraft.tariffOpen=false;
+      drawManageEditor();
+      return;
+    }
+
+    if(
+      button.dataset.tariffEditSave!==
+      undefined
+    ){
+      void saveInlineTariff();
+      return;
+    }
+
+    if(button.dataset.tariffDelete){
+      void removeHistoricalTariff(
+        button.dataset.tariffDelete
+      );
+      return;
+    }
+
     if(button.id==="manageTariffDateOpen"){
       openDatePicker("tariff");
       return;
@@ -10026,22 +10742,8 @@ employeeFilterSheetElement.addEventListener(
       "employeeFilterReset"
     ){
       employeeFilterDraft={
-        status:"active",
         pointIds:null
       };
-
-      drawEmployeeFilterSheet();
-
-      return;
-    }
-
-    if(
-      button.dataset
-        .employeeFilterStatus
-    ){
-      employeeFilterDraft.status=
-        button.dataset
-          .employeeFilterStatus;
 
       drawEmployeeFilterSheet();
 
@@ -10061,15 +10763,10 @@ employeeFilterSheetElement.addEventListener(
         employeeFilterDraft.pointIds=
           null;
       }else{
-        const allIds=
-          teamData.points.map(
-            point=>point.id
-          );
-
         const selected=
           employeeFilterDraft
             .pointIds===null
-            ? new Set(allIds)
+            ? new Set()
             : new Set(
                 employeeFilterDraft
                   .pointIds
@@ -10082,15 +10779,59 @@ employeeFilterSheetElement.addEventListener(
         }
 
         employeeFilterDraft.pointIds=
-          selected.size===allIds.length
-            ? null
-            : Array.from(selected);
+          Array.from(selected);
       }
 
       drawEmployeeFilterSheet();
     }
   }
 );
+
+document.getElementById("shiftFilterVeil").onclick=closeShiftFilterSheet;
+document.getElementById("shiftFilterCancel").onclick=closeShiftFilterSheet;
+document.getElementById("shiftFilterDone").onclick=applyShiftFilter;
+
+shiftFilterSheetElement.addEventListener("input",event=>{
+  if(!shiftFilterDraft) return;
+  if(event.target.id==="shiftFilterFrom") shiftFilterDraft.fromDay=event.target.value;
+  if(event.target.id==="shiftFilterTo") shiftFilterDraft.toDay=event.target.value;
+});
+
+shiftFilterSheetElement.addEventListener("click",event=>{
+  const button=event.target.closest("button");
+  if(!button || !shiftFilterDraft) return;
+
+  if(button.id==="shiftFilterReset"){
+    shiftFilterDraft={pointIds:null,employeeIds:null,fromDay:1,toDay:31,period:"all"};
+    drawShiftFilterSheet();
+    return;
+  }
+
+  if(button.dataset.shiftPeriod){
+    applyShiftFilterPeriod(button.dataset.shiftPeriod);
+    drawShiftFilterSheet();
+    return;
+  }
+
+  const updateSelection=(key,id)=>{
+    if(!id){
+      shiftFilterDraft[key]=null;
+    }else{
+      const selected=shiftFilterDraft[key]===null
+        ? new Set()
+        : new Set(shiftFilterDraft[key]);
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      shiftFilterDraft[key]=Array.from(selected);
+    }
+    drawShiftFilterSheet();
+  };
+
+  if(button.dataset.shiftFilterPoint!==undefined){
+    updateSelection("pointIds",button.dataset.shiftFilterPoint);
+  }else if(button.dataset.shiftFilterEmployee!==undefined){
+    updateSelection("employeeIds",button.dataset.shiftFilterEmployee);
+  }
+});
 
 employeeSheetElement.addEventListener(
   "click",
@@ -10273,6 +11014,17 @@ bindBottomSheetDismiss({
 
 bindBottomSheetDismiss({
   element:
+    shiftFilterSheetElement,
+
+  dragProperty:
+    "--sheet-drag",
+
+  close:
+    closeShiftFilterSheet
+});
+
+bindBottomSheetDismiss({
+  element:
     manageEditorSheetElement,
 
   dragProperty:
@@ -10304,7 +11056,9 @@ const shiftSheet=
 bindBottomSheetDismiss({
   element:shiftSheet,
   dragProperty:"--sheet-drag",
-  close:closeSheet,
+  close:()=>{
+    void requestCloseShiftSheet();
+  },
 
   canStart:target=>{
     if(
@@ -10347,6 +11101,15 @@ document.getElementById("sheetSave").onclick=async()=>{
   }
 
   const button=document.getElementById("sheetSave");
+
+  if(shiftSheetMode==="view"){
+    shiftSheetMode="edit";
+    document.getElementById("sheetCancel").textContent="Назад";
+    button.textContent="Готово";
+    drawSheet(true);
+    document.getElementById("sheet").scrollTop=0;
+    return;
+  }
 
   readForm();
 
@@ -10959,21 +11722,29 @@ employeeSheetElement.addEventListener(
 app.addEventListener(
   "input",
   event=>{
+    if(payoutEditor && event.target instanceof HTMLInputElement){
+      if(event.target.id==="payoutAmount") payoutEditor.amount=event.target.value;
+      if(event.target.id==="payoutDate") payoutEditor.paidOn=event.target.value;
+      if(event.target.id==="payoutComment") payoutEditor.comment=event.target.value;
+    }
+
     if(
       !(
         event.target instanceof
         HTMLInputElement
       ) ||
-      event.target.id!==
-        "employeeSearch"
+      !["employeeSearch","shiftSearch"].includes(event.target.id)
     ){
       return;
     }
 
-    employeeSearchQuery=
-      event.target.value;
-
-    updateEmployeeList();
+    if(event.target.id==="employeeSearch"){
+      employeeSearchQuery=event.target.value;
+      updateEmployeeList();
+    }else{
+      shiftSearchQuery=event.target.value;
+      updateShiftList();
+    }
   }
 );
 
@@ -10989,6 +11760,72 @@ app.addEventListener("click",async event=>{
 
   if(button.id==="statsEmployeeOpen"){
     openStatsEmployeePicker();
+    return;
+  }
+
+  if(button.dataset.payoutToggle){
+    expandedPayoutKind=expandedPayoutKind===button.dataset.payoutToggle ? "" : button.dataset.payoutToggle;
+    payoutEditor=null;
+    render();
+    return;
+  }
+
+  if(button.dataset.payoutAdd){
+    const context=currentStatsPayoutContext(button.dataset.payoutAdd);
+    if(context){
+      const progress=paymentProgress(context.due,payoutRecords(context.employee.id,button.dataset.payoutAdd));
+      payoutEditor={
+        kind:button.dataset.payoutAdd,
+        amount:String(progress.remaining || ""),
+        paidOn:localYMD(),
+        comment:""
+      };
+      render();
+    }
+    return;
+  }
+
+  if(button.hasAttribute("data-payout-cancel")){
+    payoutEditor=null;
+    render();
+    return;
+  }
+
+  if(button.hasAttribute("data-payout-save")){
+    await persistPayout();
+    return;
+  }
+
+  if(button.dataset.payoutDelete){
+    const confirmed=await appConfirm(
+      "Удалить запись выплаты?",
+      {
+        detail:"Расчётная сумма не изменится, но отметка о фактической выплате будет удалена.",
+        okText:"Удалить",
+        danger:true
+      }
+    );
+    if(confirmed){
+      try{
+        await deleteAdminPayout(button.dataset.payoutDelete);
+        await refreshTeamData({renderAfter:false});
+        render();
+        toast("Запись выплаты удалена");
+      }catch(error){
+        toast(error instanceof Error ? error.message : "Не удалось удалить выплату",4200);
+      }
+    }
+    return;
+  }
+
+  if(button.id==="shiftFilterOpen"){
+    openShiftFilterSheet();
+    return;
+  }
+
+  if(button.id==="employeeArchiveToggle"){
+    employeeStatusFilter=employeeStatusFilter==="inactive" ? "active" : "inactive";
+    render();
     return;
   }
 

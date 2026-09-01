@@ -31,6 +31,10 @@ const KEYBOARD_CLOSE_START_DELTA=8;
 const KEYBOARD_CLOSED_DELTA=60;
 const KEYBOARD_SETTLE_MS=90;
 const FIELD_SWITCH_GUARD_MS=360;
+const USE_READONLY_FOCUS_GUARD=
+  window.matchMedia(
+    "(hover:none) and (pointer:coarse)"
+  ).matches;
 
 let submitting=false;
 let userInteracted=false;
@@ -95,8 +99,12 @@ function isAuthInput(element){
 }
 
 function setInputsReadonly(value){
-  email.readOnly=value;
-  password.readOnly=value;
+  const readonly=
+    USE_READONLY_FOCUS_GUARD &&
+    value;
+
+  email.readOnly=readonly;
+  password.readOnly=readonly;
 }
 
 function setFocusEnabled(value){
@@ -742,10 +750,6 @@ form.addEventListener(
   }
 );
 
-function releaseAutofillFocus(){
-  beginKeyboardDismiss();
-}
-
 function scheduleAutofillSubmit(){
   if(submitting){
     return;
@@ -828,42 +832,23 @@ function scheduleAutofillSubmit(){
 }
 
 form.addEventListener(
-  "animationstart",
-  event=>{
-    if(
-      event.animationName!==
-        "auth-autofill-detected" ||
-      !userInteracted ||
-      submitting
-    ){
-      return;
-    }
-
-    requestAnimationFrame(
-      ()=>{
-        if(submitting){
-          return;
-        }
-
-        releaseAutofillFocus();
-        scheduleAutofillSubmit();
-      }
-    );
-  }
-);
-
-form.addEventListener(
   "input",
   event=>{
-    if(
-      event.inputType!==
+    const passwordManagerFill=
+      event.inputType===
         "insertReplacementText" ||
+      (
+        !event.inputType &&
+        event.data==null
+      );
+
+    if(
+      !passwordManagerFill ||
       !userInteracted
     ){
       return;
     }
 
-    releaseAutofillFocus();
     scheduleAutofillSubmit();
   }
 );

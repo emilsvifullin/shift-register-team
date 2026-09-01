@@ -4415,12 +4415,14 @@ async function saveInlineTariff(){
 
 async function removeHistoricalTariff(id){
   if(
-    !await appConfirm({
-      title:"Удалить тариф из истории?",
-      message:"Удаление возможно только если тариф не используется сменами и у ПВЗ останется другая версия тарифа.",
-      confirmText:"Удалить",
-      danger:true
-    })
+    !await appConfirm(
+      "Удалить тариф из истории?",
+      {
+        detail:"Удаление возможно только если тариф не используется сменами и у ПВЗ останется другая версия тарифа.",
+        okText:"Удалить",
+        danger:true
+      }
+    )
   ){
     return;
   }
@@ -6334,12 +6336,14 @@ async function requestCloseShiftSheet(){
 
   if(
     shiftDraftChanged() &&
-    !await appConfirm({
-      title:"Закрыть без сохранения?",
-      message:"Внесённые в смену данные будут потеряны.",
-      confirmText:"Закрыть",
-      danger:true
-    })
+    !await appConfirm(
+      "Закрыть без сохранения?",
+      {
+        detail:"Внесённые в смену данные будут потеряны.",
+        okText:"Закрыть",
+        danger:true
+      }
+    )
   ){
     return;
   }

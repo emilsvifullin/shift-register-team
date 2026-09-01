@@ -500,9 +500,23 @@ export function shiftEmployeeChoices({
 function adjustmentRows(
   value
 ){
-  return Array.isArray(value)
-    ? value
-    : [];
+  if(!Array.isArray(value)){
+    return [];
+  }
+
+  return value.map(item=>({
+    ...item,
+    ...(Object.prototype.hasOwnProperty.call(
+      item,
+      "payout_kind"
+    )
+      ? {
+          payoutKind:
+            item.payout_kind ||
+            ""
+        }
+      : {})
+  }));
 }
 
 function adjustmentAmount(

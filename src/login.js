@@ -31,7 +31,16 @@ const KEYBOARD_CLOSE_START_DELTA=8;
 const KEYBOARD_CLOSED_DELTA=60;
 const KEYBOARD_SETTLE_MS=90;
 const FIELD_SWITCH_GUARD_MS=360;
+const IS_IOS=
+  /iPad|iPhone|iPod/.test(
+    navigator.userAgent
+  ) ||
+  (
+    navigator.platform==="MacIntel" &&
+    navigator.maxTouchPoints>1
+  );
 const USE_READONLY_FOCUS_GUARD=
+  IS_IOS &&
   window.matchMedia(
     "(hover:none) and (pointer:coarse)"
   ).matches;
@@ -458,7 +467,12 @@ document.addEventListener(
       return;
     }
 
-    beginKeyboardDismiss();
+    if(
+      USE_READONLY_FOCUS_GUARD &&
+      event.pointerType==="touch"
+    ){
+      beginKeyboardDismiss();
+    }
   },
   {
     capture:true
@@ -711,6 +725,17 @@ form.addEventListener(
       !userInteracted ||
       !focusEnabled
     ){
+      if(
+        !USE_READONLY_FOCUS_GUARD
+      ){
+        userInteracted=true;
+        setFocusEnabled(true);
+        document.body.classList.add(
+          "auth-input-focused"
+        );
+        return;
+      }
+
       event.target.blur();
 
       document.body.classList.remove(

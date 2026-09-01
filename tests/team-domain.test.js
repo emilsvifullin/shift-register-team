@@ -325,9 +325,15 @@ test("server bonuses and penalties are included separately and together",()=>{
     point,
     employee:{full_name:"Сотрудник",status:"active"},
     bonuses:[{id:"bonus-1",amount:500,comment:"Премия"}],
-    penalties:[{id:"penalty-1",amount:200,comment:"Штраф"}]
+    penalties:[{
+      id:"penalty-1",
+      amount:200,
+      comment:"Штраф",
+      payout_kind:"first_half"
+    }]
   });
 
+  assert.equal(mapped.penalties[0].payoutKind,"first_half");
   assert.equal(calc({...mapped,penalties:[],fine:""}).total,4000);
   assert.equal(calc({...mapped,bonuses:[],bonus:""}).total,3300);
   assert.equal(calc(mapped).total,3800);

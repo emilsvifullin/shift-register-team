@@ -1196,6 +1196,32 @@ nav.tabs button.on{
   font-size:12px;
 }
 
+.adjustment-payout{
+  padding:10px 12px 12px;
+  border-top:1px solid var(--line);
+}
+
+.adjustment-payout-title{
+  margin:0 4px 7px;
+  color:var(--ink3);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+
+.adjustment-payout .segbox{
+  padding:0;
+}
+
+.adjustment-payout-seg button{
+  min-width:0;
+  padding-right:4px;
+  padding-left:4px;
+  font-size:clamp(10px,2.8vw,12px);
+  white-space:nowrap;
+}
+
 .adjustment-add-row{
   width:100%;
   min-height:50px;
@@ -1397,10 +1423,6 @@ nav.tabs button.on{
 
 .tariff-change-button{
   margin-top:10px;
-}
-
-.tariff-new-block{
-  margin-top:2px;
 }
 
 .tariff-history-list{
@@ -1786,6 +1808,10 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
 .adjustment-readonly-row .v{
   flex:none;
   padding-top:1px;
+}
+
+.adjustment-readonly-row .s{
+  margin-top:3px;
 }
 
 .shift-detail-readonly-row .s{
@@ -2177,6 +2203,9 @@ body.date-picker-open .sheet{
     opacity .26s ease,
     transform .34s cubic-bezier(.4,0,.2,1),
     visibility 0s linear .34s;
+
+  touch-action:pan-y;
+  overscroll-behavior:contain;
 }
 
 .date-jump.on{
@@ -2409,6 +2438,9 @@ nav.tabs button.touch-active,
     transform .42s cubic-bezier(.4,0,.2,1);
 
   padding:0 12px 14px;
+
+  touch-action:pan-y;
+  overscroll-behavior:contain;
 }
 
 .month-picker.on{

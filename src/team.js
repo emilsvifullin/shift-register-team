@@ -45,6 +45,7 @@ const SHIFT_SELECT=`
     id,
     amount,
     comment,
+    payout_kind,
     created_at,
     updated_at
   )
@@ -565,7 +566,10 @@ export async function deleteAdminEmployee(
 }
 
 function adjustmentPayload(
-  rows
+  rows,
+  {
+    includePayoutKind=false
+  }={}
 ){
   return (rows || [])
     .map(item=>({
@@ -573,7 +577,14 @@ function adjustmentPayload(
       amount:Number(item.amount),
       comment:String(
         item.comment || ""
-      ).trim()
+      ).trim(),
+      ...(includePayoutKind
+        ? {
+            payoutKind:
+              item.payoutKind ||
+              null
+          }
+        : {})
     }));
 }
 
@@ -611,7 +622,11 @@ export async function saveAdminShift(
             ),
           p_penalties:
             adjustmentPayload(
-              value.penalties
+              value.penalties,
+              {
+                includePayoutKind:
+                  true
+              }
             ),
           p_base_amount_override:
             value.baseOverride==="" ||
@@ -834,7 +849,11 @@ export async function importAdminLegacyShift(
             ),
           p_penalties:
             adjustmentPayload(
-              value.penalties
+              value.penalties,
+              {
+                includePayoutKind:
+                  true
+              }
             )
         }
       );

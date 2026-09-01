@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   employeeSearchText,
+  filterOptionSelected,
   filterMonthShifts,
-  paymentProgress
+  paymentProgress,
+  toggleFilterSelection
 } from "../src/workflow.js";
 
 const shifts=[
@@ -82,6 +84,42 @@ test("employee search contains every card field",()=>{
   ]){
     assert.ok(value.includes(needle));
   }
+});
+
+test("all filter option selects every row and toggles predictably",()=>{
+  const allIds=["point-a","point-b","point-c"];
+
+  assert.equal(
+    filterOptionSelected(null,"point-a"),
+    true
+  );
+
+  assert.deepEqual(
+    toggleFilterSelection(
+      null,
+      "",
+      allIds
+    ),
+    []
+  );
+
+  assert.deepEqual(
+    toggleFilterSelection(
+      null,
+      "point-b",
+      allIds
+    ),
+    ["point-a","point-c"]
+  );
+
+  assert.equal(
+    toggleFilterSelection(
+      ["point-a"],
+      "",
+      allIds
+    ),
+    null
+  );
 });
 
 test("partial payout progress preserves remaining and overpayment",()=>{

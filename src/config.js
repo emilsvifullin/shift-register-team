@@ -1,4 +1,4 @@
-export const APP_VERSION = "6.10.0";
+export const APP_VERSION = "6.12.0";
 export const SCHEMA_VERSION = 3;
 export const RULES_VERSION = "2026-08-12-v3";
 
@@ -53,7 +53,7 @@ export const FIXED_RATE = 3000;
 export const FULL_HOURS = 12;
 export const ADVANCE_CAP = 20000;
 
-export const MIN_YEAR = 2024;
+export const MIN_YEAR = 2000;
 export const MAX_YEAR = 2100;
 export const MAX_SHK = 1_000_000;
 export const MAX_MONEY = 10_000_000;

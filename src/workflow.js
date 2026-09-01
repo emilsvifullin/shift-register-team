@@ -20,6 +20,40 @@ function moneySearchVariants(value){
   ];
 }
 
+export function filterOptionSelected(
+  selectedIds,
+  id
+){
+  return selectedIds===null ||
+    selectedIds.includes(id);
+}
+
+export function toggleFilterSelection(
+  selectedIds,
+  id,
+  allIds
+){
+  if(!id){
+    return selectedIds===null
+      ? []
+      : null;
+  }
+
+  const selected=new Set(
+    selectedIds===null
+      ? allIds
+      : selectedIds
+  );
+
+  if(selected.has(id)){
+    selected.delete(id);
+  }else{
+    selected.add(id);
+  }
+
+  return Array.from(selected);
+}
+
 export function shiftSearchText(
   shift,
   extra=[]

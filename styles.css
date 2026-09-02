@@ -933,12 +933,6 @@ nav.tabs button.on{
   text-transform:uppercase;
 }
 
-.employee-state-substitute{
-  border-color:var(--gold-line);
-  color:var(--gold);
-  background:var(--gold-soft);
-}
-
 .employee-account-label{
   overflow:hidden;
 

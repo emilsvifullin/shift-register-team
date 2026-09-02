@@ -98,7 +98,8 @@ test(
       "20260825110804",
       "20260901080730",
       "20260901194500",
-      "20260902073338"
+      "20260902073338",
+      "20260902205513"
     ]){
       assert.ok(
         files.some(
@@ -755,7 +756,7 @@ test(
 
     assert.match(
       app,
-      /function statsEmployeeOptions\(\)\{\s*return teamData\.employees\.slice\(\);\s*\}/
+      /function statsEmployeeOptions\(\)\{[\s\S]*!isSystemSubstitute\([\s\S]*employee[\s\S]*\)/
     );
 
     assert.doesNotMatch(
@@ -1709,11 +1710,16 @@ test(
 );
 
 test(
-  "substitute employees keep full accounting access without requiring a login account",
+  "the single system substitute is available for shifts and excluded from accounting",
   async()=>{
-    const migration=
+    const typeMigration=
       await read(
         "supabase/migrations/20260902073338_add_employee_employment_type.sql"
+      );
+
+    const systemMigration=
+      await read(
+        "supabase/migrations/20260902205513_create_system_substitute_card.sql"
       );
 
     const team=
@@ -1727,33 +1733,63 @@ test(
       );
 
     assert.match(
-      migration,
+      typeMigration,
       /add column if not exists employment_type text not null default 'staff'/
     );
 
     assert.match(
-      migration,
+      typeMigration,
       /employment_type in \('staff', 'substitute'\)/
     );
 
     assert.match(
-      migration,
-      /security definer[\s\S]*set search_path = ''/
+      systemMigration,
+      /add column if not exists is_system_substitute boolean not null default false/
     );
 
     assert.match(
-      migration,
-      /grant execute on function public\.admin_save_employee_profile\([\s\S]*uuid\[\], text[\s\S]*\) to authenticated/
+      systemMigration,
+      /create unique index if not exists employees_single_system_substitute_idx[\s\S]*where is_system_substitute/
+    );
+
+    assert.match(
+      systemMigration,
+      /insert into public\.employees\([\s\S]*is_system_substitute[\s\S]*'Подмена'[\s\S]*true/
+    );
+
+    assert.match(
+      systemMigration,
+      /insert into public\.employee_points\([\s\S]*cross join public\.points/
+    );
+
+    assert.match(
+      systemMigration,
+      /create trigger points_assign_system_substitute[\s\S]*private\.assign_system_substitute_to_point\(\)/
+    );
+
+    assert.match(
+      systemMigration,
+      /create trigger employees_protect_system_substitute[\s\S]*private\.protect_system_substitute\(\)/
     );
 
     assert.match(
       team,
-      /p_employment_type:[\s\S]*employmentType/
+      /is_system_substitute[\s\S]*p_employment_type:[\s\S]*employmentType/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /data-employee-type/
     );
 
     assert.match(
       app,
-      /data-employee-type="substitute"[\s\S]*Подмена/
+      /employmentType:"staff"/
+    );
+
+    assert.match(
+      app,
+      /Без итогов и аккаунта[\s\S]*Не отображается в итогах/
     );
 
     assert.match(

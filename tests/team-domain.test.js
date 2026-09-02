@@ -498,7 +498,12 @@ test("new shift choices start with a point and only show its active employees",(
   const employees=[
     {id:"employee-1",status:"active"},
     {id:"employee-2",status:"active"},
-    {id:"employee-archive",status:"inactive"}
+    {id:"employee-archive",status:"inactive"},
+    {
+      id:"system-substitute",
+      status:"active",
+      is_system_substitute:true
+    }
   ];
 
   const employeePoints=[
@@ -540,7 +545,7 @@ test("new shift choices start with a point and only show its active employees",(
       employeePoints,
       pointId:"point-1"
     }).map(item=>item.id),
-    ["employee-1"]
+    ["employee-1","system-substitute"]
   );
 
   assert.deepEqual(
@@ -550,7 +555,11 @@ test("new shift choices start with a point and only show its active employees",(
       pointId:"point-1",
       includeInactive:true
     }).map(item=>item.id),
-    ["employee-1","employee-archive"]
+    [
+      "employee-1",
+      "employee-archive",
+      "system-substitute"
+    ]
   );
 
   assert.deepEqual(
@@ -561,7 +570,11 @@ test("new shift choices start with a point and only show its active employees",(
       selectedEmployeeId:
         "employee-archive"
     }).map(item=>item.id),
-    ["employee-1","employee-archive"]
+    [
+      "employee-1",
+      "employee-archive",
+      "system-substitute"
+    ]
   );
 
   assert.deepEqual(

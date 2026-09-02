@@ -317,6 +317,24 @@ main.shifts-layout > .ml:first-child{
   margin-top:16px;
 }
 
+main.shifts-layout > .ml,
+main.shifts-layout > .manage-add,
+main.shifts-layout > .employee-editor{
+  flex:none;
+}
+
+main.shifts-layout > #shiftListArea{
+  min-height:0;
+  flex:1 1 auto;
+
+  display:flex;
+  flex-direction:column;
+}
+
+#shiftListArea > .ml{
+  flex:none;
+}
+
 .shift-window{
   flex:1;
   min-height:0;
@@ -1985,17 +2003,18 @@ body.point-picker-open .sheet{
 }
 
 .point-picker-search{
-  height:44px;
-  margin:0 12px 8px;
-  padding:0 12px;
+  height:46px;
+  margin:0;
+  padding:0 14px;
 
   display:flex;
   align-items:center;
-  gap:9px;
+  gap:10px;
 
-  border:1px solid var(--line);
-  border-radius:13px;
-  background:var(--tint);
+  border:0;
+  border-bottom:1px solid var(--line);
+  border-radius:0;
+  background:transparent;
   color:var(--ink3);
   cursor:text;
 }
@@ -2005,8 +2024,8 @@ body.point-picker-open .sheet{
 }
 
 .point-picker-search svg{
-  width:16px;
-  height:16px;
+  width:17px;
+  height:17px;
   flex:none;
 
   fill:none;
@@ -2019,12 +2038,15 @@ body.point-picker-open .sheet{
   min-width:0;
   height:100%;
 
+  appearance:none;
+  -webkit-appearance:none;
+
   direction:ltr;
   text-align:left;
 }
 
-.point-picker-search input:focus::placeholder{
-  color:transparent;
+.point-picker-search input::-webkit-search-cancel-button{
+  -webkit-appearance:none;
 }
 
 .point-list{
@@ -2036,7 +2058,7 @@ body.point-picker-open .sheet{
 }
 
 .point-picker.has-search:not(.app-picker-anchored) .point-list{
-  max-height:calc(78vh - 114px);
+  max-height:calc(78vh - 108px);
 }
 
 .point-option{

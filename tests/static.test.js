@@ -95,7 +95,10 @@ test(
       "20260824151948",
       "20260824225714",
       "20260824225728",
-      "20260825110804"
+      "20260825110804",
+      "20260901080730",
+      "20260901194500",
+      "20260902073338"
     ]){
       assert.ok(
         files.some(
@@ -1601,6 +1604,66 @@ test(
     assert.match(
       app,
       /Удержать из выплаты[\s\S]*data-penalty-payout-kind/
+    );
+  }
+);
+
+test(
+  "substitute employees keep full accounting access without requiring a login account",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260902073338_add_employee_employment_type.sql"
+      );
+
+    const team=
+      await read(
+        "src/team.js"
+      );
+
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.match(
+      migration,
+      /add column if not exists employment_type text not null default 'staff'/
+    );
+
+    assert.match(
+      migration,
+      /employment_type in \('staff', 'substitute'\)/
+    );
+
+    assert.match(
+      migration,
+      /security definer[\s\S]*set search_path = ''/
+    );
+
+    assert.match(
+      migration,
+      /grant execute on function public\.admin_save_employee_profile\([\s\S]*uuid\[\], text[\s\S]*\) to authenticated/
+    );
+
+    assert.match(
+      team,
+      /p_employment_type:[\s\S]*employmentType/
+    );
+
+    assert.match(
+      app,
+      /data-employee-type="substitute"[\s\S]*Подмена/
+    );
+
+    assert.match(
+      app,
+      /data-employee-account-mode="none"[\s\S]*Без аккаунта[\s\S]*data-employee-account-mode="create"/
+    );
+
+    assert.match(
+      app,
+      /employeeDraft\.userId \|\|[\s\S]*employeeDraft\.accountEnabled/
     );
   }
 );

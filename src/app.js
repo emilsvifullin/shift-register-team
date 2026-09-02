@@ -2594,6 +2594,17 @@ function employeeRowHTML(
           </span>
 
           ${
+            employee.employment_type===
+            "substitute"
+              ? `
+                <span class="employee-state employee-state-substitute">
+                  Подмена
+                </span>
+              `
+              : ""
+          }
+
+          ${
             archived
               ? `
                 <span class="employee-state">
@@ -2616,7 +2627,7 @@ function employeeRowHTML(
           ${
             account?.login
               ? esc(account.login)
-              : "Аккаунт не привязан"
+              : "Без аккаунта"
           }
         </span>
       </span>
@@ -4530,6 +4541,23 @@ function drawEmployeeSheet(){
         <div class="row">
           <div class="l">
             <div class="s">
+              Тип
+            </div>
+
+            <div class="t">
+              ${
+                employee.employment_type===
+                "substitute"
+                  ? "Подмена"
+                  : "Штатный"
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="l">
+            <div class="s">
               Статус
             </div>
 
@@ -4561,7 +4589,7 @@ function drawEmployeeSheet(){
                     )
                   : account
                     ? "Требуется email"
-                    : "Не привязан"
+                    : "Без аккаунта"
               }
             </div>
           </div>
@@ -4703,6 +4731,30 @@ function drawEmployeeSheet(){
       </label>
     </div>
 
+    <div class="ml">
+      Тип сотрудника
+    </div>
+
+    <div class="card segbox">
+      <div class="seg">
+        <button
+          type="button"
+          data-employee-type="staff"
+          class="${employeeDraft.employmentType==="staff" ? "on" : ""}"
+        >
+          Штатный
+        </button>
+
+        <button
+          type="button"
+          data-employee-type="substitute"
+          class="${employeeDraft.employmentType==="substitute" ? "on" : ""}"
+        >
+          Подмена
+        </button>
+      </div>
+    </div>
+
     <div class="ml">Реквизиты для переводов</div>
     <div class="card employee-editor">
       <label class="row">
@@ -4773,67 +4825,102 @@ function drawEmployeeSheet(){
       Аккаунт
     </div>
 
-    <div class="card employee-editor">
-      <label class="row employee-account-row">
-        <div class="t">Почта</div>
-        <input
-          type="email"
-          id="employeeEmail"
-          autocomplete="off"
-          autocapitalize="none"
-          autocorrect="off"
-          spellcheck="false"
-          value="${esc(employeeDraft.email || "")}"
-          aria-label="Почта сотрудника"
-        >
-      </label>
+    ${
+      employeeDraft.userId
+        ? ""
+        : `
+          <div class="card segbox employee-account-mode">
+            <div class="seg">
+              <button
+                type="button"
+                data-employee-account-mode="none"
+                class="${employeeDraft.accountEnabled ? "" : "on"}"
+              >
+                Без аккаунта
+              </button>
 
-      <div class="row employee-password-row">
-        <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
-
-        <div class="employee-password-control">
-          <div class="employee-secret-input">
-            <input
-              type="text"
-              id="employeePassword"
-              autocomplete="off"
-              autocapitalize="none"
-              autocorrect="off"
-              spellcheck="false"
-              data-1p-ignore="true"
-              data-lpignore="true"
-              data-form-type="other"
-              value="${esc(employeeDraft.password || "")}"
-              aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
-            >
-
-            <span
-              class="employee-secret-mask"
-              aria-hidden="true"
-            >${"•".repeat((employeeDraft.password || "").length)}</span>
+              <button
+                type="button"
+                data-employee-account-mode="create"
+                class="${employeeDraft.accountEnabled ? "on" : ""}"
+              >
+                Создать аккаунт
+              </button>
+            </div>
           </div>
+        `
+    }
 
-          <button
-            type="button"
-            class="employee-password-toggle"
-            id="employeePasswordToggle"
-            aria-label="Показать пароль"
-            aria-pressed="false"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
-              <circle cx="12" cy="12" r="2.7"></circle>
-              <path class="employee-password-slash" d="M4 4l16 16"></path>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
+    ${
+      employeeDraft.userId ||
+      employeeDraft.accountEnabled
+        ? `
+          <div class="card employee-editor">
+            <label class="row employee-account-row">
+              <div class="t">Почта</div>
+              <input
+                type="email"
+                id="employeeEmail"
+                autocomplete="off"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                value="${esc(employeeDraft.email || "")}"
+                aria-label="Почта сотрудника"
+              >
+            </label>
+
+            <div class="row employee-password-row">
+              <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
+
+              <div class="employee-password-control">
+                <div class="employee-secret-input">
+                  <input
+                    type="text"
+                    id="employeePassword"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    data-1p-ignore="true"
+                    data-lpignore="true"
+                    data-form-type="other"
+                    value="${esc(employeeDraft.password || "")}"
+                    aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
+                  >
+
+                  <span
+                    class="employee-secret-mask"
+                    aria-hidden="true"
+                  >${"•".repeat((employeeDraft.password || "").length)}</span>
+                </div>
+
+                <button
+                  type="button"
+                  class="employee-password-toggle"
+                  id="employeePasswordToggle"
+                  aria-label="Показать пароль"
+                  aria-pressed="false"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                    <circle cx="12" cy="12" r="2.7"></circle>
+                    <path class="employee-password-slash" d="M4 4l16 16"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        `
+        : ""
+    }
 
     <div class="employee-help">
       ${employeeDraft.userId
         ? "Почту можно изменить. Пустой пароль сохранит текущий."
-        : "Почта и пароль создадут подтверждённый аккаунт с правами сотрудника. Публичной регистрации нет."}
+        : employeeDraft.accountEnabled
+          ? "Почта и пароль создадут подтверждённый аккаунт с правами сотрудника. Публичной регистрации нет."
+          : "Карточка будет доступна для смен и расчётов без входа сотрудника."}
     </div>
 
     <div class="ml">
@@ -4979,8 +5066,10 @@ function createEmployeeDraft(
       id:null,
       fullName:"",
       status:"active",
+      employmentType:"staff",
       hiredAt:"",
       userId:null,
+      accountEnabled:false,
       email:"",
       phone:"",
       transferPhone:"",
@@ -5011,8 +5100,15 @@ function createEmployeeDraft(
     id:employee.id,
     fullName:employee.full_name,
     status:employee.status,
+    employmentType:
+      employee.employment_type===
+      "substitute"
+        ? "substitute"
+        : "staff",
     hiredAt:employee.hired_at || "",
     userId:employee.user_id || null,
+    accountEnabled:
+      Boolean(employee.user_id),
     email:
       employeeAccountEmail(
         account
@@ -5514,15 +5610,25 @@ async function saveEmployeeDraft(){
     return;
   }
 
+  const accountEnabled=
+    Boolean(
+      employeeDraft.userId ||
+      employeeDraft.accountEnabled
+    );
+
   const password=
-    employeeDraft.password || "";
+    accountEnabled
+      ? employeeDraft.password || ""
+      : "";
 
   const email=
-    String(
-      employeeDraft.email || ""
-    )
-      .trim()
-      .toLowerCase();
+    accountEnabled
+      ? String(
+          employeeDraft.email || ""
+        )
+          .trim()
+          .toLowerCase()
+      : "";
 
   if(
     email &&
@@ -5563,7 +5669,8 @@ async function saveEmployeeDraft(){
 
   if(
     !employeeDraft.userId &&
-    Boolean(email)!==Boolean(password)
+    accountEnabled &&
+    (!email || !password)
   ){
     toast(
       email
@@ -5635,6 +5742,11 @@ async function saveEmployeeDraft(){
         userId:
           employeeDraft.userId ||
           null,
+        employmentType:
+          employeeDraft.employmentType===
+          "substitute"
+            ? "substitute"
+            : "staff",
         phone,
         transferPhone,
         transferBank:
@@ -5655,7 +5767,7 @@ async function saveEmployeeDraft(){
 
     if(
       employeeDraft.userId ||
-      email
+      accountEnabled
     ){
       try{
         await saveAdminEmployeeAuth({
@@ -11210,6 +11322,56 @@ employeeSheetElement.addEventListener(
       "employeeDelete"
     ){
       void deleteEmployeeDraft();
+      return;
+    }
+
+    if(
+      button.dataset.employeeType
+    ){
+      employeeDraft.employmentType=
+        button.dataset.employeeType===
+        "substitute"
+          ? "substitute"
+          : "staff";
+
+      employeeSheetElement
+        .querySelectorAll(
+          "[data-employee-type]"
+        )
+        .forEach(item=>{
+          item.classList.toggle(
+            "on",
+            item.dataset.employeeType===
+              employeeDraft.employmentType
+          );
+        });
+
+      return;
+    }
+
+    if(
+      button.dataset.employeeAccountMode &&
+      !employeeDraft.userId
+    ){
+      const scrollTop=
+        employeeSheetElement.scrollTop;
+
+      employeeDraft.accountEnabled=
+        button.dataset.employeeAccountMode===
+        "create";
+
+      if(!employeeDraft.accountEnabled){
+        employeeDraft.email="";
+        employeeDraft.password="";
+      }
+
+      drawEmployeeSheet();
+
+      requestAnimationFrame(()=>{
+        employeeSheetElement.scrollTop=
+          scrollTop;
+      });
+
       return;
     }
 

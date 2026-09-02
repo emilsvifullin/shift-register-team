@@ -185,7 +185,7 @@ export async function loadAdminTeamData(){
       supabaseClient
         .from("employees")
         .select(
-          "id, user_id, full_name, status, hired_at, phone, transfer_phone, transfer_bank, transfer_recipient"
+          "id, user_id, full_name, status, hired_at, employment_type, phone, transfer_phone, transfer_bank, transfer_recipient"
         )
         .order(
           "status",
@@ -313,7 +313,7 @@ export async function loadEmployeeTeamData(
     await supabaseClient
       .from("employees")
       .select(
-        "id, user_id, full_name, status, hired_at, phone, transfer_phone, transfer_bank, transfer_recipient"
+        "id, user_id, full_name, status, hired_at, employment_type, phone, transfer_phone, transfer_bank, transfer_recipient"
       )
       .eq(
         "user_id",
@@ -412,6 +412,7 @@ export async function saveAdminEmployee({
   status,
   hiredAt=null,
   userId=null,
+  employmentType="staff",
   phone,
   transferPhone=null,
   transferBank=null,
@@ -428,6 +429,8 @@ export async function saveAdminEmployee({
           p_status:status,
           p_hired_at:hiredAt,
           p_user_id:userId,
+          p_employment_type:
+            employmentType,
           p_phone:phone,
           p_transfer_phone:
             transferPhone,

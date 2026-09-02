@@ -518,8 +518,12 @@ export function shiftEmployeeChoices({
             includeInactive ||
             employee.status==="active"
           ) &&
-          assignedEmployeeIds.has(
-            employee.id
+          (
+            employee.is_system_substitute===
+              true ||
+            assignedEmployeeIds.has(
+              employee.id
+            )
           )
         ) ||
         employee.id===selectedEmployeeId

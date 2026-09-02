@@ -147,10 +147,6 @@ export function employeeSearchText(
     employee.full_name,
     employee.status,
     employee.status==="inactive" ? "архив" : "активен",
-    employee.employment_type,
-    employee.employment_type==="substitute"
-      ? "подмена внештатный"
-      : "штатный",
     employee.phone,
     employee.transfer_phone,
     employee.transfer_bank,

@@ -1939,7 +1939,7 @@ function viewStats(){
 
   const selectedEmployee=
     isAdmin
-      ? teamData.employees.find(
+      ? statsEmployeeOptions().find(
           employee=>
             employee.id===
             statsEmployeeId
@@ -2834,9 +2834,23 @@ function filteredEmployees(){
     );
 }
 
+function isSystemSubstitute(
+  employee
+){
+  return (
+    employee?.is_system_substitute===
+    true
+  );
+}
+
 function employeeRowHTML(
   employee
 ){
+  const systemSubstitute=
+    isSystemSubstitute(
+      employee
+    );
+
   const account=
     employeeAccount(
       employee
@@ -2859,17 +2873,6 @@ function employeeRowHTML(
           </span>
 
           ${
-            employee.employment_type===
-            "substitute"
-              ? `
-                <span class="employee-state employee-state-substitute">
-                  Подмена
-                </span>
-              `
-              : ""
-          }
-
-          ${
             archived
               ? `
                 <span class="employee-state">
@@ -2881,16 +2884,22 @@ function employeeRowHTML(
         </span>
 
         <span class="manage-row-detail">
-          ${esc(
-            employeePointsLabel(
-              employee.id
-            )
-          )}
+          ${
+            systemSubstitute
+              ? "Для смен на всех ПВЗ"
+              : esc(
+                  employeePointsLabel(
+                    employee.id
+                  )
+                )
+          }
         </span>
 
         <span class="employee-account-label">
           ${
-            account?.login
+            systemSubstitute
+              ? "Без итогов и аккаунта"
+              : account?.login
               ? esc(account.login)
               : "Без аккаунта"
           }
@@ -4728,6 +4737,62 @@ function drawEmployeeSheet(){
       return;
     }
 
+    if(isSystemSubstitute(employee)){
+      body.innerHTML=`
+        <div class="ml">
+          Системная карточка
+        </div>
+
+        <div class="card employee-detail">
+          <div class="row">
+            <div class="l">
+              <div class="s">Название</div>
+              <div class="t">Подмена</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="l">
+              <div class="s">Назначение</div>
+              <div class="t">Для учёта смен подменного сотрудника</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="l">
+              <div class="s">Пункты выдачи</div>
+              <div class="t">Доступна на всех ПВЗ</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="l">
+              <div class="s">Расчёты</div>
+              <div class="t">Не отображается в итогах</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="l">
+              <div class="s">Аккаунт</div>
+              <div class="t">Не создаётся</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="employee-help">
+          Карточка защищена от изменения и удаления. Используйте её только для внесения смен подменных сотрудников в реестр.
+        </div>
+
+        <div
+          class="sheet-spacer"
+          aria-hidden="true"
+        ></div>
+      `;
+
+      return;
+    }
+
     const account=
       employeeAccount(
         employee
@@ -4775,23 +4840,6 @@ function drawEmployeeSheet(){
 
             <div class="t">
               ${esc(employee.full_name)}
-            </div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="l">
-            <div class="s">
-              Тип
-            </div>
-
-            <div class="t">
-              ${
-                employee.employment_type===
-                "substitute"
-                  ? "Подмена"
-                  : "Штатный"
-              }
             </div>
           </div>
         </div>
@@ -4969,30 +5017,6 @@ function drawEmployeeSheet(){
           aria-label="Телефон сотрудника"
         >
       </label>
-    </div>
-
-    <div class="ml">
-      Тип сотрудника
-    </div>
-
-    <div class="card segbox">
-      <div class="seg">
-        <button
-          type="button"
-          data-employee-type="staff"
-          class="${employeeDraft.employmentType==="staff" ? "on" : ""}"
-        >
-          Штатный
-        </button>
-
-        <button
-          type="button"
-          data-employee-type="substitute"
-          class="${employeeDraft.employmentType==="substitute" ? "on" : ""}"
-        >
-          Подмена
-        </button>
-      </div>
     </div>
 
     <div class="ml">Реквизиты для переводов</div>
@@ -5306,7 +5330,7 @@ function createEmployeeDraft(
       id:null,
       fullName:"",
       status:"active",
-      employmentType:"staff",
+      isSystem:false,
       hiredAt:"",
       userId:null,
       accountEnabled:false,
@@ -5340,11 +5364,10 @@ function createEmployeeDraft(
     id:employee.id,
     fullName:employee.full_name,
     status:employee.status,
-    employmentType:
-      employee.employment_type===
-      "substitute"
-        ? "substitute"
-        : "staff",
+    isSystem:
+      isSystemSubstitute(
+        employee
+      ),
     hiredAt:employee.hired_at || "",
     userId:employee.user_id || null,
     accountEnabled:
@@ -5507,6 +5530,19 @@ function syncEmployeeSheetHeader(){
       "employeeSheetSave"
     );
 
+  actionButton.hidden=false;
+
+  if(
+    employeeSheetMode==="view" &&
+    employeeDraft?.isSystem
+  ){
+    title.textContent="Подмена";
+    cancelButton.textContent="Закрыть";
+    actionButton.hidden=true;
+    actionButton.disabled=true;
+    return;
+  }
+
   if(employeeSheetMode==="create"){
     title.textContent=
       "Новый сотрудник";
@@ -5586,7 +5622,10 @@ function showEmployeeView(
 }
 
 function startEmployeeEdit(){
-  if(!employeeDraft?.id){
+  if(
+    !employeeDraft?.id ||
+    employeeDraft.isSystem
+  ){
     return;
   }
 
@@ -5982,11 +6021,7 @@ async function saveEmployeeDraft(){
         userId:
           employeeDraft.userId ||
           null,
-        employmentType:
-          employeeDraft.employmentType===
-          "substitute"
-            ? "substitute"
-            : "staff",
+        employmentType:"staff",
         phone,
         transferPhone,
         transferBank:
@@ -6198,7 +6233,8 @@ function employeeDeleteError(
 async function deleteEmployeeDraft(){
   if(
     !employeeDraft?.id ||
-    employeeSheetMode!=="view"
+    employeeSheetMode!=="view" ||
+    employeeDraft.isSystem
   ){
     return;
   }
@@ -6452,7 +6488,13 @@ function shiftPointOptions(
 }
 
 function statsEmployeeOptions(){
-  return teamData.employees.slice();
+  return teamData.employees
+    .filter(
+      employee=>
+        !isSystemSubstitute(
+          employee
+        )
+    );
 }
 
 function cloneShiftDraft(value){
@@ -11763,30 +11805,6 @@ employeeSheetElement.addEventListener(
       "employeeDelete"
     ){
       void deleteEmployeeDraft();
-      return;
-    }
-
-    if(
-      button.dataset.employeeType
-    ){
-      employeeDraft.employmentType=
-        button.dataset.employeeType===
-        "substitute"
-          ? "substitute"
-          : "staff";
-
-      employeeSheetElement
-        .querySelectorAll(
-          "[data-employee-type]"
-        )
-        .forEach(item=>{
-          item.classList.toggle(
-            "on",
-            item.dataset.employeeType===
-              employeeDraft.employmentType
-          );
-        });
-
       return;
     }
 

@@ -709,6 +709,31 @@ test(
     );
 
     assert.match(
+      styles,
+      /main\.shifts-layout > \.employee-editor\{\s*flex:none;/
+    );
+
+    assert.match(
+      styles,
+      /main\.shifts-layout > #shiftListArea\{[\s\S]*flex:1 1 auto;[\s\S]*display:flex;/
+    );
+
+    assert.match(
+      styles,
+      /\.point-picker-search\{[\s\S]*margin:0;[\s\S]*border-bottom:1px solid var\(--line\);[\s\S]*border-radius:0;[\s\S]*background:transparent;/
+    );
+
+    assert.doesNotMatch(
+      styles,
+      /\.point-picker-search input:focus::placeholder/
+    );
+
+    assert.match(
+      app,
+      /function updateShiftList\(\)\{[\s\S]*requestAnimationFrame\(\s*fitShiftWindow\s*\);/
+    );
+
+    assert.match(
       app,
       /function openStatsEmployeePicker\(\)[\s\S]*searchable:true[\s\S]*employeeAccountEmail/
     );

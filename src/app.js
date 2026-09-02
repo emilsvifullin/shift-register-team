@@ -1658,7 +1658,13 @@ function shiftListAreaHTML(){
 
 function updateShiftList(){
   const area=document.getElementById("shiftListArea");
-  if(area) area.innerHTML=shiftListAreaHTML();
+  if(!area) return;
+
+  area.innerHTML=shiftListAreaHTML();
+
+  requestAnimationFrame(
+    fitShiftWindow
+  );
 }
 
 function viewShifts(){

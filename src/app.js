@@ -83,6 +83,7 @@ import {
 
 import {
   employeeSearchText,
+  filterChoiceOptions,
   filterOptionSelected,
   filterMonthShifts,
   paymentProgress,
@@ -250,6 +251,259 @@ function disableFieldSuggestions(
 }
 
 disableFieldSuggestions();
+
+const caretInputTypes=
+  new Set([
+    "email",
+    "number",
+    "password",
+    "search",
+    "tel",
+    "text",
+    "url"
+  ]);
+
+let caretPointerEntry=null;
+let caretMeasureContext=null;
+
+function editableCaretField(
+  target
+){
+  if(
+    target instanceof HTMLTextAreaElement
+  ){
+    return target;
+  }
+
+  if(
+    target instanceof HTMLInputElement &&
+    caretInputTypes.has(
+      target.type
+    )
+  ){
+    return target;
+  }
+
+  const row=
+    target instanceof Element
+      ? target.closest(
+          "label.row"
+        )
+      : null;
+
+  const field=
+    row?.querySelector(
+      "input,textarea"
+    );
+
+  if(
+    field instanceof HTMLTextAreaElement ||
+    field instanceof HTMLInputElement &&
+    caretInputTypes.has(field.type)
+  ){
+    return field;
+  }
+
+  return null;
+}
+
+function clickBeforeRightAlignedValue(
+  field,
+  clientX
+){
+  const style=
+    getComputedStyle(field);
+
+  if(
+    ![
+      "right",
+      "end"
+    ].includes(style.textAlign)
+  ){
+    return false;
+  }
+
+  const value=
+    String(field.value || "");
+
+  if(!value){
+    return false;
+  }
+
+  if(!caretMeasureContext){
+    caretMeasureContext=
+      document
+        .createElement("canvas")
+        .getContext("2d");
+  }
+
+  if(!caretMeasureContext){
+    return true;
+  }
+
+  caretMeasureContext.font=
+    style.font;
+
+  const rect=
+    field.getBoundingClientRect();
+
+  const paddingRight=
+    Number.parseFloat(
+      style.paddingRight
+    ) || 0;
+
+  const valueWidth=
+    caretMeasureContext
+      .measureText(value)
+      .width;
+
+  const valueStart=
+    rect.right-
+    paddingRight-
+    valueWidth;
+
+  return clientX<valueStart-3;
+}
+
+function moveCaretToEnd(
+  field
+){
+  if(
+    !field ||
+    field.disabled ||
+    field.readOnly ||
+    field.value===""
+  ){
+    return;
+  }
+
+  const value=
+    field.value;
+
+  try{
+    field.setSelectionRange(
+      value.length,
+      value.length
+    );
+  }catch{
+    /*
+      type="number" не поддерживает
+      setSelectionRange. Повторная
+      установка переносит каретку в конец.
+    */
+    field.value="";
+    field.value=value;
+  }
+}
+
+document.addEventListener(
+  "pointerdown",
+  event=>{
+    if(!event.isPrimary){
+      caretPointerEntry=null;
+      return;
+    }
+
+    const field=
+      editableCaretField(
+        event.target
+      );
+
+    if(!field){
+      caretPointerEntry=null;
+      return;
+    }
+
+    caretPointerEntry={
+      id:event.pointerId,
+      field,
+      x:event.clientX,
+      y:event.clientY,
+      clickedField:
+        event.target===field,
+      moved:false
+    };
+  },
+  true
+);
+
+document.addEventListener(
+  "pointermove",
+  event=>{
+    const entry=
+      caretPointerEntry;
+
+    if(
+      !entry ||
+      event.pointerId!==entry.id
+    ){
+      return;
+    }
+
+    if(
+      Math.hypot(
+        event.clientX-entry.x,
+        event.clientY-entry.y
+      )>8
+    ){
+      entry.moved=true;
+    }
+  },
+  true
+);
+
+document.addEventListener(
+  "pointerup",
+  event=>{
+    const entry=
+      caretPointerEntry;
+
+    caretPointerEntry=null;
+
+    if(
+      !entry ||
+      entry.moved ||
+      event.pointerId!==entry.id
+    ){
+      return;
+    }
+
+    const shouldMove=
+      !entry.clickedField ||
+      clickBeforeRightAlignedValue(
+        entry.field,
+        event.clientX
+      );
+
+    if(!shouldMove){
+      return;
+    }
+
+    setTimeout(()=>{
+      if(
+        document.activeElement!==
+        entry.field
+      ){
+        entry.field.focus({
+          preventScroll:true
+        });
+      }
+
+      moveCaretToEnd(
+        entry.field
+      );
+    },0);
+  },
+  true
+);
+
+document.addEventListener(
+  "pointercancel",
+  ()=>{
+    caretPointerEntry=null;
+  },
+  true
+);
 
 new MutationObserver(records=>{
   records.forEach(record=>{
@@ -6937,12 +7191,52 @@ function selectDate(ymd){
 let pointPickerHideTimer;
 let pointPickerValue="";
 let pointPickerKind="point";
+let pointPickerOptions=[];
+let pointPickerSearchQuery="";
+let pointPickerSearchable=false;
+
+function drawChoicePickerOptions(){
+  const list=
+    document.getElementById(
+      "pointList"
+    );
+
+  const options=
+    filterChoiceOptions(
+      pointPickerOptions,
+      pointPickerSearchQuery
+    );
+
+  list.innerHTML=
+    options.length
+      ? options.map(option=>`
+          <button
+            type="button"
+            class="point-option ${option.value===pointPickerValue?"on":""}"
+            data-picker-value="${esc(option.value)}"
+          >
+            <span class="point-check">
+              ${option.value===pointPickerValue?"✓":""}
+            </span>
+
+            <span class="point-name">
+              ${esc(option.label)}
+            </span>
+          </button>
+        `).join("")
+      : `
+          <div class="point-picker-empty">
+            Ничего не найдено
+          </div>
+        `;
+}
 
 function openChoicePicker({
   kind,
   value,
   title,
-  options
+  options,
+  searchable=false
 }){
   pointPickerKind=kind;
   pointPreviousFocus=
@@ -6965,6 +7259,38 @@ function openChoicePicker({
   veil.setAttribute("aria-hidden","false");
 
   pointPickerValue=value || "";
+  pointPickerOptions=
+    options.map(option=>({
+      ...option
+    }));
+
+  pointPickerSearchQuery="";
+  pointPickerSearchable=
+    searchable===true;
+
+  picker.classList.toggle(
+    "has-search",
+    pointPickerSearchable
+  );
+
+  const searchWrap=
+    document.getElementById(
+      "pointPickerSearchWrap"
+    );
+
+  const search=
+    document.getElementById(
+      "pointPickerSearch"
+    );
+
+  searchWrap.hidden=
+    !pointPickerSearchable;
+
+  search.value="";
+  search.setAttribute(
+    "aria-label",
+    `Поиск: ${title}`
+  );
 
   document
     .getElementById(
@@ -6972,22 +7298,7 @@ function openChoicePicker({
     )
     .textContent=title;
 
-  list.innerHTML=options
-    .map(option=>`
-    <button
-      type="button"
-      class="point-option ${option.value===pointPickerValue?"on":""}"
-      data-picker-value="${esc(option.value)}"
-    >
-      <span class="point-check">
-        ${option.value===pointPickerValue?"✓":""}
-      </span>
-
-      <span class="point-name">
-        ${esc(option.label)}
-      </span>
-    </button>
-  `).join("");
+  drawChoicePickerOptions();
 
   const anchored=
     positionAppPicker(
@@ -7013,9 +7324,33 @@ function openChoicePicker({
   picker.classList.add("on");
 
   requestAnimationFrame(()=>{
-    const selected=list.querySelector(".point-option.on") || list.querySelector(".point-option");
+    const desktop=
+      window.matchMedia(
+        "(hover:hover) and (pointer:fine)"
+      ).matches;
+
+    if(
+      pointPickerSearchable &&
+      desktop
+    ){
+      search.focus({
+        preventScroll:true
+      });
+      return;
+    }
+
+    const selected=
+      list.querySelector(
+        ".point-option.on"
+      ) ||
+      list.querySelector(
+        ".point-option"
+      );
+
     if(selected){
-      selected.scrollIntoView({block:"center"});
+      selected.scrollIntoView({
+        block:"center"
+      });
       selected.focus();
     }
   });
@@ -7028,6 +7363,7 @@ function openPointPicker(){
     kind:"point",
     value:draft.dbPointId,
     title:"Выберите пункт",
+    searchable:true,
     options:shiftPointOptions()
       .map(point=>({
         value:point.id,
@@ -7037,7 +7373,12 @@ function openPointPicker(){
             point.active===false
               ? " · в архиве"
               : ""
-          )
+          ),
+        searchText:[
+          point.name,
+          point.code,
+          point.id
+        ].join(" ")
       }))
   });
 }
@@ -7064,6 +7405,7 @@ function openEmployeePicker(){
     kind:"employee",
     value:draft.employeeId,
     title:"Выберите сотрудника",
+    searchable:true,
     options:shiftEmployeeOptions()
       .map(employee=>({
         value:employee.id,
@@ -7073,7 +7415,17 @@ function openEmployeePicker(){
             employee.status==="inactive"
               ? " · в архиве"
               : ""
+          ),
+        searchText:[
+          employee.full_name,
+          employee.phone,
+          employee.transfer_phone,
+          employee.transfer_bank,
+          employee.transfer_recipient,
+          employeeAccountEmail(
+            employee
           )
+        ].filter(Boolean).join(" ")
       }))
   });
 }
@@ -7083,6 +7435,7 @@ function openStatsEmployeePicker(){
     kind:"stats-employee",
     value:statsEmployeeId,
     title:"Сотрудник для итогов",
+    searchable:true,
     options:statsEmployeeOptions()
       .map(employee=>({
         value:employee.id,
@@ -7092,7 +7445,17 @@ function openStatsEmployeePicker(){
             employee.status==="inactive"
               ? " · архив"
               : ""
+          ),
+        searchText:[
+          employee.full_name,
+          employee.phone,
+          employee.transfer_phone,
+          employee.transfer_bank,
+          employee.transfer_recipient,
+          employeeAccountEmail(
+            employee
           )
+        ].filter(Boolean).join(" ")
       }))
   });
 }
@@ -8354,6 +8717,8 @@ document.getElementById("period").onclick=openMonthPicker;
 
 let monthPickerYearTransitionRunning=false;
 let dateJumpYearTransitionRunning=false;
+let monthPickerYearPendingDirection=0;
+let dateJumpYearPendingDirection=0;
 
 function animatePickerYearChange({
   container,
@@ -8530,6 +8895,8 @@ function animatePickerYearChange({
 
 function changeMonthPickerYear(direction){
   if(monthPickerYearTransitionRunning){
+    monthPickerYearPendingDirection=
+      direction;
     return;
   }
 
@@ -8573,12 +8940,25 @@ function changeMonthPickerYear(direction){
 
     onFinish:()=>{
       monthPickerYearTransitionRunning=false;
+
+      const pending=
+        monthPickerYearPendingDirection;
+
+      monthPickerYearPendingDirection=0;
+
+      if(pending){
+        changeMonthPickerYear(
+          pending
+        );
+      }
     }
   });
 }
 
 function changeDateJumpYear(direction){
   if(dateJumpYearTransitionRunning){
+    dateJumpYearPendingDirection=
+      direction;
     return;
   }
 
@@ -8624,6 +9004,17 @@ function changeDateJumpYear(direction){
 
     onFinish:()=>{
       dateJumpYearTransitionRunning=false;
+
+      const pending=
+        dateJumpYearPendingDirection;
+
+      dateJumpYearPendingDirection=0;
+
+      if(pending){
+        changeDateJumpYear(
+          pending
+        );
+      }
     }
   });
 }
@@ -8636,15 +9027,16 @@ function bindYearSwipe(
   let wheelDistance=0;
   let wheelTimer=0;
   let wheelHandled=false;
+  let wheelLastAt=0;
+  let suppressClickUntil=0;
 
   element.addEventListener(
     "pointerdown",
     e=>{
       if(
         !e.isPrimary ||
-        !["touch","pen"].includes(
-          e.pointerType
-        )
+        e.pointerType==="mouse" &&
+        e.button!==0
       ){
         return;
       }
@@ -8654,7 +9046,8 @@ function bindYearSwipe(
         x:e.clientX,
         y:e.clientY,
         time:performance.now(),
-        axis:null
+        axis:null,
+        moved:false
       };
 
       e.stopPropagation();
@@ -8716,6 +9109,8 @@ function bindYearSwipe(
       if(swipe.axis!=="x"){
         return;
       }
+
+      swipe.moved=true;
 
       if(e.cancelable){
         e.preventDefault();
@@ -8792,6 +9187,9 @@ function bindYearSwipe(
 
     e.stopPropagation();
 
+    suppressClickUntil=
+      performance.now()+360;
+
     changeYear(
       dx<0
         ? 1
@@ -8821,9 +9219,15 @@ function bindYearSwipe(
   element.addEventListener(
     "wheel",
     event=>{
+      const absX=
+        Math.abs(event.deltaX);
+
+      const absY=
+        Math.abs(event.deltaY);
+
       if(
-        Math.abs(event.deltaX)<=
-          Math.abs(event.deltaY)*1.15
+        absX<1 ||
+        absX<absY*.72
       ){
         return;
       }
@@ -8834,11 +9238,25 @@ function bindYearSwipe(
 
       event.stopPropagation();
 
+      const now=
+        performance.now();
+
+      if(
+        !wheelLastAt ||
+        now-wheelLastAt>105
+      ){
+        wheelDistance=0;
+        wheelHandled=false;
+      }
+
+      wheelLastAt=now;
+
       clearTimeout(wheelTimer);
       wheelTimer=setTimeout(()=>{
         wheelDistance=0;
         wheelHandled=false;
-      },220);
+        wheelLastAt=0;
+      },130);
 
       if(wheelHandled){
         return;
@@ -8846,7 +9264,7 @@ function bindYearSwipe(
 
       wheelDistance+=event.deltaX;
 
-      if(Math.abs(wheelDistance)<42){
+      if(Math.abs(wheelDistance)<32){
         return;
       }
 
@@ -8860,6 +9278,23 @@ function bindYearSwipe(
       changeYear(direction);
     },
     {passive:false}
+  );
+
+  element.addEventListener(
+    "click",
+    event=>{
+      if(
+        performance.now()>
+        suppressClickUntil
+      ){
+        return;
+      }
+
+      suppressClickUntil=0;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    true
   );
 }
 
@@ -8954,6 +9389,17 @@ document.getElementById("monthToday").onclick=()=>{
 
     onFinish:()=>{
       monthPickerYearTransitionRunning=false;
+
+      const pending=
+        monthPickerYearPendingDirection;
+
+      monthPickerYearPendingDirection=0;
+
+      if(pending){
+        changeMonthPickerYear(
+          pending
+        );
+      }
     }
   });
 };
@@ -10024,7 +10470,7 @@ function queueMonthWheelDirection(
 ){
   if(
     pendingMonthWheelDirections
-      .length>=4
+      .length>=1
   ){
     return;
   }
@@ -10088,7 +10534,7 @@ monthSwipeArea.addEventListener(
 
     const newGesture=
       !monthWheelLastAt ||
-      now-monthWheelLastAt>72 ||
+      now-monthWheelLastAt>110 ||
       (
         monthWheelDirection &&
         direction!==monthWheelDirection
@@ -10108,15 +10554,17 @@ monthSwipeArea.addEventListener(
     monthWheelTimer=
       window.setTimeout(()=>{
         resetMonthWheelGesture();
-      },90);
+      },140);
+
+    if(event.cancelable){
+      event.preventDefault();
+    }
+
+    event.stopPropagation();
 
     if(
       monthWheelGestureHandled
     ){
-      if(event.cancelable){
-        event.preventDefault();
-      }
-
       return;
     }
 
@@ -10129,10 +10577,6 @@ monthSwipeArea.addEventListener(
         Math.abs(monthWheelY)*1.12
     ){
       return;
-    }
-
-    if(event.cancelable){
-      event.preventDefault();
     }
 
     monthWheelX=0;
@@ -10627,6 +11071,17 @@ document.getElementById("dateJumpCurrent")?.addEventListener("click",()=>{
 
     onFinish:()=>{
       dateJumpYearTransitionRunning=false;
+
+      const pending=
+        dateJumpYearPendingDirection;
+
+      dateJumpYearPendingDirection=0;
+
+      if(pending){
+        changeDateJumpYear(
+          pending
+        );
+      }
     }
   });
 });
@@ -11847,6 +12302,45 @@ document
   );
 
 document
+  .getElementById(
+    "pointPickerSearch"
+  )
+  .addEventListener(
+    "input",
+    event=>{
+      pointPickerSearchQuery=
+        event.target.value;
+
+      drawChoicePickerOptions();
+    }
+  );
+
+document
+  .getElementById(
+    "pointPickerSearch"
+  )
+  .addEventListener(
+    "keydown",
+    event=>{
+      if(event.key!=="ArrowDown"){
+        return;
+      }
+
+      const first=
+        document.querySelector(
+          "#pointList .point-option"
+        );
+
+      if(!first){
+        return;
+      }
+
+      event.preventDefault();
+      first.focus();
+    }
+  );
+
+document
   .getElementById("pointCancel")
   .onclick=()=>{
     closePointPicker();
@@ -12085,57 +12579,8 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
   }
 });
 
-function moveFieldCaretToEnd(field){
-  const allowed=[
-    "f-shk",
-    "f-hours",
-    "f-base-override"
-  ];
-
-  if(
-    !field ||
-    !allowed.includes(field.id) &&
-    !field.matches?.(
-      "[data-adjustment-amount]"
-    ) ||
-    field.value===""
-  ){
-    return;
-  }
-
-  setTimeout(()=>{
-    if(document.activeElement!==field) return;
-
-    const value=field.value;
-
-    try{
-      field.setSelectionRange(
-        value.length,
-        value.length
-      );
-    }catch{
-      /*
-        Для input type="number" iPhone
-        не всегда разрешает setSelectionRange.
-        Повторная установка значения
-        переносит курсор в конец.
-      */
-      field.value="";
-      field.value=value;
-    }
-  },0);
-}
-
 const sheetBody=
   document.getElementById("sheetBody");
-
-sheetBody.addEventListener("focusin",e=>{
-  moveFieldCaretToEnd(e.target);
-});
-
-sheetBody.addEventListener("click",e=>{
-  moveFieldCaretToEnd(e.target);
-});
 
 function updateEmployeeDraftField(
   target

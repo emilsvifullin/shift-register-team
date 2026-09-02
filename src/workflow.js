@@ -160,6 +160,28 @@ export function employeeSearchText(
   ].join(" "));
 }
 
+export function filterChoiceOptions(
+  options,
+  query=""
+){
+  const needle=
+    text(query);
+
+  if(!needle){
+    return options.slice();
+  }
+
+  return options.filter(
+    option=>
+      text([
+        option.label,
+        option.searchText
+      ].join(" ")).includes(
+        needle
+      )
+  );
+}
+
 export function paymentProgress(
   due,
   payments=[]

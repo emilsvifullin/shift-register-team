@@ -28,7 +28,8 @@ export function resetAppPickerPosition(
     "--app-picker-left",
     "--app-picker-top",
     "--app-picker-width",
-    "--app-picker-max-height"
+    "--app-picker-max-height",
+    "--app-picker-list-height"
   ].forEach(property=>{
     picker.style.removeProperty(
       property
@@ -108,6 +109,37 @@ export function positionAppPicker(
   picker.style.setProperty(
     "--app-picker-max-height",
     `${Math.round(maxHeight)}px`
+  );
+
+  const fixedHeight=
+    Array.from(
+      picker.children
+    )
+      .filter(child=>
+        !child.classList.contains(
+          "point-list"
+        ) &&
+        !child.hidden &&
+        getComputedStyle(child)
+          .display!=="none"
+      )
+      .reduce(
+        (height,child)=>{
+          const style=
+            getComputedStyle(child);
+
+          return height+
+            child.getBoundingClientRect()
+              .height+
+            parseFloat(style.marginTop || 0)+
+            parseFloat(style.marginBottom || 0);
+        },
+        0
+      );
+
+  picker.style.setProperty(
+    "--app-picker-list-height",
+    `${Math.max(88,Math.round(maxHeight-fixedHeight))}px`
   );
 
   const pickerHeight=Math.min(

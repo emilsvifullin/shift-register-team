@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   employeeSearchText,
+  filterChoiceOptions,
   filterOptionSelected,
   filterMonthShifts,
   paymentProgress,
@@ -86,6 +87,53 @@ test("employee search contains every card field",()=>{
   ]){
     assert.ok(value.includes(needle));
   }
+});
+
+test("choice picker search matches labels and hidden employee data",()=>{
+  const options=[
+    {
+      value:"one",
+      label:"Ольга Фасеева",
+      searchText:"+79990000000 olga@example.com"
+    },
+    {
+      value:"two",
+      label:"Анна Иванова",
+      searchText:"Т-Банк"
+    }
+  ];
+
+  assert.deepEqual(
+    filterChoiceOptions(
+      options,
+      "ОЛЬГА"
+    ).map(item=>item.value),
+    ["one"]
+  );
+
+  assert.deepEqual(
+    filterChoiceOptions(
+      options,
+      "+7999"
+    ).map(item=>item.value),
+    ["one"]
+  );
+
+  assert.deepEqual(
+    filterChoiceOptions(
+      options,
+      "т-банк"
+    ).map(item=>item.value),
+    ["two"]
+  );
+
+  assert.notEqual(
+    filterChoiceOptions(
+      options,
+      ""
+    ),
+    options
+  );
 });
 
 test("all filter option selects every row and toggles predictably",()=>{

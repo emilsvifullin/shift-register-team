@@ -68,6 +68,7 @@ import {
   pricingDriversChanged,
   shiftEmployeeChoices,
   shiftPointChoices,
+  sortPointsAlphabetically,
   tariffForDate
 } from "./team-domain.js";
 
@@ -2441,8 +2442,7 @@ function employeePointsLabel(
     );
 
   const names=
-    teamData
-      .points
+    orderedTeamPoints()
       .filter(
         point=>
           ids.has(point.id)
@@ -2477,8 +2477,7 @@ function employeePointNames(
       )
     );
 
-  return teamData
-    .points
+  return orderedTeamPoints()
     .filter(
       point=>
         ids.has(point.id)
@@ -2487,6 +2486,12 @@ function employeePointNames(
       point=>
         point.name
     );
+}
+
+function orderedTeamPoints(){
+  return sortPointsAlphabetically(
+    teamData.points
+  );
 }
 
 function employeeSearchValue(
@@ -2873,7 +2878,8 @@ function applyShiftFilterPeriod(period){
 
 function drawShiftFilterSheet(){
   if(!shiftFilterDraft) return;
-  const pointItems=teamData.points.map(point=>({id:point.id,name:point.name}));
+  const pointItems=orderedTeamPoints()
+    .map(point=>({id:point.id,name:point.name}));
   const employeeItems=teamData.employees.map(employee=>({id:employee.id,name:employee.full_name}));
   document.getElementById("shiftFilterSheetBody").innerHTML=`
     <div class="ml">Период месяца</div>
@@ -2969,7 +2975,7 @@ function drawEmployeeFilterSheet(){
         id:"",
         name:"Все ПВЗ"
       },
-      ...teamData.points.map(
+      ...orderedTeamPoints().map(
         point=>({
           id:point.id,
           name:point.name
@@ -3438,12 +3444,6 @@ function pointInformationHTML(
       </div>
       <div class="row">
         <div class="l">
-          <div class="s">Порядок</div>
-          <div class="t">${nf(Number(point.sort_order) || 1)}</div>
-        </div>
-      </div>
-      <div class="row">
-        <div class="l">
           <div class="s">Аванс</div>
           <div class="t">${point.advance_enabled===true ? "Включён" : "Выключен"}</div>
         </div>
@@ -3596,7 +3596,6 @@ function pointManageSearchText(point){
     point.name,
     point.code,
     point.id,
-    point.sort_order,
     point.active===false ? "архив" : "активен",
     point.advance_enabled===true
       ? "аванс авансный авансные"
@@ -3608,32 +3607,35 @@ function pointManageSearchText(point){
 function filteredManagePoints(){
   const query=employeeSearchValue(pointSearchQuery);
 
-  return teamData.points.filter(point=>{
-    const statusMatches=
-      pointStatusFilter==="inactive"
-        ? point.active===false
-        : point.active!==false;
+  return orderedTeamPoints()
+    .filter(point=>{
+      const statusMatches=
+        pointStatusFilter==="inactive"
+          ? point.active===false
+          : point.active!==false;
 
-    if(!statusMatches){
-      return false;
-    }
+      if(!statusMatches){
+        return false;
+      }
 
-    if(
-      pointAdvanceFilter==="advance" &&
-      point.advance_enabled!==true
-    ){
-      return false;
-    }
+      if(
+        pointAdvanceFilter==="advance" &&
+        point.advance_enabled!==true
+      ){
+        return false;
+      }
 
-    if(
-      pointAdvanceFilter==="regular" &&
-      point.advance_enabled===true
-    ){
-      return false;
-    }
+      if(
+        pointAdvanceFilter==="regular" &&
+        point.advance_enabled===true
+      ){
+        return false;
+      }
 
-    return !query || pointManageSearchText(point).includes(query);
-  });
+      return !query ||
+        pointManageSearchText(point)
+          .includes(query);
+    });
 }
 
 function pointManageListHTML(){
@@ -3739,8 +3741,6 @@ function readManageEditor(){
     ){
       manageEditorDraft.name=
         value("managePointName");
-      manageEditorDraft.sortOrder=
-        value("managePointSort");
     }
   }
 
@@ -3915,10 +3915,6 @@ function drawManageEditor(){
           <div class="t">Название</div>
           <input type="text" id="managePointName" value="${esc(manageEditorDraft.name)}" autocomplete="off">
         </label>
-        <label class="row">
-          <div class="t">Порядок</div>
-          <input type="number" id="managePointSort" value="${esc(manageEditorDraft.sortOrder)}" min="1" step="1" inputmode="numeric">
-        </label>
       </div>
 
       <div class="ml">Статус</div>
@@ -4002,7 +3998,6 @@ function openManageEditor(kind,id=null){
         isNew:false,
         editing:false,
         name:point.name,
-        sortOrder:point.sort_order || 1,
         active:point.active!==false,
         advanceEnabled:point.advance_enabled===true,
         tariffOpen:false,
@@ -4030,13 +4025,6 @@ function openManageEditor(kind,id=null){
         isNew:true,
         editing:true,
         name:"",
-        sortOrder:
-          Math.max(
-            0,
-            ...teamData.points.map(
-              item=>Number(item.sort_order) || 0
-            )
-          )+1,
         active:true,
         advanceEnabled:false,
         tariffOpen:true,
@@ -4134,29 +4122,10 @@ async function saveManageEditor(){
 
   try{
     if(
-      manageEditorKind==="point"
+      manageEditorKind==="point" &&
+      !manageEditorDraft.name.trim()
     ){
-      if(!manageEditorDraft.name.trim()){
-        throw new Error("Введите название ПВЗ");
-      }
-
-      const sortOrder=
-        Number(
-          manageEditorDraft.sortOrder
-        );
-
-      if(
-        !Number.isSafeInteger(sortOrder) ||
-        sortOrder<=0 ||
-        sortOrder>1000000
-      ){
-        throw new Error(
-          "Порядок должен быть целым числом от 1 до 1 000 000"
-        );
-      }
-
-      manageEditorDraft.sortOrder=
-        sortOrder;
+      throw new Error("Введите название ПВЗ");
     }
 
     if(
@@ -4245,7 +4214,19 @@ async function saveManageEditor(){
     await saveAdminPoint({
       id:manageEditorDraft.id,
       name:manageEditorDraft.name,
-      sortOrder:manageEditorDraft.sortOrder,
+      sortOrder:
+        Number(
+          manageEditorDraft.point
+            ?.sort_order
+        ) ||
+        Math.max(
+          0,
+          ...teamData.points.map(
+            point=>
+              Number(point.sort_order) ||
+              0
+          )
+        )+1,
       active:manageEditorDraft.active,
       advanceEnabled:manageEditorDraft.advanceEnabled,
       pricingType:manageEditorDraft.isNew
@@ -4663,8 +4644,7 @@ function drawEmployeeSheet(){
     );
 
   const pointRows=
-    teamData
-      .points
+    orderedTeamPoints()
       .filter(
         point=>
           point.active ||
@@ -6206,7 +6186,7 @@ function shiftPointOptions(
   value=draft
 ){
   return shiftPointChoices(
-    teamData.points,
+    orderedTeamPoints(),
     value?.dbPointId || ""
   );
 }

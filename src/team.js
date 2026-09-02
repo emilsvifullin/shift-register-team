@@ -5,7 +5,8 @@ import {
 } from "./supabase.js";
 
 import {
-  mapServerShift
+  mapServerShift,
+  sortPointsAlphabetically
 } from "./team-domain.js";
 
 const SHIFT_SELECT=`
@@ -206,12 +207,6 @@ export async function loadAdminTeamData(){
           "id, code, name, active, pricing_type, fixed_rate, advance_enabled, sort_order"
         )
         .order(
-          "sort_order",
-          {
-            ascending:true
-          }
-        )
-        .order(
           "name",
           {
             ascending:true
@@ -271,10 +266,12 @@ export async function loadAdminTeamData(){
     employees,
 
     points:
-      resultData(
-        pointsResult,
-        "Не удалось загрузить пункты"
-      ) || [],
+      sortPointsAlphabetically(
+        resultData(
+          pointsResult,
+          "Не удалось загрузить пункты"
+        ) || []
+      ),
 
     employeePoints:
       resultData(

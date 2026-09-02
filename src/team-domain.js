@@ -452,12 +452,41 @@ export function shiftPointChoices(
   points,
   selectedPointId=""
 ){
-  return (points || [])
-    .filter(
+  return sortPointsAlphabetically(
+    (points || []).filter(
       point=>
         point.active!==false ||
         point.id===selectedPointId
-    );
+    )
+  );
+}
+
+export function sortPointsAlphabetically(
+  points
+){
+  return [...(points || [])]
+    .sort((first,second)=>{
+      const byName=String(
+        first?.name || ""
+      ).localeCompare(
+        String(second?.name || ""),
+        "ru-RU",
+        {
+          sensitivity:"base",
+          numeric:true
+        }
+      );
+
+      if(byName){
+        return byName;
+      }
+
+      return String(
+        first?.id || ""
+      ).localeCompare(
+        String(second?.id || "")
+      );
+    });
 }
 
 export function shiftEmployeeChoices({

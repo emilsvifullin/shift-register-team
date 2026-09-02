@@ -653,6 +653,11 @@ test(
 test(
   "desktop forms and accumulated shift UX guards stay explicit",
   async()=>{
+    const html=
+      await read(
+        "index.html"
+      );
+
     const app=
       await read(
         "src/app.js"
@@ -696,6 +701,26 @@ test(
     assert.match(
       app,
       /pendingMonthWheelDirections/
+    );
+
+    assert.match(
+      html,
+      /id="pointPickerSearch"[\s\S]*placeholder="Поиск"/
+    );
+
+    assert.match(
+      app,
+      /function openStatsEmployeePicker\(\)[\s\S]*searchable:true[\s\S]*employeeAccountEmail/
+    );
+
+    assert.match(
+      app,
+      /function openPointPicker\(\)[\s\S]*searchable:true/
+    );
+
+    assert.match(
+      app,
+      /function openEmployeePicker\(\)[\s\S]*searchable:true/
     );
 
     assert.match(
@@ -1083,7 +1108,22 @@ test(
 
     assert.match(
       app,
-      /now-monthWheelLastAt>72/
+      /now-monthWheelLastAt>110/
+    );
+
+    assert.match(
+      app,
+      /pendingMonthWheelDirections[\s\S]*\.length>=1/
+    );
+
+    assert.match(
+      app,
+      /function bindYearSwipe[\s\S]*e\.pointerType==="mouse"[\s\S]*e\.button!==0/
+    );
+
+    assert.match(
+      app,
+      /monthPickerYearPendingDirection[\s\S]*dateJumpYearPendingDirection/
     );
 
     assert.match(
@@ -1127,6 +1167,31 @@ test(
     assert.match(
       styles,
       /\.tariff-tier-fields input[\s\S]*border-radius:10px/
+    );
+  }
+);
+
+test(
+  "right-aligned fields keep convenient native caret placement",
+  async()=>{
+    const app=
+      await read(
+        "src/app.js"
+      );
+
+    assert.match(
+      app,
+      /function clickBeforeRightAlignedValue[\s\S]*measureText\(value\)/
+    );
+
+    assert.match(
+      app,
+      /entry\.moved[\s\S]*clickBeforeRightAlignedValue[\s\S]*moveCaretToEnd/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /moveFieldCaretToEnd/
     );
   }
 );

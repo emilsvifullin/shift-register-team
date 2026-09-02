@@ -956,6 +956,16 @@ test(
       /function pointInformationHTML/
     );
 
+    assert.doesNotMatch(
+      app,
+      /managePointSort|<div class="s">Порядок<\/div>/
+    );
+
+    assert.match(
+      app,
+      /function filteredManagePoints\(\)[\s\S]*orderedTeamPoints\(\)/
+    );
+
     assert.match(
       app,
       /<details class="tariff-history-item">/

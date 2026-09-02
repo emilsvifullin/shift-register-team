@@ -17,6 +17,7 @@ import {
   roleCapabilities,
   shiftEmployeeChoices,
   shiftPointChoices,
+  sortPointsAlphabetically,
   tariffForDate
 } from "../src/team-domain.js";
 
@@ -573,5 +574,30 @@ test("new shift choices start with a point and only show its active employees",(
       "point-2",
       "point-archive"
     ]
+  );
+});
+
+test("point choices use Russian alphabetical order without mutating source",()=>{
+  const points=[
+    {id:"three",name:"Ярцевская 25а",active:true},
+    {id:"one",name:"6-Я Радиальная 3к11",active:true},
+    {id:"two",name:"Коммунальная Улица 10",active:true}
+  ];
+
+  assert.deepEqual(
+    sortPointsAlphabetically(points)
+      .map(point=>point.id),
+    ["one","two","three"]
+  );
+
+  assert.deepEqual(
+    shiftPointChoices(points)
+      .map(point=>point.id),
+    ["one","two","three"]
+  );
+
+  assert.deepEqual(
+    points.map(point=>point.id),
+    ["three","one","two"]
   );
 });

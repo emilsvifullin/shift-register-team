@@ -65,6 +65,7 @@ test("employee search contains every card field",()=>{
   const value=employeeSearchText({
     full_name:"Анна Иванова",
     status:"active",
+    employment_type:"substitute",
     phone:"+79990000000",
     transfer_phone:"+78880000000",
     transfer_bank:"Т-Банк",
@@ -80,7 +81,8 @@ test("employee search contains every card field",()=>{
     "т-банк",
     "корабельная",
     "anna@example.com",
-    "активен"
+    "активен",
+    "подмена"
   ]){
     assert.ok(value.includes(needle));
   }

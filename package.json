@@ -1,11 +1,12 @@
 {
   "name": "shift-register",
-  "version": "6.16.0",
+  "version": "6.17.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/config.js && node --check src/domain.js && node --check src/team-domain.js && node --check src/workflow.js && node --check src/phone.js && node --check src/storage.js && node --check src/team.js && node --check src/employee-ui.js && node --check src/picker-position.js && node --check src/supabase.js && node --check src/auth.js && node --check src/frame-guard.js && node --check src/login.js && node --check src/app.js && node --check sw.js && node --test"
+    "check:syntax": "node --check src/config.js && node --check src/domain.js && node --check src/team-domain.js && node --check src/workflow.js && node --check src/phone.js && node --check src/storage.js && node --check src/api/shared.js && node --check src/api/team-read.js && node --check src/api/employees.js && node --check src/api/shifts.js && node --check src/api/points.js && node --check src/api/payouts.js && node --check src/platform/runtime.js && node --check src/team.js && node --check src/employee-ui.js && node --check src/picker-position.js && node --check src/supabase.js && node --check src/auth.js && node --check src/frame-guard.js && node --check src/login.js && node --check src/app.js && node --check sw.js",
+    "check": "npm run check:syntax && npm test"
   },
   "engines": {
     "node": ">=20"

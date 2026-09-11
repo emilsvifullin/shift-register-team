@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6160";
+  "sr-team-runtime-v6170";
 
 const INDEX_FILE=
   "./index.html";
@@ -12,6 +12,7 @@ const ASSETS=[
   INDEX_FILE,
   "./login.html",
   "./styles.css",
+  "./styles/platform.css",
   "./manifest.webmanifest",
   "./src/config.js",
   "./src/domain.js",
@@ -27,6 +28,13 @@ const ASSETS=[
   "./src/frame-guard.js",
   "./src/login.js",
   "./src/app.js",
+  "./src/api/shared.js",
+  "./src/api/team-read.js",
+  "./src/api/employees.js",
+  "./src/api/shifts.js",
+  "./src/api/points.js",
+  "./src/api/payouts.js",
+  "./src/platform/runtime.js",
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"

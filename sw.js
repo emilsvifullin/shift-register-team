@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v2";
+  "sr-team-runtime-v3";
 
 const INDEX_FILE=
   "./index.html";
@@ -17,6 +17,7 @@ const ASSETS=[
   "./styles/motion.css",
   "./styles/workflow.css",
   "./styles/auth.css",
+  "./styles/refinement.css",
   "./src/ui/input-behavior.js",
   "./manifest.webmanifest",
   "./src/config.js",
@@ -164,13 +165,25 @@ function fetchWithTimeout(
   );
 }
 
-async function networkFirst(
+async function cacheFirst(
   request
 ){
   const cache=
     await caches.open(
       CACHE_NAME
     );
+
+  const cached=
+    await cache.match(
+      request,
+      {
+        ignoreSearch:true
+      }
+    );
+
+  if(cached){
+    return cached;
+  }
 
   try{
     const response=
@@ -187,18 +200,7 @@ async function networkFirst(
 
     return response;
   }catch{
-    const cached=
-      await cache.match(
-        request,
-        {
-          ignoreSearch:true
-        }
-      );
-
-    return (
-      cached ||
-      Response.error()
-    );
+    return Response.error();
   }
 }
 
@@ -303,7 +305,7 @@ self.addEventListener(
       )
     ){
       event.respondWith(
-        networkFirst(request)
+        cacheFirst(request)
       );
 
       return;
@@ -323,7 +325,7 @@ self.addEventListener(
 
     if(ASSET_PATHS.has(url.pathname)){
       event.respondWith(
-        networkFirst(request)
+        cacheFirst(request)
       );
     }
   }

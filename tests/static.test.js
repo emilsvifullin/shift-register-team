@@ -16,6 +16,25 @@ const read=
       "utf8"
     );
 
+
+const TEAM_API_FILES=Object.freeze([
+  "src/team.js",
+  "src/api/result.js",
+  "src/api/read.js",
+  "src/api/employees.js",
+  "src/api/realtime.js",
+  "src/api/shifts.js",
+  "src/api/points.js",
+  "src/api/payouts.js"
+]);
+
+const readTeamApi=async()=>
+  (
+    await Promise.all(
+      TEAM_API_FILES.map(read)
+    )
+  ).join("\n");
+
 test(
   "entrypoint contains accessibility and security essentials",
   async()=>{
@@ -442,9 +461,7 @@ test(
       );
 
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     const employeeAuth=
       await read(
@@ -1200,23 +1217,23 @@ test(
 test(
   "right-aligned fields keep convenient native caret placement",
   async()=>{
-    const app=
+    const inputBehavior=
       await read(
-        "src/app.js"
+        "src/ui/input-behavior.js"
       );
 
     assert.match(
-      app,
+      inputBehavior,
       /function clickBeforeRightAlignedValue[\s\S]*measureText\(value\)/
     );
 
     assert.match(
-      app,
+      inputBehavior,
       /entry\.moved[\s\S]*clickBeforeRightAlignedValue[\s\S]*moveCaretToEnd/
     );
 
     assert.doesNotMatch(
-      app,
+      inputBehavior,
       /moveFieldCaretToEnd/
     );
   }
@@ -1350,9 +1367,7 @@ test(
   "employee loading resolves ownership before requesting shifts",
   async()=>{
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     const employeeFlow=
       team.slice(
@@ -1438,9 +1453,7 @@ test(
       );
 
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     assert.match(
       migration,
@@ -1518,9 +1531,7 @@ test(
       );
 
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     const app=
       await read(
@@ -1608,9 +1619,7 @@ test(
       );
 
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     const app=
       await read(
@@ -1673,9 +1682,7 @@ test(
       );
 
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     const app=
       await read(
@@ -1723,9 +1730,7 @@ test(
       );
 
     const team=
-      await read(
-        "src/team.js"
-      );
+      await readTeamApi();
 
     const app=
       await read(

@@ -25,7 +25,13 @@ test("application shell exposes a labelled tab panel",async({page})=>{
   await page.route("**/src/app.js",route=>route.fulfill({
     status:200,
     contentType:"application/javascript",
-    body:'import "./platform/runtime.js"; import {installPlatformRuntime} from "./platform/runtime.js"; installPlatformRuntime();'
+    body:`
+      import {installPlatformRuntime} from "./platform/runtime.js";
+      installPlatformRuntime();
+      document.addEventListener("DOMContentLoaded",()=>{
+        document.body.classList.remove("app-booting");
+      },{once:true});
+    `
   }));
 
   await page.goto("/index.html");

@@ -545,9 +545,21 @@ export function installPlatformShell({
   };
 }
 
+function autoInstall(){
+  installPlatformShell();
+}
+
 if(
   typeof window!=="undefined" &&
   typeof document!=="undefined"
 ){
-  installPlatformShell();
+  if(document.readyState==="loading"){
+    document.addEventListener(
+      "DOMContentLoaded",
+      autoInstall,
+      {once:true}
+    );
+  }else{
+    autoInstall();
+  }
 }

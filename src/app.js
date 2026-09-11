@@ -10569,8 +10569,8 @@ function changeTab(
       ? 24
       : -24;
 
-  app.style.left=
-    `${startX}px`;
+  app.style.transform=
+    `translate3d(${startX}px,0,0)`;
 
   void app.offsetWidth;
 
@@ -10580,25 +10580,25 @@ function changeTab(
     animation=app.animate(
       [
         {
-          left:
-            `${startX}px`
+          transform:
+            `translate3d(${startX}px,0,0)`
         },
         {
-          left:"0px"
+          transform:"translate3d(0,0,0)"
         }
       ],
       {
-        duration:250,
+        duration:220,
         easing:
-          "cubic-bezier(.22,.72,.22,1)",
+          "cubic-bezier(.2,.8,.2,1)",
         fill:"both"
       }
     );
 
-    app.style.left="0px";
+    app.style.transform="translate3d(0,0,0)";
   }catch{
     app.style.removeProperty(
-      "left"
+      "transform"
     );
 
     tabTransitionRunning=false;
@@ -10613,7 +10613,7 @@ function changeTab(
       animation.cancel();
 
       app.style.removeProperty(
-        "left"
+        "transform"
       );
 
       tabTransitionRunning=false;

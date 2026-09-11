@@ -1,0 +1,31 @@
+name: Branch Cleanup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/branch-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Delete merged branch and self-clean
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git push origin --delete refactor/interface-motion-performance
+          git rm .github/workflows/branch-cleanup.yml
+          git commit -m "chore: clean merged interface branch"
+          git push origin HEAD:main

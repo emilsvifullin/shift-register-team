@@ -17,6 +17,23 @@ const read=
     );
 
 
+const STYLE_FILES=Object.freeze([
+  "styles.css",
+  "styles/accessibility.css",
+  "styles/motion.css",
+  "styles/workflow.css",
+  "styles/auth.css",
+  "styles/platform.css"
+]);
+
+const readStyles=async()=>
+  (
+    await Promise.all(
+      STYLE_FILES.map(read)
+    )
+  ).join("\n");
+
+
 const TEAM_API_FILES=Object.freeze([
   "src/team.js",
   "src/api/result.js",
@@ -584,9 +601,7 @@ test(
     );
 
     assert.match(
-      await read(
-        "styles.css"
-      ),
+      await readStyles(),
       /\.shift-note-input\{\s*text-align:left;\s*\}[\s\S]*\.shift-note-input:focus::placeholder\{\s*color:transparent;/
     );
 
@@ -616,9 +631,7 @@ test(
       );
 
     const styles=
-      await read(
-        "styles.css"
-      );
+      await readStyles();
 
     assert.match(
       app,
@@ -682,9 +695,7 @@ test(
       );
 
     const styles=
-      await read(
-        "styles.css"
-      );
+      await readStyles();
 
     assert.match(
       app,
@@ -910,9 +921,7 @@ test(
       );
 
     const styles=
-      await read(
-        "styles.css"
-      );
+      await readStyles();
 
     assert.doesNotMatch(
       html,
@@ -970,9 +979,7 @@ test(
       );
 
     const styles=
-      await read(
-        "styles.css"
-      );
+      await readStyles();
 
     assert.match(
       app,
@@ -1130,9 +1137,7 @@ test(
       );
 
     const styles=
-      await read(
-        "styles.css"
-      );
+      await readStyles();
 
     assert.match(
       app,

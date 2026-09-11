@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/refactor-app.yml"
       - "scripts/refactor-app.mjs"
+      - "scripts/refactor-static-tests.mjs"
       - "src/ui/**"
 
 permissions:
@@ -29,8 +30,10 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Apply guarded codemod
-        run: node ./scripts/refactor-app.mjs
+      - name: Apply guarded codemods
+        run: |
+          node ./scripts/refactor-app.mjs
+          node ./scripts/refactor-static-tests.mjs
 
       - name: Install
         run: npm ci
@@ -43,12 +46,12 @@ jobs:
       - name: Commit refactor
         run: |
           if git diff --quiet; then
-            echo "No app refactor changes required"
+            echo "No refactor changes required"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app.js
+          git add src/app.js tests/static.test.js
           git commit -m "refactor: extract app input behavior"
           git push origin HEAD:refactor/production-quality-baseline

@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/refactor-app.yml"
       - "scripts/refactor-app.mjs"
+      - "scripts/refactor-styles.mjs"
       - "scripts/refactor-static-tests.mjs"
       - "src/ui/**"
 
@@ -33,6 +34,7 @@ jobs:
       - name: Apply guarded codemods
         run: |
           node ./scripts/refactor-app.mjs
+          node ./scripts/refactor-styles.mjs
           node ./scripts/refactor-static-tests.mjs
 
       - name: Install
@@ -58,8 +60,10 @@ jobs:
         if: failure() && steps.validate.outputs.failed == 'true'
         shell: bash
         run: |
-          cp /tmp/refactor-check.log refactor-validation.log
-          git restore src/app.js tests/static.test.js
+          cp /tmp/refactor-check.log /tmp/refactor-validation.log
+          git reset --hard HEAD
+          git clean -fd
+          cp /tmp/refactor-validation.log refactor-validation.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add refactor-validation.log
@@ -77,6 +81,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f refactor-validation.log 2>/dev/null || true
-          git add src/app.js tests/static.test.js
-          git commit -m "refactor: extract app input behavior"
+          git add \
+            src/app.js \
+            styles.css \
+            styles/accessibility.css \
+            styles/motion.css \
+            styles/workflow.css \
+            styles/auth.css \
+            index.html \
+            login.html \
+            sw.js \
+            tests/static.test.js
+          git commit -m "refactor: modularize app styles and input behavior"
           git push origin HEAD:refactor/production-quality-baseline

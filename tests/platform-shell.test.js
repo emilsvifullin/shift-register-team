@@ -46,7 +46,8 @@ test(
           width:390.4,
           height:612.6,
           offsetTop:42.2,
-          offsetLeft:0.4
+          offsetLeft:0.4,
+          scale:1
         },
         innerWidth:430,
         innerHeight:932
@@ -56,6 +57,56 @@ test(
         height:613,
         top:42,
         left:0
+      }
+    );
+  }
+);
+
+test(
+  "obviously broken unzoomed WebKit viewport geometry falls back to layout viewport",
+  ()=>{
+    assert.deepEqual(
+      viewportMetrics({
+        visualViewport:{
+          width:100,
+          height:844,
+          offsetTop:0,
+          offsetLeft:0,
+          scale:1
+        },
+        innerWidth:390,
+        innerHeight:844
+      }),
+      {
+        width:390,
+        height:844,
+        top:0,
+        left:0
+      }
+    );
+  }
+);
+
+test(
+  "legitimate zoomed visual viewport stays authoritative",
+  ()=>{
+    assert.deepEqual(
+      viewportMetrics({
+        visualViewport:{
+          width:195,
+          height:422,
+          offsetTop:12,
+          offsetLeft:8,
+          scale:2
+        },
+        innerWidth:390,
+        innerHeight:844
+      }),
+      {
+        width:195,
+        height:422,
+        top:12,
+        left:8
       }
     );
   }

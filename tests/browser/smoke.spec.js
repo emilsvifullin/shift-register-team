@@ -1,6 +1,6 @@
 import {test,expect} from "@playwright/test";
 
-test("login stays inside the viewport and remains keyboard accessible",async({page})=>{
+test("login stays inside the viewport and accepts native pointer focus",async({page},testInfo)=>{
   await page.goto("/login.html");
 
   await expect(page).toHaveTitle("Shift Register");
@@ -17,7 +17,15 @@ test("login stays inside the viewport and remains keyboard accessible",async({pa
   );
   expect(overflow).toBeLessThanOrEqual(1);
 
-  await email.focus();
+  if(
+    testInfo.project.name==="chromium-android" ||
+    testInfo.project.name==="webkit-ios"
+  ){
+    await email.tap();
+  }else{
+    await email.click();
+  }
+
   await expect(email).toBeFocused();
 });
 

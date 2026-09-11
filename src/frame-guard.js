@@ -17,25 +17,36 @@ if(
     document.currentScript?.src ||
     document.baseURI;
 
-  const styleUrl=
-    new URL(
-      "../styles/platform.css",
-      source
-    ).href;
+  const loadPlatformStyle=()=>{
+    if(
+      document.querySelector(
+        'link[data-platform-style="true"]'
+      )
+    ){
+      return;
+    }
 
-  if(
-    !document.querySelector(
-      'link[data-platform-style="true"]'
-    )
-  ){
     const link=
       document.createElement("link");
 
     link.rel="stylesheet";
-    link.href=styleUrl;
+    link.href=new URL(
+      "../styles/platform.css",
+      source
+    ).href;
     link.dataset.platformStyle="true";
 
     document.head.appendChild(link);
+  };
+
+  if(document.readyState==="loading"){
+    document.addEventListener(
+      "DOMContentLoaded",
+      loadPlatformStyle,
+      {once:true}
+    );
+  }else{
+    loadPlatformStyle();
   }
 
   const moduleUrl=

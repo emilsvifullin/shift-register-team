@@ -1,0 +1,130 @@
+:root{
+  --app-viewport-width:100vw;
+  --app-viewport-height:100dvh;
+  --app-viewport-top:0px;
+  --app-viewport-left:0px;
+}
+
+html,
+body{
+  height:var(--app-viewport-height,100dvh);
+  min-height:var(--app-viewport-height,100dvh);
+}
+
+main{
+  height:var(--app-viewport-height,100dvh);
+  min-height:0;
+}
+
+@supports not (height:100dvh){
+  :root{
+    --app-viewport-height:100vh;
+  }
+}
+
+@media (min-width:900px) and (hover:hover) and (pointer:fine){
+  body[data-active-tab="manage"] main{
+    max-width:760px;
+  }
+
+  main,
+  .sheet,
+  .shift-scroll,
+  .point-list,
+  .date-picker,
+  .month-picker{
+    scrollbar-width:thin;
+    scrollbar-color:var(--line2) transparent;
+  }
+
+  main::-webkit-scrollbar,
+  .sheet::-webkit-scrollbar,
+  .shift-scroll::-webkit-scrollbar,
+  .point-list::-webkit-scrollbar,
+  .date-picker::-webkit-scrollbar,
+  .month-picker::-webkit-scrollbar{
+    display:block;
+    width:8px;
+    height:8px;
+  }
+
+  main::-webkit-scrollbar-thumb,
+  .sheet::-webkit-scrollbar-thumb,
+  .shift-scroll::-webkit-scrollbar-thumb,
+  .point-list::-webkit-scrollbar-thumb,
+  .date-picker::-webkit-scrollbar-thumb,
+  .month-picker::-webkit-scrollbar-thumb{
+    border:2px solid transparent;
+    border-radius:999px;
+    background:
+      linear-gradient(
+        var(--line2),
+        var(--line2)
+      ) padding-box;
+  }
+
+  .employee-detail .t,
+  .point-info-card .t,
+  .data-status-copy,
+  .developer-credit,
+  .manage-placeholder-detail,
+  .note,
+  .payout-expanded,
+  .tariff-info-card,
+  .tariff-history-body,
+  .calc{
+    user-select:text;
+    -webkit-user-select:text;
+  }
+}
+
+@media (forced-colors:active){
+  :root{
+    --line:CanvasText;
+    --line2:CanvasText;
+  }
+
+  header,
+  .bottom-controls{
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+
+  .card,
+  nav.tabs,
+  .sheet,
+  .point-picker,
+  .month-picker,
+  .date-picker,
+  .app-confirm-card{
+    border:1px solid CanvasText;
+    box-shadow:none;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  [tabindex]:focus-visible{
+    outline:2px solid Highlight !important;
+    outline-offset:2px !important;
+  }
+
+  .tag,
+  .employee-state,
+  .payout-status{
+    border-color:currentColor;
+  }
+}
+
+@media (prefers-reduced-transparency:reduce){
+  header,
+  nav.tabs,
+  .sheet,
+  .point-picker,
+  .month-picker,
+  .date-picker{
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+}

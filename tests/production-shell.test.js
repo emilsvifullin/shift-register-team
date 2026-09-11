@@ -80,6 +80,49 @@ test(
 );
 
 test(
+  "frame guard does not hide duplicate platform loading",
+  async()=>{
+    const frameGuard=
+      await read("src/frame-guard.js");
+
+    assert.match(
+      frameGuard,
+      /globalThis\.self!==globalThis\.top/
+    );
+
+    assert.doesNotMatch(
+      frameGuard,
+      /platform\.css|platform-shell|import\(/
+    );
+  }
+);
+
+test(
+  "browser fixture declares the same platform layers explicitly",
+  async()=>{
+    const html=
+      await read(
+        "tests/fixtures/platform-shell.html"
+      );
+
+    assert.match(
+      html,
+      /href="\.\.\/\.\.\/styles\/platform\.css"/
+    );
+
+    assert.match(
+      html,
+      /href="\.\.\/\.\.\/styles\/refinement\.css"/
+    );
+
+    assert.match(
+      html,
+      /src="\.\.\/\.\.\/src\/platform-shell\.js"/
+    );
+  }
+);
+
+test(
   "login uses the shared responsive refinement layers",
   async()=>{
     const html=

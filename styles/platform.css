@@ -3,6 +3,7 @@
   --app-viewport-height:100dvh;
   --app-viewport-top:0px;
   --app-viewport-left:0px;
+  --desktop-content:920px;
 }
 
 html,
@@ -23,8 +24,35 @@ main{
 }
 
 @media (min-width:900px) and (hover:hover) and (pointer:fine){
+  header .nav{
+    width:min(
+      calc(100% - 48px),
+      var(--desktop-content)
+    );
+    margin:0 auto;
+  }
+
+  main{
+    max-width:var(--desktop-content);
+    padding-right:24px;
+    padding-left:24px;
+  }
+
+  body[data-active-tab="data"] main{
+    max-width:800px;
+  }
+
   body[data-active-tab="manage"] main{
-    max-width:760px;
+    max-width:1040px;
+  }
+
+  nav.tabs{
+    min-width:390px;
+    justify-content:center;
+  }
+
+  nav.tabs button{
+    min-width:92px;
   }
 
   main,
@@ -75,6 +103,16 @@ main{
   .calc{
     user-select:text;
     -webkit-user-select:text;
+  }
+}
+
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  :root{
+    --desktop-content:960px;
+  }
+
+  body[data-active-tab="manage"] main{
+    max-width:1120px;
   }
 }
 

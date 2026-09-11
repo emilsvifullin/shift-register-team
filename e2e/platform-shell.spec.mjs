@@ -6,6 +6,30 @@ import {
 const FIXTURE=
   "http://127.0.0.1:4173/tests/fixtures/platform-shell.html";
 
+async function waitForViewportSync(page){
+  await expect.poll(
+    ()=>page.evaluate(()=>
+      document.documentElement.style
+        .getPropertyValue(
+          "--app-viewport-width"
+        )
+    )
+  ).toMatch(/px$/);
+
+  return page.evaluate(()=>({
+    width:
+      document.documentElement.style
+        .getPropertyValue(
+          "--app-viewport-width"
+        ),
+    height:
+      document.documentElement.style
+        .getPropertyValue(
+          "--app-viewport-height"
+        )
+  }));
+}
+
 test(
   "tab routing, accessibility and viewport stay synchronized",
   async({page})=>{
@@ -40,20 +64,7 @@ test(
     );
 
     const viewport=
-      await page.evaluate(()=>({
-        width:
-          getComputedStyle(
-            document.documentElement
-          ).getPropertyValue(
-            "--app-viewport-width"
-          ),
-        height:
-          getComputedStyle(
-            document.documentElement
-          ).getPropertyValue(
-            "--app-viewport-height"
-          )
-      }));
+      await waitForViewportSync(page);
 
     expect(
       Number.parseFloat(
@@ -127,5 +138,37 @@ test(
     await expect(page).toHaveURL(
       /#shifts$/
     );
+  }
+);
+
+test(
+  "laptop layout uses available space without becoming edge-to-edge",
+  async({page})=>{
+    await page.setViewportSize({
+      width:1440,
+      height:900
+    });
+
+    await page.goto(
+      `${FIXTURE}#manage`
+    );
+
+    await expect(
+      page.locator("body")
+    ).toHaveAttribute(
+      "data-active-tab",
+      "manage"
+    );
+
+    await waitForViewportSync(page);
+
+    const box=
+      await page.locator("#app")
+        .boundingBox();
+
+    expect(box).not.toBeNull();
+    expect(box.width).toBeGreaterThan(900);
+    expect(box.width).toBeLessThanOrEqual(1120);
+    expect(box.x).toBeGreaterThan(100);
   }
 );

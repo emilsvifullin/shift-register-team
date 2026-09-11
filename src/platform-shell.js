@@ -30,42 +30,95 @@ export function hashForTab(
   return TAB_ROUTES[tab] || "";
 }
 
+function reliableVisualViewport({
+  visualViewport,
+  innerWidth
+}){
+  if(!visualViewport){
+    return false;
+  }
+
+  const visualWidth=
+    Number(visualViewport.width);
+
+  const layoutWidth=
+    Number(innerWidth);
+
+  if(
+    !Number.isFinite(visualWidth) ||
+    visualWidth<=0
+  ){
+    return false;
+  }
+
+  if(
+    !Number.isFinite(layoutWidth) ||
+    layoutWidth<=0
+  ){
+    return true;
+  }
+
+  const scale=
+    Number(visualViewport.scale) || 1;
+
+  if(scale>1.01){
+    return true;
+  }
+
+  const ratio=
+    visualWidth/layoutWidth;
+
+  return ratio>=0.5 && ratio<=1.2;
+}
+
 export function viewportMetrics({
   visualViewport=null,
   innerWidth=0,
   innerHeight=0
 }={}){
+  const useVisualViewport=
+    reliableVisualViewport({
+      visualViewport,
+      innerWidth
+    });
+
   const width=Math.max(
     1,
     Math.round(
-      visualViewport?.width ||
-      innerWidth ||
-      1
+      useVisualViewport
+        ? visualViewport.width
+        : innerWidth ||
+          visualViewport?.width ||
+          1
     )
   );
 
   const height=Math.max(
     1,
     Math.round(
-      visualViewport?.height ||
-      innerHeight ||
-      1
+      useVisualViewport
+        ? visualViewport.height
+        : innerHeight ||
+          visualViewport?.height ||
+          1
     )
   );
 
   const top=Math.max(
     0,
     Math.round(
-      visualViewport?.offsetTop ||
-      0
+      useVisualViewport
+        ? visualViewport.offsetTop || 0
+        : 0
     )
   );
 
   const left=Math.max(
     0,
     Math.round(
-      visualViewport?.offsetLeft ||
-      0
+      useVisualViewport
+        ? visualViewport.offsetLeft || 0
+        : 0
     )
   );
 

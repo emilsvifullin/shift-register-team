@@ -1,0 +1,121 @@
+name: Interface Finalize
+
+on:
+  push:
+    branches:
+      - refactor/interface-motion-performance
+    paths:
+      - .github/workflows/interface-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v7
+        with:
+          ref: refactor/interface-motion-performance
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply motion and release refinements
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}: {old!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          app = Path("src/app.js")
+          text = app.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  '  app.style.left=\n    `${startX}px`;',
+                  '  app.style.transform=\n    `translate3d(${startX}px,0,0)`;'
+              ),
+              (
+                  '        {\n          left:\n            `${startX}px`\n        },\n        {\n          left:"0px"\n        }',
+                  '        {\n          transform:\n            `translate3d(${startX}px,0,0)`\n        },\n        {\n          transform:"translate3d(0,0,0)"\n        }'
+              ),
+              (
+                  '        duration:250,\n        easing:\n          "cubic-bezier(.22,.72,.22,1)",',
+                  '        duration:220,\n        easing:\n          "cubic-bezier(.2,.8,.2,1)",'
+              ),
+              (
+                  '    app.style.left="0px";',
+                  '    app.style.transform="translate3d(0,0,0)";'
+              )
+          ]
+
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f"Unexpected app.js match count for {old!r}: {text.count(old)}")
+              text = text.replace(old, new, 1)
+
+          cleanup = 'app.style.removeProperty(\n      "left"\n    );'
+          if text.count(cleanup) != 2:
+              raise SystemExit(f"Expected two tab cleanup matches, got {text.count(cleanup)}")
+          text = text.replace(
+              cleanup,
+              'app.style.removeProperty(\n      "transform"\n    );'
+          )
+          app.write_text(text, encoding="utf-8")
+
+          replace_once(
+              "src/config.js",
+              'export const APP_VERSION = "6.17.0";',
+              'export const APP_VERSION = "6.18.0";'
+          )
+
+          for path in ("package.json", "package-lock.json"):
+              file = Path(path)
+              value = file.read_text(encoding="utf-8")
+              if '"version": "6.17.0"' not in value:
+                  raise SystemExit(f"Version marker missing in {path}")
+              file.write_text(
+                  value.replace(
+                      '"version": "6.17.0"',
+                      '"version": "6.18.0"'
+                  ),
+                  encoding="utf-8"
+              )
+
+          static_test = Path("tests/static.test.js")
+          static_text = static_test.read_text(encoding="utf-8")
+          marker = '  "styles/auth.css",\n  "styles/platform.css"\n]);'
+          replacement = '  "styles/auth.css",\n  "styles/platform.css",\n  "styles/refinement.css"\n]);'
+          if static_text.count(marker) != 1:
+              raise SystemExit("STYLE_FILES marker changed")
+          static_test.write_text(
+              static_text.replace(marker, replacement, 1),
+              encoding="utf-8"
+          )
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run complete checks
+        run: npm run check
+
+      - name: Remove one-time workflow and commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/interface-finalize.yml
+          git add src/app.js src/config.js package.json package-lock.json tests/static.test.js
+          git commit -m "perf: finalize interface motion and release metadata"
+          git push origin HEAD:refactor/interface-motion-performance

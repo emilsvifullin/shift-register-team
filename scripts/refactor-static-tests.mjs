@@ -23,7 +23,7 @@ const helperAnchor=`const read=
     );
 `;
 
-const helper=`
+const teamHelper=`
 
 const TEAM_API_FILES=Object.freeze([
   "src/team.js",
@@ -44,16 +44,42 @@ const readTeamApi=async()=>
   ).join("\\n");
 `;
 
-if(!source.includes("TEAM_API_FILES")){
-  if(!source.includes(helperAnchor)){
-    throw new Error(
-      "Static test refactor aborted: read helper anchor not found"
-    );
-  }
+const styleHelper=`
 
+const STYLE_FILES=Object.freeze([
+  "styles.css",
+  "styles/accessibility.css",
+  "styles/motion.css",
+  "styles/workflow.css",
+  "styles/auth.css",
+  "styles/platform.css"
+]);
+
+const readStyles=async()=>
+  (
+    await Promise.all(
+      STYLE_FILES.map(read)
+    )
+  ).join("\\n");
+`;
+
+if(!source.includes(helperAnchor)){
+  throw new Error(
+    "Static test refactor aborted: read helper anchor not found"
+  );
+}
+
+if(!source.includes("STYLE_FILES")){
   source=source.replace(
     helperAnchor,
-    helperAnchor+helper
+    helperAnchor+styleHelper
+  );
+}
+
+if(!source.includes("TEAM_API_FILES")){
+  source=source.replace(
+    helperAnchor,
+    helperAnchor+teamHelper
   );
 }
 
@@ -62,6 +88,11 @@ const teamReadPattern=/const team=\n\s+await read\(\n\s+"src\/team\.js"\n\s+\);/
 source=source.replace(
   teamReadPattern,
   "const team=\n      await readTeamApi();"
+);
+
+source=source.replace(
+  /await read\(\s*"styles\.css"\s*\)/g,
+  "await readStyles()"
 );
 
 const caretStart=
@@ -112,11 +143,17 @@ source=
   caretBlock+
   source.slice(caretEnd);
 
-if(
-  source.match(teamReadPattern)
-){
+if(source.match(teamReadPattern)){
   throw new Error(
     "Static test refactor aborted: monolithic team reads remain"
+  );
+}
+
+if(
+  /await read\(\s*"styles\.css"\s*\)/.test(source)
+){
+  throw new Error(
+    "Static test refactor aborted: monolithic style reads remain"
   );
 }
 

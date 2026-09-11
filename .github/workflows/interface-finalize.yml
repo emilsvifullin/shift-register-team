@@ -58,6 +58,14 @@ jobs:
               (
                   '    app.style.left="0px";',
                   '    app.style.transform="translate3d(0,0,0)";'
+              ),
+              (
+                  'app.style.removeProperty(\n      "left"\n    );',
+                  'app.style.removeProperty(\n      "transform"\n    );'
+              ),
+              (
+                  'app.style.removeProperty(\n        "left"\n      );',
+                  'app.style.removeProperty(\n        "transform"\n      );'
               )
           ]
 
@@ -66,13 +74,6 @@ jobs:
                   raise SystemExit(f"Unexpected app.js match count for {old!r}: {text.count(old)}")
               text = text.replace(old, new, 1)
 
-          cleanup = 'app.style.removeProperty(\n      "left"\n    );'
-          if text.count(cleanup) != 2:
-              raise SystemExit(f"Expected two tab cleanup matches, got {text.count(cleanup)}")
-          text = text.replace(
-              cleanup,
-              'app.style.removeProperty(\n      "transform"\n    );'
-          )
           app.write_text(text, encoding="utf-8")
 
           replace_once(

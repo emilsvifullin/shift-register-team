@@ -36,6 +36,69 @@
     Test panel
   </main>
 
+  <div
+    class="point-veil"
+    id="fixturePointVeil"
+    aria-hidden="true"
+  ></div>
+
+  <div
+    class="point-picker app-picker-anchored"
+    id="fixturePointPicker"
+    aria-hidden="true"
+  >
+    <div class="point-picker-handle">
+      <div class="point-picker-grab"></div>
+    </div>
+    <div class="picker-toolbar">
+      <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
+      <div class="picker-toolbar-title">Сотрудник для итогов</div>
+      <button type="button" class="picker-toolbar-btn done">Готово</button>
+    </div>
+    <label class="point-picker-search">
+      <input type="search" value="" aria-label="Поиск">
+    </label>
+    <div class="point-list">
+      <button type="button" class="point-option on">
+        <span class="point-check">✓</span>
+        <span class="point-name">Сотрудник</span>
+      </button>
+    </div>
+  </div>
+
+  <div
+    class="date-picker"
+    id="fixtureDatePicker"
+    aria-hidden="true"
+  >
+    <div class="date-picker-handle">
+      <div class="date-picker-grab"></div>
+    </div>
+    <div class="picker-toolbar">
+      <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
+      <div class="picker-toolbar-title">Дата</div>
+      <button type="button" class="picker-toolbar-btn done">Готово</button>
+    </div>
+    <div class="date-calendar-head">
+      <button type="button" class="date-calendar-nav" aria-label="Назад">‹</button>
+      <button type="button" class="date-calendar-title">Сентябрь 2026</button>
+      <button type="button" class="date-calendar-nav" aria-label="Вперёд">›</button>
+    </div>
+    <div class="date-weekdays">
+      <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+    </div>
+    <div class="date-grid">
+      <button type="button" class="date-day">1</button>
+      <button type="button" class="date-day">2</button>
+      <button type="button" class="date-day">3</button>
+      <button type="button" class="date-day">4</button>
+      <button type="button" class="date-day">5</button>
+      <button type="button" class="date-day">6</button>
+      <button type="button" class="date-day on">7</button>
+    </div>
+    <button type="button" class="date-today">Сегодня</button>
+  </div>
+
   <div class="bottom-controls">
     <nav
       class="tabs"

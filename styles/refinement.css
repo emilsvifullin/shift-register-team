@@ -11,6 +11,12 @@
   --ui-ease:cubic-bezier(.2,.8,.2,1);
   --ui-ease-out:cubic-bezier(.16,1,.3,1);
   --ui-gutter:16px;
+  --ui-content-max:760px;
+  --ui-sheet-max:720px;
+  --ui-picker-max:720px;
+  --ui-calendar-max:520px;
+  --ui-radius:16px;
+  --ui-radius-small:12px;
 }
 
 html{
@@ -39,11 +45,12 @@ main{
   padding-left:var(--ui-gutter);
 }
 
+/* Общий вертикальный ритм */
 .ml{
-  margin:17px 3px 7px;
+  margin:20px 3px 7px;
   font-size:9.5px;
   line-height:1.2;
-  letter-spacing:.15em;
+  letter-spacing:.14em;
 }
 
 #app > .ml:first-child{
@@ -51,7 +58,7 @@ main{
 }
 
 .card{
-  border-radius:15px;
+  border-radius:var(--ui-radius);
 }
 
 .card + .card{
@@ -59,6 +66,7 @@ main{
 }
 
 .row{
+  min-height:52px;
   gap:12px;
   padding:12px 14px;
 }
@@ -82,12 +90,13 @@ main{
 }
 
 .sh{
+  min-height:54px;
   gap:12px;
   padding:10px 14px;
 }
 
 .hero{
-  padding:18px 18px 16px;
+  padding:20px 18px 18px;
 }
 
 .hero .k{
@@ -96,14 +105,12 @@ main{
 
 .hero .sub{
   max-width:52ch;
-  margin-right:auto;
-  margin-left:auto;
   line-height:1.4;
 }
 
 .manage-row{
-  min-height:60px;
-  padding:12px 14px;
+  min-height:58px;
+  padding:11px 14px;
   gap:12px;
 }
 
@@ -141,13 +148,62 @@ main{
 
 .data-status{
   padding:14px;
-  border-radius:15px;
+  border-radius:var(--ui-radius);
+}
+
+/* Итоги: один селектор не должен создавать отдельную секцию с лишним заголовком */
+body[data-active-tab="stats"] #app > .ml:has(+ .card .stats-filter-row){
+  display:none;
+}
+
+body[data-active-tab="stats"] #app > .card:has(.stats-filter-row){
+  margin-bottom:12px;
+  overflow:visible;
+  border:0;
+  background:transparent;
+}
+
+body[data-active-tab="stats"] .stats-filter-row{
+  min-height:50px;
+  padding:10px 14px;
+  border:1px solid var(--line2);
+  border-radius:14px;
+  background:var(--surf);
+}
+
+body[data-active-tab="stats"] .stats-filter-row .t{
+  width:auto;
+  color:var(--ink3);
+  font-size:11px;
+  font-weight:650;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+body[data-active-tab="stats"] .stats-filter-row .point-value{
+  font-size:14px;
+  font-weight:550;
+}
+
+body[data-active-tab="stats"] .stats-filter-row::after{
+  content:"";
+  width:7px;
+  height:7px;
+  flex:none;
+  margin-left:2px;
+  border-right:1.5px solid var(--ink3);
+  border-bottom:1.5px solid var(--ink3);
+  transform:rotate(45deg) translateY(-2px);
+}
+
+body[data-active-tab="stats"] .stats-filter-row:disabled::after{
+  display:none;
 }
 
 .payout-summary{
-  min-height:62px;
-  padding-top:11px;
-  padding-bottom:11px;
+  min-height:60px;
+  padding-top:10px;
+  padding-bottom:10px;
 }
 
 .payout-breakdown{
@@ -164,20 +220,35 @@ main{
   margin-left:14px;
 }
 
+/* Вложенные блоки не должны выглядеть как карточка внутри карточки внутри карточки */
+.payout-source-list,
+.payout-history,
+.payout-editor{
+  border-color:var(--line);
+  background:var(--tint-soft);
+  box-shadow:none;
+}
+
 .developer-credit{
   display:none;
 }
 
+/* Нижняя навигация: единая ширина и равные вкладки */
 nav.tabs{
+  width:min(calc(100% - 24px),520px);
   min-height:48px;
+  height:auto;
   padding:4px;
 }
 
 nav.tabs button{
+  flex:1 1 0;
+  min-width:0 !important;
   min-height:40px;
-  padding:0 14px;
+  padding:0 10px;
   border-radius:12px;
   line-height:1;
+  text-align:center;
 }
 
 .period{
@@ -188,6 +259,20 @@ nav.tabs button{
 .nav > button{
   width:42px;
   height:42px;
+}
+
+/* Все оверлеи используют одну сетку, но календарь остаётся компактнее */
+.sheet{
+  max-width:var(--ui-sheet-max);
+}
+
+.point-picker{
+  max-width:var(--ui-picker-max);
+}
+
+.month-picker,
+.date-picker{
+  max-width:var(--ui-calendar-max);
 }
 
 .sheet,
@@ -237,6 +322,170 @@ nav.tabs button{
   transition:opacity var(--ui-base) ease;
 }
 
+/* Desktop picker больше не превращается в узкий popover у поля */
+@media (min-width:760px) and (hover:hover) and (pointer:fine){
+  .point-veil.app-picker-anchored-veil{
+    background:var(--veil);
+    transition:opacity var(--ui-base) ease;
+  }
+
+  .point-picker.app-picker-anchored,
+  .point-picker.app-picker-anchored.app-picker-above{
+    left:24px;
+    right:24px;
+    top:auto;
+    bottom:24px;
+    width:auto;
+    max-width:var(--ui-picker-max);
+    max-height:min(72dvh,620px);
+    margin:0 auto;
+    border-radius:20px;
+    transform:translate3d(0,calc(100% + 32px),0);
+    transform-origin:center bottom;
+    opacity:.98;
+    transition:
+      transform var(--ui-slow) var(--ui-ease-out),
+      opacity var(--ui-base) ease;
+  }
+
+  .point-picker.app-picker-anchored.on,
+  .point-picker.app-picker-anchored.app-picker-above.on{
+    transform:translate3d(0,var(--point-drag,0px),0);
+    opacity:1;
+  }
+
+  .point-picker.app-picker-anchored .point-picker-handle{
+    display:grid;
+  }
+
+  .point-picker.app-picker-anchored .picker-toolbar{
+    display:flex;
+  }
+
+  .point-picker.app-picker-anchored .point-list{
+    max-height:min(54dvh,470px);
+    border-top:1px solid var(--line);
+  }
+}
+
+.point-picker-search{
+  height:48px;
+  padding-right:14px;
+  padding-left:14px;
+}
+
+.point-option{
+  min-height:48px;
+  padding:12px 15px;
+  font-size:13.5px;
+}
+
+.point-name{
+  line-height:1.3;
+}
+
+/* Календарь: компактные строки вместо растянутых квадратов */
+.date-picker{
+  padding-right:14px;
+  padding-bottom:14px;
+  padding-left:14px;
+}
+
+.date-calendar-head{
+  grid-template-columns:40px minmax(0,1fr) 40px;
+  gap:8px;
+  max-width:440px;
+  margin:2px auto 10px;
+}
+
+.date-calendar-title{
+  min-height:40px;
+  padding:8px 26px;
+  border-radius:12px;
+  background:var(--tint-soft);
+}
+
+.date-calendar-nav{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+}
+
+.date-weekdays,
+.date-grid{
+  width:100%;
+  max-width:440px;
+  margin-right:auto;
+  margin-left:auto;
+  gap:3px 5px;
+}
+
+.date-weekdays{
+  margin-bottom:3px;
+}
+
+.date-weekdays span{
+  padding:5px 0 4px;
+  font-size:9px;
+}
+
+.date-day{
+  width:100%;
+  height:40px;
+  aspect-ratio:auto;
+  border-radius:11px;
+  font-size:13px;
+}
+
+.date-day.today:not(.on){
+  border-radius:11px;
+}
+
+.date-day.on{
+  border-radius:11px;
+}
+
+.date-day.outside{
+  opacity:.34;
+}
+
+.date-today,
+.month-today{
+  width:auto;
+  min-width:132px;
+  height:40px;
+  margin:12px auto 0;
+  padding:0 18px;
+  display:block;
+  border-radius:12px;
+}
+
+.date-jump{
+  left:14px;
+  right:14px;
+  padding:12px;
+  border-radius:16px;
+}
+
+.date-jump-months{
+  gap:7px;
+}
+
+.date-jump-month{
+  min-height:40px;
+  border-radius:11px;
+}
+
+.month-grid{
+  gap:7px;
+}
+
+.month-option{
+  min-height:44px;
+  border-radius:12px;
+}
+
+/* Диалоги и transient UI */
 .app-confirm{
   transition:opacity var(--ui-base) ease;
 }
@@ -371,7 +620,7 @@ nav.tabs button{
 @media (min-width:900px) and (hover:hover) and (pointer:fine){
   :root{
     --ui-gutter:22px;
-    --desktop-content:760px;
+    --desktop-content:var(--ui-content-max);
   }
 
   main{
@@ -383,17 +632,18 @@ nav.tabs button{
     max-width:960px;
   }
 
+  body[data-active-tab="stats"] main,
   body[data-active-tab="data"] main{
-    width:min(100%,720px);
-    max-width:720px;
+    width:min(100%,760px);
+    max-width:760px;
   }
 
-  nav.tabs button{
-    min-width:116px;
+  nav.tabs{
+    width:min(calc(100% - 48px),520px);
   }
 
   .sheet{
-    max-width:720px;
+    max-width:var(--ui-sheet-max);
   }
 
   .hero{
@@ -409,6 +659,17 @@ nav.tabs button{
   body[data-active-tab="manage"] main{
     width:min(100%,1020px);
     max-width:1020px;
+  }
+}
+
+@media (max-width:520px){
+  .point-picker,
+  .month-picker,
+  .date-picker{
+    left:6px;
+    right:6px;
+    bottom:calc(6px + env(safe-area-inset-bottom));
+    border-radius:20px;
   }
 }
 
@@ -428,9 +689,18 @@ nav.tabs button{
     padding-left:12px;
   }
 
+  nav.tabs{
+    width:calc(100% - 16px);
+  }
+
   nav.tabs button{
-    padding-right:10px;
-    padding-left:10px;
+    padding-right:7px;
+    padding-left:7px;
+    font-size:12px;
+  }
+
+  .date-day{
+    height:38px;
   }
 }
 

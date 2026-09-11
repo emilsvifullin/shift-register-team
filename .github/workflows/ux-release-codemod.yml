@@ -1,0 +1,55 @@
+name: UX Release Codemod
+
+on:
+  push:
+    branches:
+      - refactor/ux-geometry-v2
+    paths:
+      - .github/workflows/ux-release-codemod.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: refactor/ux-geometry-v2
+          fetch-depth: 0
+
+      - name: Update release metadata and self-clean
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              "src/config.js": [("APP_VERSION = \"6.18.0\"", "APP_VERSION = \"6.19.0\"")],
+              "package.json": [("\"version\": \"6.18.0\"", "\"version\": \"6.19.0\"")],
+              "package-lock.json": [("\"version\": \"6.18.0\"", "\"version\": \"6.19.0\"")],
+              "sw.js": [("sr-team-runtime-v3", "sr-team-runtime-v4")],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text(encoding="utf-8")
+              original = text
+              for old, new in pairs:
+                  if old not in text:
+                      raise SystemExit(f"Expected text not found in {filename}: {old}")
+                  text = text.replace(old, new)
+              if text == original:
+                  raise SystemExit(f"No change produced for {filename}")
+              path.write_text(text, encoding="utf-8")
+
+          Path(".github/workflows/ux-release-codemod.yml").unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/config.js package.json package-lock.json sw.js .github/workflows/ux-release-codemod.yml
+          git commit -m "chore: release UX geometry pass as 6.19.0"
+          git push origin HEAD:refactor/ux-geometry-v2

@@ -1,0 +1,446 @@
+:root{
+  --ui-space-1:4px;
+  --ui-space-2:8px;
+  --ui-space-3:12px;
+  --ui-space-4:16px;
+  --ui-space-5:20px;
+  --ui-space-6:24px;
+  --ui-fast:120ms;
+  --ui-base:180ms;
+  --ui-slow:300ms;
+  --ui-ease:cubic-bezier(.2,.8,.2,1);
+  --ui-ease-out:cubic-bezier(.16,1,.3,1);
+  --ui-gutter:16px;
+}
+
+html{
+  font-synthesis:none;
+}
+
+body{
+  text-rendering:optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select{
+  touch-action:manipulation;
+}
+
+header{
+  padding-right:var(--ui-gutter);
+  padding-left:var(--ui-gutter);
+}
+
+main{
+  padding-top:calc(88px + env(safe-area-inset-top));
+  padding-right:var(--ui-gutter);
+  padding-left:var(--ui-gutter);
+}
+
+.ml{
+  margin:17px 3px 7px;
+  font-size:9.5px;
+  line-height:1.2;
+  letter-spacing:.15em;
+}
+
+#app > .ml:first-child{
+  margin-top:2px;
+}
+
+.card{
+  border-radius:15px;
+}
+
+.card + .card{
+  margin-top:8px;
+}
+
+.row{
+  gap:12px;
+  padding:12px 14px;
+}
+
+.row .l{
+  gap:3px;
+}
+
+.row .t,
+.manage-row-title,
+.data-status-title{
+  line-height:1.28;
+}
+
+.row .s,
+.manage-row-detail,
+.data-status-detail,
+.employee-help,
+.note{
+  line-height:1.42;
+}
+
+.sh{
+  gap:12px;
+  padding:10px 14px;
+}
+
+.hero{
+  padding:18px 18px 16px;
+}
+
+.hero .k{
+  margin-bottom:6px;
+}
+
+.hero .sub{
+  max-width:52ch;
+  margin-right:auto;
+  margin-left:auto;
+  line-height:1.4;
+}
+
+.manage-row{
+  min-height:60px;
+  padding:12px 14px;
+  gap:12px;
+}
+
+.manage-row-copy{
+  gap:3px;
+}
+
+.manage-row-detail{
+  max-width:58ch;
+}
+
+.manage-add,
+.btn{
+  min-height:46px;
+  border-radius:13px;
+}
+
+.manage-add{
+  margin-top:0;
+}
+
+.btn{
+  margin-top:8px;
+  padding:12px 14px;
+}
+
+.employee-archive-button{
+  margin-top:7px;
+}
+
+.employee-editor .row,
+.employee-detail .row{
+  min-height:52px;
+}
+
+.data-status{
+  padding:14px;
+  border-radius:15px;
+}
+
+.payout-summary{
+  min-height:62px;
+  padding-top:11px;
+  padding-bottom:11px;
+}
+
+.payout-breakdown{
+  padding:14px 14px 4px;
+}
+
+.payout-progress{
+  margin-right:14px;
+  margin-left:14px;
+}
+
+.payout-history{
+  margin-right:14px;
+  margin-left:14px;
+}
+
+.developer-credit{
+  display:none;
+}
+
+nav.tabs{
+  min-height:48px;
+  padding:4px;
+}
+
+nav.tabs button{
+  min-height:40px;
+  padding:0 14px;
+  border-radius:12px;
+  line-height:1;
+}
+
+.period{
+  min-height:42px;
+  font-weight:600;
+}
+
+.nav > button{
+  width:42px;
+  height:42px;
+}
+
+.sheet,
+.point-picker,
+.month-picker,
+.date-picker{
+  transform:translate3d(0,calc(100% + 28px),0);
+}
+
+.sheet.on,
+.point-picker.on,
+.month-picker.on,
+.date-picker.on{
+  transform:translate3d(0,var(--sheet-drag,0px),0);
+}
+
+.point-picker.on{
+  transform:translate3d(0,var(--point-drag,0px),0);
+}
+
+.month-picker.on{
+  transform:translate3d(0,var(--month-drag,0px),0);
+}
+
+.date-picker.on{
+  transform:translate3d(0,var(--date-drag,0px),0);
+}
+
+.sheet{
+  transition:
+    transform var(--ui-slow) var(--ui-ease-out),
+    opacity var(--ui-base) ease;
+}
+
+.point-picker,
+.month-picker,
+.date-picker{
+  transition:
+    transform var(--ui-slow) var(--ui-ease-out),
+    opacity var(--ui-base) ease;
+}
+
+.veil,
+.point-veil,
+.month-veil,
+.date-veil{
+  transition:opacity var(--ui-base) ease;
+}
+
+.app-confirm{
+  transition:opacity var(--ui-base) ease;
+}
+
+.app-confirm-box{
+  transition:transform var(--ui-base) var(--ui-ease-out);
+}
+
+.toast{
+  transition:
+    opacity var(--ui-base) ease,
+    transform var(--ui-base) var(--ui-ease-out);
+}
+
+.payout-expanded{
+  animation-duration:var(--ui-base);
+  animation-timing-function:var(--ui-ease-out);
+}
+
+.payout-summary::after,
+.tariff-history-chevron,
+.employee-point-check,
+.point-check,
+.manage-chevron,
+.date-day,
+.month-option,
+.date-jump-month,
+.seg button{
+  transition:
+    transform var(--ui-base) var(--ui-ease),
+    opacity var(--ui-base) ease,
+    background-color var(--ui-base) ease,
+    border-color var(--ui-base) ease,
+    color var(--ui-base) ease;
+}
+
+.employee-point.on .employee-point-check,
+.point-option.on .point-check{
+  transform:scale(1);
+}
+
+.employee-point:not(.on) .employee-point-check,
+.point-option:not(.on) .point-check{
+  transform:scale(.9);
+}
+
+.shift-scroll,
+.point-list,
+.sheet,
+.employee-filter-sheet,
+.date-picker,
+.month-picker{
+  overscroll-behavior:contain;
+}
+
+@media (hover:hover) and (pointer:fine){
+  .nav > button:not(:disabled),
+  .period.clickable,
+  nav.tabs button,
+  .sh,
+  .manage-row,
+  .manage-add,
+  .btn,
+  .point-row,
+  .employee-point,
+  .point-option,
+  .date-day,
+  .month-option,
+  .date-jump-month,
+  .date-calendar-nav,
+  .picker-toolbar-btn,
+  .lnk,
+  .payout-summary,
+  .tariff-history-item > summary,
+  .app-confirm-btn{
+    transition:
+      transform var(--ui-fast) var(--ui-ease),
+      background-color var(--ui-base) ease,
+      border-color var(--ui-base) ease,
+      color var(--ui-base) ease,
+      opacity var(--ui-base) ease,
+      box-shadow var(--ui-base) ease;
+  }
+
+  .nav > button:not(:disabled):hover,
+  .period.clickable:hover,
+  nav.tabs button:not(.on):hover,
+  .manage-row:hover,
+  .sh:hover,
+  .point-row:hover,
+  .employee-point:hover,
+  .point-option:hover,
+  .payout-summary:hover,
+  .tariff-history-item > summary:hover{
+    background:var(--tint-soft);
+  }
+
+  .manage-add:hover,
+  .btn:hover:not(:disabled),
+  .picker-toolbar-btn:hover,
+  .lnk:hover,
+  .app-confirm-btn:hover{
+    transform:translateY(-1px);
+  }
+
+  .nav > button:not(:disabled):active,
+  .period.clickable:active,
+  nav.tabs button:active,
+  .sh:active,
+  .manage-row:active,
+  .manage-add:active,
+  .btn:active:not(:disabled),
+  .point-row:active,
+  .employee-point:active,
+  .point-option:active,
+  .date-day:active,
+  .month-option:active,
+  .date-jump-month:active,
+  .payout-summary:active,
+  .app-confirm-btn:active{
+    transform:scale(.985);
+  }
+}
+
+@media (min-width:700px) and (hover:hover) and (pointer:fine){
+  body.login-page .auth-card{
+    top:50%;
+    width:min(calc(100% - 48px),380px);
+  }
+}
+
+@media (min-width:900px) and (hover:hover) and (pointer:fine){
+  :root{
+    --ui-gutter:22px;
+    --desktop-content:760px;
+  }
+
+  main{
+    padding-top:calc(84px + env(safe-area-inset-top));
+  }
+
+  body[data-active-tab="manage"] main{
+    width:min(100%,960px);
+    max-width:960px;
+  }
+
+  body[data-active-tab="data"] main{
+    width:min(100%,720px);
+    max-width:720px;
+  }
+
+  nav.tabs button{
+    min-width:116px;
+  }
+
+  .sheet{
+    max-width:720px;
+  }
+
+  .hero{
+    padding:22px 22px 19px;
+  }
+}
+
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  :root{
+    --desktop-content:800px;
+  }
+
+  body[data-active-tab="manage"] main{
+    width:min(100%,1020px);
+    max-width:1020px;
+  }
+}
+
+@media (max-width:420px){
+  :root{
+    --ui-gutter:12px;
+  }
+
+  main{
+    padding-top:calc(84px + env(safe-area-inset-top));
+  }
+
+  .row,
+  .sh,
+  .manage-row{
+    padding-right:12px;
+    padding-left:12px;
+  }
+
+  nav.tabs button{
+    padding-right:10px;
+    padding-left:10px;
+  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,
+  *::before,
+  *::after{
+    scroll-behavior:auto !important;
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+  }
+}

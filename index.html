@@ -67,6 +67,9 @@ body{
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="icon" href="./icon-192.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://shift-register-supabase-proxy.vercel.app">
+<link rel="preconnect" href="https://rxosovinouuonwrrzigs.supabase.co" crossorigin>
 
 <title>Shift Register</title>
 
@@ -74,25 +77,45 @@ body{
 
 <link rel="stylesheet" href="./styles.css">
 
-  <link
-    rel="stylesheet"
-    href="./styles/accessibility.css"
-  >
+<link
+  rel="stylesheet"
+  href="./styles/accessibility.css"
+>
 
-  <link
-    rel="stylesheet"
-    href="./styles/motion.css"
-  >
+<link
+  rel="stylesheet"
+  href="./styles/motion.css"
+>
 
-  <link
-    rel="stylesheet"
-    href="./styles/workflow.css"
-  >
+<link
+  rel="stylesheet"
+  href="./styles/workflow.css"
+>
 
-  <link
-    rel="stylesheet"
-    href="./styles/auth.css"
-  >
+<link
+  rel="stylesheet"
+  href="./styles/auth.css"
+>
+
+<link
+  rel="stylesheet"
+  href="./styles/platform.css"
+>
+
+<link
+  rel="stylesheet"
+  href="./styles/refinement.css"
+>
+
+<link
+  rel="modulepreload"
+  href="./src/app.js"
+>
+
+<link
+  rel="modulepreload"
+  href="./src/platform-shell.js"
+>
 
 <link
   rel="modulepreload"
@@ -138,6 +161,11 @@ body{
   src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
   integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC"
   crossorigin="anonymous"
+></script>
+
+<script
+  type="module"
+  src="./src/platform-shell.js"
 ></script>
 
 <script

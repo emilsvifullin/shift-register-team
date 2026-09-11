@@ -23,7 +23,8 @@ const STYLE_FILES=Object.freeze([
   "styles/motion.css",
   "styles/workflow.css",
   "styles/auth.css",
-  "styles/platform.css"
+  "styles/platform.css",
+  "styles/refinement.css"
 ]);
 
 const readStyles=async()=>

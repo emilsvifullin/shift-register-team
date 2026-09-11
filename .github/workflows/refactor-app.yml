@@ -1,0 +1,54 @@
+name: Refactor app shell
+
+on:
+  push:
+    branches:
+      - refactor/production-quality-baseline
+    paths:
+      - ".github/workflows/refactor-app.yml"
+      - "scripts/refactor-app.mjs"
+      - "src/ui/**"
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/production-quality-baseline
+          fetch-depth: 0
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply guarded codemod
+        run: node ./scripts/refactor-app.mjs
+
+      - name: Install
+        run: npm ci
+
+      - name: Validate refactored tree
+        run: |
+          npm run check
+          git diff --check
+
+      - name: Commit refactor
+        run: |
+          if git diff --quiet; then
+            echo "No app refactor changes required"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app.js
+          git commit -m "refactor: extract app input behavior"
+          git push origin HEAD:refactor/production-quality-baseline

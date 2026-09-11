@@ -371,15 +371,11 @@ nav.tabs button{
 @media (min-width:900px) and (hover:hover) and (pointer:fine){
   :root{
     --ui-gutter:22px;
-    --workspace-max-width:720px;
+    --desktop-content:760px;
   }
 
   main{
     padding-top:calc(84px + env(safe-area-inset-top));
-  }
-
-  header{
-    width:min(calc(100% - 56px),720px);
   }
 
   body[data-active-tab="manage"] main{
@@ -390,11 +386,6 @@ nav.tabs button{
   body[data-active-tab="data"] main{
     width:min(100%,720px);
     max-width:720px;
-  }
-
-  body[data-active-tab="manage"] header,
-  body[data-active-tab="data"] header{
-    width:min(calc(100% - 56px),720px);
   }
 
   nav.tabs button{
@@ -411,6 +402,10 @@ nav.tabs button{
 }
 
 @media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  :root{
+    --desktop-content:800px;
+  }
+
   body[data-active-tab="manage"] main{
     width:min(100%,1020px);
     max-width:1020px;

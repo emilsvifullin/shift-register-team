@@ -123,10 +123,10 @@ export function installInputBehavior({
     windowRef
   );
 
-  const clickBeforeRightAlignedValue=(
+  function clickBeforeRightAlignedValue(
     field,
     clientX
-  )=>{
+  ){
     const style=
       windowRef.getComputedStyle(field);
 
@@ -180,7 +180,7 @@ export function installInputBehavior({
       valueWidth;
 
     return clientX<valueStart-3;
-  };
+  }
 
   const onPointerDown=event=>{
     if(!event.isPrimary){

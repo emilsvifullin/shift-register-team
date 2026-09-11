@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6160";
+  "sr-team-runtime-v2";
 
 const INDEX_FILE=
   "./index.html";
@@ -12,6 +12,7 @@ const ASSETS=[
   INDEX_FILE,
   "./login.html",
   "./styles.css",
+  "./styles/platform.css",
   "./manifest.webmanifest",
   "./src/config.js",
   "./src/domain.js",
@@ -22,6 +23,7 @@ const ASSETS=[
   "./src/phone.js",
   "./src/employee-ui.js",
   "./src/picker-position.js",
+  "./src/platform-shell.js",
   "./src/supabase.js",
   "./src/auth.js",
   "./src/frame-guard.js",
@@ -36,6 +38,39 @@ const REMOTE_ASSETS=[
   SUPABASE_CDN_URL
 ];
 
+const ASSET_PATHS=
+  new Set(
+    ASSETS.map(path=>
+      new URL(
+        path,
+        self.registration.scope
+      ).pathname
+    )
+  );
+
+async function precache(
+  cache,
+  assets
+){
+  const results=
+    await Promise.allSettled(
+      assets.map(asset=>
+        cache.add(asset)
+      )
+    );
+
+  const failed=
+    results.filter(result=>
+      result.status==="rejected"
+    );
+
+  if(failed.length){
+    console.warn(
+      `Не удалось кешировать ${failed.length} ресурсов`
+    );
+  }
+}
+
 self.addEventListener(
   "install",
   event=>{
@@ -46,22 +81,14 @@ self.addEventListener(
             CACHE_NAME
           );
 
-        try{
-          await cache.addAll(
-            ASSETS
-          );
-        }catch(error){
-          console.error(
-            "Не удалось предварительно заполнить кеш",
-            error
-          );
-        }
+        await precache(
+          cache,
+          ASSETS
+        );
 
-        await Promise.allSettled(
-          REMOTE_ASSETS.map(
-            asset=>
-              cache.add(asset)
-          )
+        await precache(
+          cache,
+          REMOTE_ASSETS
         );
 
         await self.skipWaiting();
@@ -90,11 +117,8 @@ self.addEventListener(
                   "sr-team-"
                 )
             )
-            .map(
-              name=>
-                caches.delete(
-                  name
-                )
+            .map(name=>
+              caches.delete(name)
             )
         );
 
@@ -213,9 +237,7 @@ async function navigationResponse(
     }
 
     const requestUrl=
-      new URL(
-        request.url
-      );
+      new URL(request.url);
 
     const scope=
       new URL(
@@ -251,16 +273,12 @@ self.addEventListener(
     const request=
       event.request;
 
-    if(
-      request.method!=="GET"
-    ){
+    if(request.method!=="GET"){
       return;
     }
 
     const url=
-      new URL(
-        request.url
-      );
+      new URL(request.url);
 
     const scope=
       new URL(
@@ -273,54 +291,27 @@ self.addEventListener(
       )
     ){
       event.respondWith(
-        networkFirst(
-          request
-        )
+        networkFirst(request)
       );
 
       return;
     }
 
-    if(
-      url.origin!==
-      scope.origin
-    ){
+    if(url.origin!==scope.origin){
       return;
     }
 
-    if(
-      request.mode===
-      "navigate"
-    ){
+    if(request.mode==="navigate"){
       event.respondWith(
-        navigationResponse(
-          request
-        )
+        navigationResponse(request)
       );
 
       return;
     }
 
-    const assetPaths=
-      new Set(
-        ASSETS.map(
-          path=>
-            new URL(
-              path,
-              self.registration.scope
-            ).pathname
-        )
-      );
-
-    if(
-      assetPaths.has(
-        url.pathname
-      )
-    ){
+    if(ASSET_PATHS.has(url.pathname)){
       event.respondWith(
-        networkFirst(
-          request
-        )
+        networkFirst(request)
       );
     }
   }

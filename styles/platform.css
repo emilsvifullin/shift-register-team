@@ -1,0 +1,147 @@
+/* Cross-platform baseline. Loaded by src/platform/runtime.js after the core theme. */
+:root{
+  --app-height:100vh;
+  --app-width:100vw;
+  --visual-offset-top:0px;
+}
+
+html,
+body,
+main{
+  height:var(--app-height,100vh);
+}
+
+@supports(height:100dvh){
+  :root{
+    --app-height:100dvh;
+  }
+
+  html,
+  body,
+  main{
+    min-height:100dvh;
+  }
+}
+
+/* Informational text remains selectable on desktop without changing touch UX. */
+@media (hover:hover) and (pointer:fine){
+  .row .t,
+  .row .s,
+  .manage-row-copy,
+  .manage-placeholder,
+  .data-status-copy,
+  .note,
+  .developer-credit,
+  .payout-source-main,
+  .payout-record > div{
+    user-select:text;
+    -webkit-user-select:text;
+  }
+
+  main:not(.shifts-layout){
+    max-width:760px;
+  }
+
+  main,
+  .shift-scroll,
+  .sheet,
+  .point-list{
+    scrollbar-width:thin;
+    scrollbar-color:var(--line2) transparent;
+  }
+
+  main::-webkit-scrollbar,
+  .shift-scroll::-webkit-scrollbar,
+  .sheet::-webkit-scrollbar,
+  .point-list::-webkit-scrollbar{
+    display:block;
+    width:8px;
+    height:8px;
+  }
+
+  main::-webkit-scrollbar-thumb,
+  .shift-scroll::-webkit-scrollbar-thumb,
+  .sheet::-webkit-scrollbar-thumb,
+  .point-list::-webkit-scrollbar-thumb{
+    border:2px solid transparent;
+    border-radius:999px;
+    background:var(--line2);
+    background-clip:padding-box;
+  }
+}
+
+/* Keep the tab bar usable on narrow devices and large accessibility text. */
+nav.tabs{
+  max-width:calc(100vw - 16px);
+}
+
+nav.tabs button{
+  min-height:42px;
+}
+
+@media (max-width:340px){
+  nav.tabs{
+    gap:1px;
+    padding:3px;
+  }
+
+  nav.tabs button{
+    padding-left:8px;
+    padding-right:8px;
+  }
+}
+
+/* Windows High Contrast / forced colors: preserve states using system colors. */
+@media (forced-colors:active){
+  *,
+  *::before,
+  *::after{
+    forced-color-adjust:auto;
+  }
+
+  .card,
+  .sheet,
+  .point-picker,
+  .date-picker,
+  .month-picker,
+  nav.tabs,
+  .app-confirm-box{
+    border-color:CanvasText;
+  }
+
+  nav.tabs button.on,
+  .seg button.on,
+  .point-option.on,
+  .month-option.on,
+  .date-day.on{
+    color:HighlightText;
+    background:Highlight;
+    border-color:Highlight;
+  }
+
+  button:focus-visible,
+  .period:focus-visible,
+  .sh:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible,
+  input:focus-visible{
+    outline:2px solid Highlight;
+    outline-offset:2px;
+  }
+}
+
+/* Pointer capabilities are detected centrally by the runtime. */
+html[data-pointer="coarse"] button,
+html[data-pointer="coarse"] .sh,
+html[data-pointer="coarse"] .point-option{
+  touch-action:manipulation;
+}
+
+@media (prefers-reduced-transparency:reduce){
+  header,
+  nav.tabs,
+  .app-confirm{
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+}

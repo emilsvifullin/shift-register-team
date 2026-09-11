@@ -4,6 +4,10 @@ import {
   supabaseRealtimeClient
 } from "./supabase.js";
 
+import {installPlatformRuntime} from "./platform/runtime.js";
+
+installPlatformRuntime();
+
 export {
   loadAdminTeamData,
   loadEmployeeTeamData,

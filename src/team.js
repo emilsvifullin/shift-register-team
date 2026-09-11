@@ -1,23 +1,22 @@
 import {
-  invokeSupabaseFunction,
-  supabaseClient,
-  supabaseRealtimeClient
+  invokeSupabaseFunction
 } from "./supabase.js";
-
-import {installPlatformRuntime} from "./platform/runtime.js";
-
-installPlatformRuntime();
 
 export {
   loadAdminTeamData,
   loadEmployeeTeamData,
   loadTeamData
-} from "./api/team-read.js";
+} from "./api/read.js";
 
 export {
+  deleteAdminEmployee,
   rollbackAdminEmployeeCreation,
   saveAdminEmployee
 } from "./api/employees.js";
+
+export {
+  subscribeTeamChanges
+} from "./api/realtime.js";
 
 export {
   deleteAdminShift,
@@ -38,6 +37,11 @@ export {
   saveAdminPayout
 } from "./api/payouts.js";
 
+/*
+  Compatibility facade for src/app.js.
+  Realtime transport lives in api/realtime.js and uses postgres_changes.
+  Team reads live in api/read.js and include point_tariffs.
+*/
 export async function saveAdminEmployeeAuth({
   employeeId,
   email,
@@ -49,70 +53,8 @@ export async function saveAdminEmployeeAuth({
       action:"save",
       employeeId,
       email,
-      password:password || undefined
+      password:
+        password || undefined
     }
   );
-}
-
-export async function deleteAdminEmployee(id){
-  return invokeSupabaseFunction(
-    "admin-employee-auth",
-    {
-      action:"delete",
-      employeeId:id
-    }
-  );
-}
-
-export async function subscribeTeamChanges({
-  role,
-  onChange=()=>{},
-  onStatus=()=>{}
-}){
-  const tables=role==="admin"
-    ? [
-        "employees",
-        "employee_points",
-        "points",
-        "point_tariffs",
-        "shifts",
-        "shift_bonuses",
-        "shift_penalties",
-        "employee_payouts"
-      ]
-    : [
-        "employees",
-        "shifts",
-        "shift_bonuses",
-        "shift_penalties",
-        "employee_payouts"
-      ];
-
-  const sessionResult=await supabaseClient.auth.getSession();
-  if(sessionResult.error){
-    throw sessionResult.error;
-  }
-
-  const accessToken=sessionResult.data.session?.access_token;
-  if(accessToken){
-    await supabaseRealtimeClient.realtime.setAuth(accessToken);
-  }
-
-  let channel=supabaseRealtimeClient.channel(
-    `shift-register-${role}-${crypto.randomUUID()}`
-  );
-
-  tables.forEach(table=>{
-    channel=channel.on(
-      "postgres_changes",
-      {event:"*",schema:"public",table},
-      payload=>onChange({table,payload})
-    );
-  });
-
-  channel.subscribe(status=>onStatus(status));
-
-  return ()=>{
-    void supabaseRealtimeClient.removeChannel(channel);
-  };
 }

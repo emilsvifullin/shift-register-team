@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check:syntax": "node --check src/config.js && node --check src/domain.js && node --check src/team-domain.js && node --check src/workflow.js && node --check src/phone.js && node --check src/storage.js && node --check src/api/shared.js && node --check src/api/team-read.js && node --check src/api/employees.js && node --check src/api/shifts.js && node --check src/api/points.js && node --check src/api/payouts.js && node --check src/platform/runtime.js && node --check src/team.js && node --check src/employee-ui.js && node --check src/picker-position.js && node --check src/supabase.js && node --check src/auth.js && node --check src/frame-guard.js && node --check src/login.js && node --check src/app.js && node --check sw.js",
-    "check": "npm run check:syntax && npm test"
+    "check:syntax": "node ./scripts/check-source.mjs",
+    "check": "npm run check:syntax && node --test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

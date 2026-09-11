@@ -1,146 +1,167 @@
-/* Cross-platform baseline. Loaded by src/platform/runtime.js after the core theme. */
 :root{
-  --app-height:100vh;
-  --app-width:100vw;
-  --visual-offset-top:0px;
+  --app-viewport-width:100vw;
+  --app-viewport-height:100dvh;
+  --app-viewport-top:0px;
+  --app-viewport-left:0px;
+  --desktop-content:920px;
 }
 
 html,
-body,
+body{
+  height:var(--app-viewport-height,100dvh);
+  min-height:var(--app-viewport-height,100dvh);
+}
+
 main{
-  height:var(--app-height,100vh);
+  height:var(--app-viewport-height,100dvh);
+  min-height:0;
 }
 
-@supports(height:100dvh){
+@supports not (height:100dvh){
   :root{
-    --app-height:100dvh;
-  }
-
-  html,
-  body,
-  main{
-    min-height:100dvh;
+    --app-viewport-height:100vh;
   }
 }
 
-/* Informational text remains selectable on desktop without changing touch UX. */
-@media (hover:hover) and (pointer:fine){
-  .row .t,
-  .row .s,
-  .manage-row-copy,
-  .manage-placeholder,
-  .data-status-copy,
-  .note,
-  .developer-credit,
-  .payout-source-main,
-  .payout-record > div{
-    user-select:text;
-    -webkit-user-select:text;
+@media (min-width:900px) and (hover:hover) and (pointer:fine){
+  header .nav{
+    width:min(
+      calc(100% - 48px),
+      var(--desktop-content)
+    );
+    margin:0 auto;
   }
 
-  main:not(.shifts-layout){
-    max-width:760px;
+  main{
+    max-width:var(--desktop-content);
+    padding-right:24px;
+    padding-left:24px;
+  }
+
+  body[data-active-tab="data"] main{
+    max-width:800px;
+  }
+
+  body[data-active-tab="manage"] main{
+    max-width:1040px;
+  }
+
+  nav.tabs{
+    min-width:390px;
+    justify-content:center;
+  }
+
+  nav.tabs button{
+    min-width:92px;
   }
 
   main,
-  .shift-scroll,
   .sheet,
-  .point-list{
+  .shift-scroll,
+  .point-list,
+  .date-picker,
+  .month-picker{
     scrollbar-width:thin;
     scrollbar-color:var(--line2) transparent;
   }
 
   main::-webkit-scrollbar,
-  .shift-scroll::-webkit-scrollbar,
   .sheet::-webkit-scrollbar,
-  .point-list::-webkit-scrollbar{
+  .shift-scroll::-webkit-scrollbar,
+  .point-list::-webkit-scrollbar,
+  .date-picker::-webkit-scrollbar,
+  .month-picker::-webkit-scrollbar{
     display:block;
     width:8px;
     height:8px;
   }
 
   main::-webkit-scrollbar-thumb,
-  .shift-scroll::-webkit-scrollbar-thumb,
   .sheet::-webkit-scrollbar-thumb,
-  .point-list::-webkit-scrollbar-thumb{
+  .shift-scroll::-webkit-scrollbar-thumb,
+  .point-list::-webkit-scrollbar-thumb,
+  .date-picker::-webkit-scrollbar-thumb,
+  .month-picker::-webkit-scrollbar-thumb{
     border:2px solid transparent;
     border-radius:999px;
-    background:var(--line2);
-    background-clip:padding-box;
+    background:
+      linear-gradient(
+        var(--line2),
+        var(--line2)
+      ) padding-box;
+  }
+
+  .employee-detail .t,
+  .point-info-card .t,
+  .data-status-copy,
+  .developer-credit,
+  .manage-placeholder-detail,
+  .note,
+  .payout-expanded,
+  .tariff-info-card,
+  .tariff-history-body,
+  .calc{
+    user-select:text;
+    -webkit-user-select:text;
   }
 }
 
-/* Keep the tab bar usable on narrow devices and large accessibility text. */
-nav.tabs{
-  max-width:calc(100vw - 16px);
-}
-
-nav.tabs button{
-  min-height:42px;
-}
-
-@media (max-width:340px){
-  nav.tabs{
-    gap:1px;
-    padding:3px;
+@media (min-width:1280px) and (hover:hover) and (pointer:fine){
+  :root{
+    --desktop-content:960px;
   }
 
-  nav.tabs button{
-    padding-left:8px;
-    padding-right:8px;
+  body[data-active-tab="manage"] main{
+    max-width:1120px;
   }
 }
 
-/* Windows High Contrast / forced colors: preserve states using system colors. */
 @media (forced-colors:active){
-  *,
-  *::before,
-  *::after{
-    forced-color-adjust:auto;
+  :root{
+    --line:CanvasText;
+    --line2:CanvasText;
+  }
+
+  header,
+  .bottom-controls{
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
   }
 
   .card,
+  nav.tabs,
   .sheet,
   .point-picker,
-  .date-picker,
   .month-picker,
-  nav.tabs,
-  .app-confirm-box{
-    border-color:CanvasText;
-  }
-
-  nav.tabs button.on,
-  .seg button.on,
-  .point-option.on,
-  .month-option.on,
-  .date-day.on{
-    color:HighlightText;
-    background:Highlight;
-    border-color:Highlight;
+  .date-picker,
+  .app-confirm-card{
+    border:1px solid CanvasText;
+    box-shadow:none;
   }
 
   button:focus-visible,
-  .period:focus-visible,
-  .sh:focus-visible,
+  input:focus-visible,
   textarea:focus-visible,
   select:focus-visible,
-  input:focus-visible{
-    outline:2px solid Highlight;
-    outline-offset:2px;
+  [tabindex]:focus-visible{
+    outline:2px solid Highlight !important;
+    outline-offset:2px !important;
   }
-}
 
-/* Pointer capabilities are detected centrally by the runtime. */
-html[data-pointer="coarse"] button,
-html[data-pointer="coarse"] .sh,
-html[data-pointer="coarse"] .point-option{
-  touch-action:manipulation;
+  .tag,
+  .employee-state,
+  .payout-status{
+    border-color:currentColor;
+  }
 }
 
 @media (prefers-reduced-transparency:reduce){
   header,
   nav.tabs,
-  .app-confirm{
+  .sheet,
+  .point-picker,
+  .month-picker,
+  .date-picker{
     backdrop-filter:none;
     -webkit-backdrop-filter:none;
   }

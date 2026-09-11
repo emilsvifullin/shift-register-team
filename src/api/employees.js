@@ -1,5 +1,11 @@
-import {supabaseClient} from "../supabase.js";
-import {resultData} from "./shared.js";
+import {
+  invokeSupabaseFunction,
+  supabaseClient
+} from "../supabase.js";
+
+import {
+  resultData
+} from "./result.js";
 
 export async function saveAdminEmployee({
   id=null,
@@ -14,34 +20,61 @@ export async function saveAdminEmployee({
   transferRecipient=null,
   pointIds=[]
 }){
-  const result=await supabaseClient.rpc(
-    "admin_save_employee_profile",
-    {
-      p_employee_id:id,
-      p_full_name:fullName,
-      p_status:status,
-      p_hired_at:hiredAt,
-      p_user_id:userId,
-      p_employment_type:employmentType,
-      p_phone:phone,
-      p_transfer_phone:transferPhone,
-      p_transfer_bank:transferBank,
-      p_transfer_recipient:transferRecipient,
-      p_point_ids:pointIds
-    }
-  );
+  const result=
+    await supabaseClient
+      .rpc(
+        "admin_save_employee_profile",
+        {
+          p_employee_id:id,
+          p_full_name:fullName,
+          p_status:status,
+          p_hired_at:hiredAt,
+          p_user_id:userId,
+          p_employment_type:
+            employmentType,
+          p_phone:phone,
+          p_transfer_phone:
+            transferPhone,
+          p_transfer_bank:
+            transferBank,
+          p_transfer_recipient:
+            transferRecipient,
+          p_point_ids:pointIds
+        }
+      );
 
-  return resultData(result,"Не удалось сохранить сотрудника");
+  return resultData(
+    result,
+    "Не удалось сохранить сотрудника"
+  );
 }
 
-export async function rollbackAdminEmployeeCreation(id){
-  const result=await supabaseClient.rpc(
-    "admin_rollback_employee_creation",
-    {p_employee_id:id}
-  );
+export async function rollbackAdminEmployeeCreation(
+  id
+){
+  const result=
+    await supabaseClient
+      .rpc(
+        "admin_rollback_employee_creation",
+        {
+          p_employee_id:id
+        }
+      );
 
   return resultData(
     result,
     "Не удалось отменить создание сотрудника"
+  );
+}
+
+export async function deleteAdminEmployee(
+  id
+){
+  return invokeSupabaseFunction(
+    "admin-employee-auth",
+    {
+      action:"delete",
+      employeeId:id
+    }
   );
 }

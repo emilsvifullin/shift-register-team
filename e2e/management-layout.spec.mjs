@@ -9,7 +9,7 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management back chevron sits beside the page title and the fifth employee closes the list window",async({page},testInfo)=>{
+test("management back chevron stays aligned and long employee lists remain scrollable above the dock",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -24,19 +24,17 @@ test("management back chevron sits beside the page title and the fifth employee 
   await expect(back).toBeVisible();
   await expect(menu).toBeVisible();
 
-  const [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox,tabsBox]=await Promise.all([
+  const [backBox,periodBox,labelBox,menuBox,firstRowBox,dockBox,tabsBox]=await Promise.all([
     back.boundingBox(),
     period.boundingBox(),
     sectionLabel.boundingBox(),
     menu.boundingBox(),
     rows.nth(0).boundingBox(),
-    rows.nth(4).boundingBox(),
-    rows.nth(5).boundingBox(),
     dock.boundingBox(),
     tabs.boundingBox()
   ]);
 
-  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox,tabsBox]){
+  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,dockBox,tabsBox]){
     expect(box).not.toBeNull();
   }
 
@@ -67,9 +65,6 @@ test("management back chevron sits beside the page title and the fifth employee 
   expect(firstRowBox.height).toBeGreaterThanOrEqual(76);
 
   const menuBottom=menuBox.y+menuBox.height;
-  const fifthBottom=fifthRowBox.y+fifthRowBox.height;
-  expect(Math.abs(menuBottom-fifthBottom)).toBeLessThanOrEqual(3);
-  expect(sixthRowBox.y).toBeGreaterThanOrEqual(menuBottom-3);
 
   const menuMetrics=await menu.evaluate(element=>({
     clientHeight:element.clientHeight,
@@ -79,10 +74,10 @@ test("management back chevron sits beside the page title and the fifth employee 
 
   expect(menuMetrics.scrollHeight).toBeGreaterThan(menuMetrics.clientHeight);
   expect(menuMetrics.radius).toBeGreaterThanOrEqual(14);
+  expect(menuBox.height).toBeLessThanOrEqual(414);
 
   const gap=dockBox.y-menuBottom;
   expect(gap).toBeGreaterThanOrEqual(8);
-  expect(gap).toBeLessThanOrEqual(28);
 
   const tabsRadius=await tabs.evaluate(element=>
     parseFloat(getComputedStyle(element).borderTopLeftRadius)

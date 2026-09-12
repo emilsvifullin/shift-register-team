@@ -108,6 +108,32 @@ function createPointButton(
   return button;
 }
 
+function createEmptyPointState(
+  documentRef
+){
+  const empty=
+    documentRef.createElement(
+      "div"
+    );
+
+  empty.className=
+    "employee-points-empty";
+  empty.setAttribute(
+    "role",
+    "status"
+  );
+  empty.innerHTML=`
+    <div class="employee-points-empty-title">
+      Пункты выдачи ещё не добавлены
+    </div>
+    <div class="employee-points-empty-detail">
+      Добавьте ПВЗ в разделе «Пункты выдачи и тарифы».
+    </div>
+  `;
+
+  return empty;
+}
+
 function syncArchivedState(
   documentRef,
   button,
@@ -288,6 +314,19 @@ export function installManagementEmployeePoints({
         .managementPointCatalog===
       signature
     ){
+      return;
+    }
+
+    if(points.length===0){
+      container.replaceChildren(
+        createEmptyPointState(
+          documentRef
+        )
+      );
+
+      container.dataset
+        .managementPointCatalog=
+          signature;
       return;
     }
 

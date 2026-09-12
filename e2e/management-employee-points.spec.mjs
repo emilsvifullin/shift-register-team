@@ -77,3 +77,39 @@ test("employee editor shows the complete point catalog and protects archived poi
     )
   ).toBeEnabled();
 });
+
+test("employee editor renders a clear empty state when no pickup points exist",async({page})=>{
+  await page.goto(`${FIXTURE}?empty=1`);
+  await page.waitForLoadState("networkidle");
+
+  const empty=
+    page.locator(
+      ".employee-points-empty"
+    );
+
+  await expect(empty).toBeVisible();
+  await expect(
+    empty.locator(
+      ".employee-points-empty-title"
+    )
+  ).toHaveText(
+    "Пункты выдачи ещё не добавлены"
+  );
+  await expect(
+    empty.locator(
+      ".employee-points-empty-detail"
+    )
+  ).toHaveText(
+    "Добавьте ПВЗ в разделе «Пункты выдачи и тарифы»."
+  );
+
+  await expect(
+    page.locator(
+      "[data-employee-point]"
+    )
+  ).toHaveCount(0);
+
+  const box=await empty.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box.height).toBeGreaterThanOrEqual(100);
+});

@@ -148,6 +148,36 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   display:none !important;
 }
 
+/* Пустой каталог ПВЗ выглядит как нормальная карточка, а не тонкая пустая линия. */
+.employee-points-empty{
+  width:100%;
+  min-height:112px;
+  padding:22px 18px;
+  box-sizing:border-box;
+
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+
+  text-align:center;
+}
+
+.employee-points-empty-title{
+  color:var(--ink);
+  font-size:15px;
+  font-weight:600;
+  line-height:1.3;
+}
+
+.employee-points-empty-detail{
+  max-width:290px;
+  color:var(--ink3);
+  font-size:13px;
+  line-height:1.35;
+}
+
 /* Архивные ПВЗ видны в полном списке назначений, но не назначаются заново. */
 .employee-point-state{
   margin-left:auto;

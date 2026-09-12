@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Management employee points fixture</title>
+<link rel="stylesheet" href="../../styles.css">
+<link rel="stylesheet" href="../../styles/management.css">
 </head>
 <body data-active-tab="manage">
 <div id="employeeSheetBody">
@@ -25,12 +27,19 @@
 </div>
 
 <script>
-  const catalog=[
-    {id:"active-a",name:"Активный А",active:true},
-    {id:"active-b",name:"Активный Б",active:true},
-    {id:"archived-free",name:"Архивный свободный",active:false},
-    {id:"archived-selected",name:"Архивный назначенный",active:false}
-  ];
+  const emptyCatalog=
+    new URLSearchParams(
+      window.location.search
+    ).has("empty");
+
+  const catalog=emptyCatalog
+    ? []
+    : [
+        {id:"active-a",name:"Активный А",active:true},
+        {id:"active-b",name:"Активный Б",active:true},
+        {id:"archived-free",name:"Архивный свободный",active:false},
+        {id:"archived-selected",name:"Архивный назначенный",active:false}
+      ];
 
   window.supabase={
     createClient(){

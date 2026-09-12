@@ -49,7 +49,7 @@ jobs:
   browser:
     name: Browser smoke (${{ matrix.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: checks
 
     strategy:
@@ -97,6 +97,17 @@ jobs:
 
       - name: Run browser smoke
         run: npx playwright test e2e/platform-shell.spec.mjs e2e/interaction.spec.mjs e2e/state-transitions.spec.mjs --browser=${{ matrix.browser }} --reporter=line
+
+      - name: Capture visual audit
+        run: npx playwright test e2e/visual-audit.spec.mjs --browser=${{ matrix.browser }} --reporter=line
+
+      - name: Upload visual audit
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: visual-audit-${{ matrix.browser }}
+          path: visual-audit/${{ matrix.browser }}
+          if-no-files-found: error
 
       - name: Upload Playwright report
         if: failure()

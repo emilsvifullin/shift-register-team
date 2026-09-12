@@ -92,8 +92,8 @@ nav.tabs button{
 }
 
 .picker-toolbar-title{
-  left:clamp(68px,21vw,84px);
-  right:clamp(68px,21vw,84px);
+  left:clamp(76px,21vw,84px);
+  right:clamp(76px,21vw,84px);
   width:auto;
   max-width:none;
   transform:translateY(-50%);

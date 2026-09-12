@@ -27,6 +27,20 @@ function positionOf(
   return index;
 }
 
+function appVersionFromConfig(source){
+  const match=
+    source.match(
+      /APP_VERSION\s*=\s*"([^"]+)"/
+    );
+
+  assert.ok(
+    match,
+    "APP_VERSION must be declared in src/config.js"
+  );
+
+  return match[1];
+}
+
 test(
   "production entrypoint activates platform and refinement layers",
   async()=>{
@@ -174,12 +188,20 @@ test(
 test(
   "service worker serves versioned static assets from cache first",
   async()=>{
-    const sw=
-      await read("sw.js");
+    const [sw,config]=
+      await Promise.all([
+        read("sw.js"),
+        read("src/config.js")
+      ]);
 
-    assert.match(
-      sw,
-      /sr-team-runtime-v10/
+    const appVersion=
+      appVersionFromConfig(config);
+
+    assert.ok(
+      sw.includes(
+        `"sr-team-runtime-v${appVersion}"`
+      ),
+      "service worker cache must follow APP_VERSION"
     );
 
     assert.match(

@@ -24,6 +24,29 @@ function stylesheetOrder(source,prefix="./"){
   });
 }
 
+function appVersionFromConfig(source){
+  const match=source.match(/APP_VERSION\s*=\s*"([^"]+)"/);
+  assert.ok(match,"APP_VERSION must be declared in src/config.js");
+  return match[1];
+}
+
+async function finalInteractionCss(){
+  const [entry,core,management]=await Promise.all([
+    read("styles/interaction.css"),
+    read("styles/interaction-core.css"),
+    read("styles/management.css")
+  ]);
+
+  const coreImport=entry.indexOf('@import url("./interaction-core.css")');
+  const managementImport=entry.indexOf('@import url("./management.css")');
+
+  assert.notEqual(coreImport,-1,"interaction core import must stay explicit");
+  assert.notEqual(managementImport,-1,"management import must stay explicit");
+  assert.ok(coreImport<managementImport,"management overrides must load after interaction core");
+
+  return `${core}\n${management}`;
+}
+
 test("production and browser fixture share the full style cascade",async()=>{
   const [index,fixture]=await Promise.all([
     read("index.html"),
@@ -38,7 +61,7 @@ test("production and browser fixture share the full style cascade",async()=>{
 });
 
 test("interaction layer restores touch geometry after refinement",async()=>{
-  const css=await read("styles/interaction.css");
+  const css=await finalInteractionCss();
 
   assert.match(css,/--ui-target:44px/);
   assert.match(css,/nav\.tabs button[\s\S]*?min-height:44px/);
@@ -55,7 +78,7 @@ test("interaction layer restores touch geometry after refinement",async()=>{
 });
 
 test("fluid mobile contract covers safe areas narrow phones foldables and landscape",async()=>{
-  const css=await read("styles/interaction.css");
+  const css=await finalInteractionCss();
 
   assert.match(css,/env\(safe-area-inset-left\)/);
   assert.match(css,/env\(safe-area-inset-right\)/);
@@ -69,22 +92,40 @@ test("fluid mobile contract covers safe areas narrow phones foldables and landsc
   );
 });
 
-test("bottom dock clips page scrolling and keeps shift search geometry consistent",async()=>{
-  const css=await read("styles/interaction.css");
+test("bottom dock clips page scrolling and keeps final navigation geometry consistent",async()=>{
+  const css=await finalInteractionCss();
 
   assert.match(css,/--bottom-dock-space:calc\(/);
   assert.match(css,/--app-shell-height:100dvh/);
   assert.doesNotMatch(css,/--app-shell-height:max\(/);
   assert.match(css,/\.bottom-controls\{[\s\S]*?bottom:0;[\s\S]*?background:var\(--bg\)/);
-  assert.match(css,/nav\.tabs\{[\s\S]*?border-radius:999px/);
-  assert.match(css,/nav\.tabs button\{[\s\S]*?border-radius:999px/);
+  assert.ok(
+    css.lastIndexOf("border-radius:16px")>
+      css.lastIndexOf("border-radius:999px"),
+    "management polish must override the outer pill radius"
+  );
+  assert.ok(
+    css.lastIndexOf("border-radius:12px")>
+      css.lastIndexOf("border-radius:999px"),
+    "management polish must override tab pill radii"
+  );
   assert.match(css,/main\{[\s\S]*?height:calc\([\s\S]*?--app-shell-height[\s\S]*?--bottom-dock-space[\s\S]*?padding-bottom:16px/);
   assert.match(css,/#shiftSearch\{[\s\S]*?width:100%/);
   assert.match(css,/#shiftFilterOpen\{[\s\S]*?width:100%[\s\S]*?min-height:52px/);
 });
 
+test("management detail keeps a visible chevron and fills the available list area",async()=>{
+  const management=await read("styles/management.css");
+
+  assert.match(management,/\.manage-back[\s\S]*?position:absolute/);
+  assert.match(management,/\.manage-back[\s\S]*?visibility:visible[\s\S]*?opacity:1/);
+  assert.match(management,/\.manage-back svg[\s\S]*?stroke:currentColor/);
+  assert.match(management,/#employeeList,[\s\S]*?#pointManageList[\s\S]*?flex:1 1 0/);
+  assert.match(management,/#employeeList > \.manage-menu,[\s\S]*?#pointManageList > \.manage-menu[\s\S]*?height:100%[\s\S]*?overflow-y:auto/);
+});
+
 test("standalone iOS shell uses the full app viewport and modal states remove the dock",async()=>{
-  const css=await read("styles/interaction.css");
+  const css=await finalInteractionCss();
 
   assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?--app-shell-height:100vh/);
   assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.bottom-controls\{[\s\S]*?position:absolute;[\s\S]*?bottom:0/);
@@ -92,9 +133,19 @@ test("standalone iOS shell uses the full app viewport and modal states remove th
   assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:100vh/);
 });
 
-test("PWA release includes the final interaction layer",async()=>{
-  const sw=await read("sw.js");
+test("PWA release includes the complete final interaction layer",async()=>{
+  const [sw,config]=await Promise.all([
+    read("sw.js"),
+    read("src/config.js")
+  ]);
 
-  assert.match(sw,/sr-team-runtime-v10/);
+  const appVersion=appVersionFromConfig(config);
+
+  assert.ok(
+    sw.includes(`"sr-team-runtime-v${appVersion}"`),
+    "PWA cache version must follow APP_VERSION"
+  );
+  assert.match(sw,/"\.\/styles\/interaction-core\.css"/);
+  assert.match(sw,/"\.\/styles\/management\.css"/);
   assert.match(sw,/"\.\/styles\/interaction\.css"/);
 });

@@ -1,12 +1,9 @@
-import {
-  supabaseClient
-} from "./supabase.js";
-
 const POINT_CACHE_MS=15000;
 
 let pointCache=null;
 let pointCacheAt=0;
 let pointLoadPromise=null;
+let pointClientPromise=null;
 
 function escapeHtml(value){
   return String(value ?? "")
@@ -29,6 +26,18 @@ function sortPoints(points){
   );
 }
 
+async function pointClient(){
+  if(!pointClientPromise){
+    pointClientPromise=
+      import("./supabase.js")
+        .then(module=>
+          module.supabaseClient
+        );
+  }
+
+  return pointClientPromise;
+}
+
 async function loadPointCatalog(){
   const now=Date.now();
 
@@ -44,8 +53,11 @@ async function loadPointCatalog(){
   }
 
   pointLoadPromise=(async()=>{
+    const client=
+      await pointClient();
+
     const {data,error}=
-      await supabaseClient
+      await client
         .from("points")
         .select("id, name, active")
         .order(

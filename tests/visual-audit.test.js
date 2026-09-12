@@ -68,6 +68,6 @@ test("fluid mobile contract covers safe areas narrow phones foldables and landsc
 test("PWA release includes the final interaction layer",async()=>{
   const sw=await read("sw.js");
 
-  assert.match(sw,/sr-team-runtime-v6/);
+  assert.match(sw,/sr-team-runtime-v7/);
   assert.match(sw,/"\.\/styles\/interaction\.css"/);
 });

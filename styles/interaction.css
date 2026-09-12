@@ -40,6 +40,12 @@ nav.tabs button{
   grid-template-columns:44px minmax(0,1fr) 44px;
 }
 
+.date-calendar-title{
+  padding-right:10px;
+  padding-left:10px;
+  white-space:nowrap;
+}
+
 .date-day{
   height:44px;
 }
@@ -62,7 +68,6 @@ nav.tabs button{
 .payout-record > button{
   width:44px;
   height:44px;
-  margin:-8px;
   display:grid;
   place-items:center;
 }
@@ -102,8 +107,10 @@ nav.tabs button{
 .nav > button:not(:disabled),
 .period.clickable,
 nav.tabs button,
+.seg button,
 .sh,
 .manage-row,
+.manage-back,
 .manage-add,
 .btn,
 .point-row,
@@ -119,6 +126,7 @@ nav.tabs button,
 .picker-toolbar-btn,
 .lnk,
 .payout-summary,
+.payout-record > button,
 .tariff-history-actions button,
 .tariff-inline-close,
 .app-confirm-btn{
@@ -134,8 +142,10 @@ nav.tabs button,
 .nav > button.touch-active,
 .period.touch-active,
 nav.tabs button.touch-active,
+.seg button.touch-active,
 .sh.touch-active,
 .manage-row.touch-active,
+.manage-back.touch-active,
 .manage-add.touch-active,
 .btn.touch-active,
 .point-row.touch-active,
@@ -151,13 +161,14 @@ nav.tabs button.touch-active,
 .picker-toolbar-btn.touch-active,
 .lnk.touch-active,
 .payout-summary.touch-active,
+.payout-record > button.touch-active,
 .tariff-history-actions button.touch-active,
 .tariff-inline-close.touch-active,
 .app-confirm-btn.touch-active{
   transform:scale(.985);
 }
 
-/* Выбранная вкладка не должна подпрыгивать сильнее остальных. */
+/* Выбранная вкладка и сегменты не должны подпрыгивать сильнее остальных. */
 nav.tabs button.touch-active,
 .seg button.touch-active,
 .seg button.on.touch-active{
@@ -182,6 +193,18 @@ nav.tabs button.touch-active,
   }
 }
 
+/* На узком телефоне календарь использует реальную ширину sheet, а не сжимает 7 колонок. */
+@media (max-width:370px){
+  .date-weekdays,
+  .date-grid{
+    width:calc(100% + 28px);
+    max-width:none;
+    margin-right:-14px;
+    margin-left:-14px;
+    column-gap:0;
+  }
+}
+
 @media (max-width:340px){
   .picker-toolbar-title{
     left:66px;
@@ -201,8 +224,10 @@ nav.tabs button.touch-active,
   .nav > button,
   .period,
   nav.tabs button,
+  .seg button,
   .sh,
   .manage-row,
+  .manage-back,
   .manage-add,
   .btn,
   .point-row,
@@ -218,6 +243,7 @@ nav.tabs button.touch-active,
   .picker-toolbar-btn,
   .lnk,
   .payout-summary,
+  .payout-record > button,
   .tariff-history-actions button,
   .tariff-inline-close,
   .app-confirm-btn{

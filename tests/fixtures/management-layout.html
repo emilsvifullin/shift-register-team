@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Management layout fixture</title>
+<link rel="stylesheet" href="../../styles.css">
+<link rel="stylesheet" href="../../styles/accessibility.css">
+<link rel="stylesheet" href="../../styles/motion.css">
+<link rel="stylesheet" href="../../styles/workflow.css">
+<link rel="stylesheet" href="../../styles/auth.css">
+<link rel="stylesheet" href="../../styles/platform.css">
+<link rel="stylesheet" href="../../styles/refinement.css">
+<link rel="stylesheet" href="../../styles/interaction.css">
+</head>
+<body data-active-tab="manage">
+<header>
+  <div class="nav">
+    <button hidden aria-label="Назад"></button>
+    <button type="button" class="period">УПРАВЛЕНИЕ</button>
+    <button hidden aria-label="Вперёд"></button>
+  </div>
+</header>
+
+<main id="app" role="tabpanel">
+  <button type="button" class="manage-back" id="manageBack">
+    <svg viewBox="0 0 12 16" aria-hidden="true"><path d="M9 3L3 8L9 13"></path></svg>
+    <span>Управление</span>
+  </button>
+
+  <div class="ml">Сотрудники</div>
+  <button type="button" class="manage-add">＋ Добавить сотрудника</button>
+  <button type="button" class="btn employee-archive-button">Архив</button>
+
+  <div class="ml">Поиск и фильтр</div>
+  <div class="card">
+    <div class="row"><div class="l"><div class="t">Поиск</div></div></div>
+    <div class="row"><div class="l"><div class="t">Фильтр</div></div><div class="v">Все ПВЗ</div></div>
+  </div>
+
+  <div class="ml">Список</div>
+  <div id="employeeList">
+    <div class="card manage-menu">
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Абдуррахмон Гиясов</span><span class="manage-row-detail">Волгоградский Проспект 73с1 · ещё 1</span><span class="manage-row-detail">abdurahmangiyasov@gmail.com</span></span><span class="manage-chevron">›</span></button>
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Анастасия Селенок</span><span class="manage-row-detail">Пятницкий Переулок 2</span><span class="manage-row-detail">silenokanastasia1@gmail.com</span></span><span class="manage-chevron">›</span></button>
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Борух Рафаилов</span><span class="manage-row-detail">Нагатинская Набережная 56а</span><span class="manage-row-detail">1feliks.r@mail.com</span></span><span class="manage-chevron">›</span></button>
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Василиса Яворская</span><span class="manage-row-detail">Крузенштерна 9</span><span class="manage-row-detail">vasaaivorskaa7@gmail.com</span></span><span class="manage-chevron">›</span></button>
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Елена Крылова</span><span class="manage-row-detail">Корабельная 1</span><span class="manage-row-detail">elena@example.com</span></span><span class="manage-chevron">›</span></button>
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Марина Белова</span><span class="manage-row-detail">Коммунальная Улица 10</span><span class="manage-row-detail">marina@example.com</span></span><span class="manage-chevron">›</span></button>
+      <button class="manage-row" type="button"><span class="manage-row-copy"><span class="manage-row-title">Наталья Орлова</span><span class="manage-row-detail">6-я Радиальная 3к11</span><span class="manage-row-detail">natalia@example.com</span></span><span class="manage-chevron">›</span></button>
+    </div>
+  </div>
+</main>
+
+<div class="bottom-controls">
+  <nav class="tabs" role="tablist" aria-label="Разделы">
+    <button type="button">Смены</button>
+    <button type="button">Итоги</button>
+    <button type="button" class="on">Управление</button>
+    <button type="button">Данные</button>
+  </nav>
+</div>
+</body>
+</html>

@@ -1,12 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+const FIXTURE=
+  "http://127.0.0.1:4173/tests/fixtures/management-layout.html";
+
 test.use({
   viewport:{width:390,height:844},
   hasTouch:true
 });
 
 test("management detail keeps a visible back chevron and full-height rounded list",async({page},testInfo)=>{
-  await page.goto("/tests/fixtures/management-layout.html");
+  await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
   const back=page.locator(".manage-back");

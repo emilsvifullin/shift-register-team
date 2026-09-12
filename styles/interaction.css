@@ -497,3 +497,90 @@ nav.tabs button.touch-active,
     transition-duration:.001ms !important;
   }
 }
+
+/* Нижняя навигация является частью viewport, а не плавающим островом над контентом. */
+:root{
+  --bottom-tabs-height:52px;
+  --bottom-dock-gap:6px;
+  --bottom-dock-safe:max(8px,env(safe-area-inset-bottom));
+  --bottom-dock-space:calc(
+    var(--bottom-tabs-height) +
+    var(--bottom-dock-gap) +
+    var(--bottom-dock-safe)
+  );
+}
+
+.bottom-controls{
+  bottom:0;
+  min-height:var(--bottom-dock-space);
+  padding:
+    var(--bottom-dock-gap)
+    calc(8px + env(safe-area-inset-right))
+    var(--bottom-dock-safe)
+    calc(8px + env(safe-area-inset-left));
+  align-items:flex-start;
+  background:var(--bg);
+}
+
+nav.tabs{
+  height:var(--bottom-tabs-height);
+  min-height:var(--bottom-tabs-height);
+}
+
+/* Скроллируемый экран физически заканчивается перед dock: строки не просвечивают под ним. */
+main{
+  height:calc(
+    min(var(--app-viewport-height,100dvh),100dvh) -
+    var(--bottom-dock-space)
+  );
+  padding-bottom:16px;
+  scroll-padding-bottom:16px;
+}
+
+main.shifts-layout{
+  padding-bottom:0;
+}
+
+/* Поиск и фильтр смен используют одинаковую рабочую ширину и высоту. */
+#shiftSearch{
+  width:100%;
+  min-width:0;
+  min-height:28px;
+  padding:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:var(--ink);
+  font:inherit;
+}
+
+#shiftSearch,
+#shiftFilterOpen{
+  box-sizing:border-box;
+}
+
+#shiftFilterOpen{
+  width:100%;
+  min-height:52px;
+}
+
+@media (orientation:landscape) and (max-height:520px){
+  :root{
+    --bottom-tabs-height:48px;
+    --bottom-dock-gap:4px;
+  }
+
+  nav.tabs{
+    height:var(--bottom-tabs-height);
+    min-height:var(--bottom-tabs-height);
+  }
+
+  main{
+    padding-bottom:12px;
+    scroll-padding-bottom:12px;
+  }
+
+  main.shifts-layout{
+    padding-bottom:0;
+  }
+}

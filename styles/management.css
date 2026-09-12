@@ -14,11 +14,14 @@ body[data-active-tab="manage"] main:has(> .manage-back){
   padding-top:calc(68px + env(safe-area-inset-top));
 }
 
-/* Кнопка назад визуально принадлежит верхней шапке, а не заголовку подраздела. */
+/* Кнопка назад визуально принадлежит верхней шапке и стоит слева от названия страницы. */
 body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
   position:fixed;
   top:calc(14px + env(safe-area-inset-top));
-  left:calc(var(--ui-gutter,16px) + env(safe-area-inset-left));
+  left:max(
+    calc(var(--ui-gutter,16px) + env(safe-area-inset-left)),
+    calc(50% - 108px)
+  );
   z-index:22;
 
   width:44px;
@@ -45,12 +48,12 @@ body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
 }
 
 body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back svg{
-  width:10px;
-  height:17px;
+  width:11px;
+  height:18px;
   display:block;
   fill:none;
   stroke:currentColor;
-  stroke-width:1.65;
+  stroke-width:1.8;
   stroke-linecap:round;
   stroke-linejoin:round;
 }
@@ -109,16 +112,26 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   -webkit-overflow-scrolling:touch;
 }
 
-/*
-  На высоких телефонах строки слегка увеличиваются: последняя целая строка
-  аккуратно заканчивается у нижней границы окна, без тонкого хвоста следующей.
-*/
 #employeeList .employee-row{
-  min-height:clamp(76px,8.8dvh,79px);
+  min-height:76px;
 }
 
 #pointManageList .point-manage-row{
-  min-height:clamp(54px,6.15dvh,55px);
+  min-height:54px;
+}
+
+/*
+  На телефоне окно списка показывает ровно пять полных сотрудников или семь ПВЗ.
+  Следующая строка начинается уже за границей скролл-окна, без тонкого хвоста снизу.
+*/
+@media (max-width:520px) and (min-height:760px){
+  #employeeList .employee-row{
+    min-height:20%;
+  }
+
+  #pointManageList .point-manage-row{
+    min-height:calc(100% / 7);
+  }
 }
 
 @media (hover:hover) and (pointer:fine){

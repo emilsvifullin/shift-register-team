@@ -9,7 +9,7 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management back chevron sits in the page header and employee rows use the intended mobile height",async({page},testInfo)=>{
+test("management back chevron sits beside the page title and the fifth employee closes the list window",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -17,23 +17,25 @@ test("management back chevron sits in the page header and employee rows use the 
   const period=page.locator("header .period");
   const sectionLabel=page.locator("main > .ml").first();
   const menu=page.locator("#employeeList > .manage-menu");
-  const firstRow=page.locator("#employeeList .employee-row").first();
+  const rows=page.locator("#employeeList .employee-row");
   const dock=page.locator(".bottom-controls");
   const tabs=page.locator("nav.tabs");
 
   await expect(back).toBeVisible();
   await expect(menu).toBeVisible();
 
-  const [backBox,periodBox,labelBox,menuBox,rowBox,dockBox]=await Promise.all([
+  const [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox]=await Promise.all([
     back.boundingBox(),
     period.boundingBox(),
     sectionLabel.boundingBox(),
     menu.boundingBox(),
-    firstRow.boundingBox(),
+    rows.nth(0).boundingBox(),
+    rows.nth(4).boundingBox(),
+    rows.nth(5).boundingBox(),
     dock.boundingBox()
   ]);
 
-  for(const box of [backBox,periodBox,labelBox,menuBox,rowBox,dockBox]){
+  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox]){
     expect(box).not.toBeNull();
   }
 
@@ -43,6 +45,7 @@ test("management back chevron sits in the page header and employee rows use the 
       (periodBox.y+periodBox.height/2)
     )
   ).toBeLessThanOrEqual(1);
+  expect(backBox.x).toBeGreaterThan(70);
   expect(backBox.x+backBox.width).toBeLessThan(periodBox.x+periodBox.width/2);
   expect(Math.abs(labelBox.x-menuBox.x)).toBeLessThanOrEqual(8);
 
@@ -53,7 +56,12 @@ test("management back chevron sits in the page header and employee rows use the 
 
   expect(backVisual.stroke).not.toBe("none");
   expect(Number(backVisual.opacity)).toBeGreaterThan(0);
-  expect(rowBox.height).toBeGreaterThanOrEqual(78);
+  expect(firstRowBox.height).toBeGreaterThanOrEqual(76);
+
+  const menuBottom=menuBox.y+menuBox.height;
+  const fifthBottom=fifthRowBox.y+fifthRowBox.height;
+  expect(Math.abs(menuBottom-fifthBottom)).toBeLessThanOrEqual(3);
+  expect(sixthRowBox.y).toBeGreaterThanOrEqual(menuBottom-3);
 
   const menuMetrics=await menu.evaluate(element=>({
     clientHeight:element.clientHeight,
@@ -64,7 +72,7 @@ test("management back chevron sits in the page header and employee rows use the 
   expect(menuMetrics.scrollHeight).toBeGreaterThan(menuMetrics.clientHeight);
   expect(menuMetrics.radius).toBeGreaterThanOrEqual(14);
 
-  const gap=dockBox.y-(menuBox.y+menuBox.height);
+  const gap=dockBox.y-menuBottom;
   expect(gap).toBeGreaterThanOrEqual(8);
   expect(gap).toBeLessThanOrEqual(28);
 
@@ -80,7 +88,7 @@ test("management back chevron sits in the page header and employee rows use the 
   });
 });
 
-test("point rows slightly expand without losing the rounded scroll window",async({page},testInfo)=>{
+test("the seventh point closes the rounded point list window",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -112,17 +120,26 @@ test("point rows slightly expand without losing the rounded scroll window",async
   });
 
   const menu=page.locator("#pointManageList > .manage-menu");
-  const firstRow=page.locator("#pointManageList .point-manage-row").first();
+  const rows=page.locator("#pointManageList .point-manage-row");
   await expect(menu).toBeVisible();
 
-  const [menuBox,rowBox]=await Promise.all([
+  const [menuBox,firstRowBox,seventhRowBox,eighthRowBox]=await Promise.all([
     menu.boundingBox(),
-    firstRow.boundingBox()
+    rows.nth(0).boundingBox(),
+    rows.nth(6).boundingBox(),
+    rows.nth(7).boundingBox()
   ]);
 
-  expect(menuBox).not.toBeNull();
-  expect(rowBox).not.toBeNull();
-  expect(rowBox.height).toBeGreaterThanOrEqual(55);
+  for(const box of [menuBox,firstRowBox,seventhRowBox,eighthRowBox]){
+    expect(box).not.toBeNull();
+  }
+
+  expect(firstRowBox.height).toBeGreaterThanOrEqual(54);
+
+  const menuBottom=menuBox.y+menuBox.height;
+  const seventhBottom=seventhRowBox.y+seventhRowBox.height;
+  expect(Math.abs(menuBottom-seventhBottom)).toBeLessThanOrEqual(3);
+  expect(eighthRowBox.y).toBeGreaterThanOrEqual(menuBottom-3);
 
   const metrics=await menu.evaluate(element=>({
     clientHeight:element.clientHeight,

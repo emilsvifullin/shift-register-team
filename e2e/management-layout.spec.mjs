@@ -24,7 +24,7 @@ test("management back chevron sits beside the page title and the fifth employee 
   await expect(back).toBeVisible();
   await expect(menu).toBeVisible();
 
-  const [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox]=await Promise.all([
+  const [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox,tabsBox]=await Promise.all([
     back.boundingBox(),
     period.boundingBox(),
     sectionLabel.boundingBox(),
@@ -32,10 +32,11 @@ test("management back chevron sits beside the page title and the fifth employee 
     rows.nth(0).boundingBox(),
     rows.nth(4).boundingBox(),
     rows.nth(5).boundingBox(),
-    dock.boundingBox()
+    dock.boundingBox(),
+    tabs.boundingBox()
   ]);
 
-  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox]){
+  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthRowBox,sixthRowBox,dockBox,tabsBox]){
     expect(box).not.toBeNull();
   }
 
@@ -48,6 +49,13 @@ test("management back chevron sits beside the page title and the fifth employee 
   expect(backBox.x).toBeGreaterThan(70);
   expect(backBox.x+backBox.width).toBeLessThan(periodBox.x+periodBox.width/2);
   expect(Math.abs(labelBox.x-menuBox.x)).toBeLessThanOrEqual(8);
+
+  expect(
+    Math.abs(tabsBox.x-menuBox.x)
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(tabsBox.width-menuBox.width)
+  ).toBeLessThanOrEqual(2);
 
   const backVisual=await page.locator(".manage-back svg path").evaluate(element=>({
     stroke:getComputedStyle(element).stroke,

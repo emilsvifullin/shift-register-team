@@ -63,3 +63,70 @@ test("management tiles and header back work from the first user tap",async({page
   );
   await expect(headerBack).toBeDisabled();
 });
+
+test("point deletion is exposed only after entering point edit mode",async({page},testInfo)=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  await page.locator(
+    '[data-manage-section="points"]'
+  ).click();
+
+  const point=
+    page.locator(
+      '[data-point-id="point-demo"]'
+    );
+
+  await expect(point).toBeVisible();
+  await point.click();
+
+  await expect(
+    page.locator("#manageEditorSheet")
+  ).toHaveClass(/on/);
+
+  await expect(
+    page.locator("#managePointDelete")
+  ).toHaveCount(0);
+
+  await page.locator(
+    "#manageEditorSave"
+  ).click();
+
+  const deleteButton=
+    page.locator(
+      "#managePointDelete"
+    );
+
+  await expect(deleteButton).toBeVisible();
+  await expect(deleteButton).toHaveText(
+    "Удалить ПВЗ"
+  );
+  await expect(
+    page.locator("#managePointName")
+  ).toBeVisible();
+
+  const [buttonBox,editorBox]=await Promise.all([
+    deleteButton.boundingBox(),
+    page.locator(
+      "#manageEditorSheet"
+    ).boundingBox()
+  ]);
+
+  expect(buttonBox).not.toBeNull();
+  expect(editorBox).not.toBeNull();
+  expect(buttonBox.x).toBeGreaterThanOrEqual(
+    editorBox.x+12
+  );
+  expect(
+    buttonBox.x+buttonBox.width
+  ).toBeLessThanOrEqual(
+    editorBox.x+editorBox.width-12
+  );
+
+  await page.screenshot({
+    path:testInfo.outputPath(
+      "management-point-edit-delete.png"
+    ),
+    fullPage:false
+  });
+});

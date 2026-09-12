@@ -136,6 +136,25 @@ nav.tabs button:focus:not(:focus-visible),
   outline-offset:0;
 }
 
+/*
+  Safari can briefly expose a focus-visible ring when focus is restored
+  programmatically after a touch interaction. Keep DOM focus intact for
+  accessibility, but render pointer/touch focus like native iOS controls.
+*/
+body[data-input-modality="pointer"] button:focus,
+body[data-input-modality="pointer"] .period:focus,
+body[data-input-modality="pointer"] .sh:focus,
+body[data-input-modality="pointer"] [role="tab"]:focus,
+body[data-input-modality="pointer"] [role="option"]:focus{
+  outline:none !important;
+  outline-offset:0 !important;
+}
+
+/* A closing dialog may stay display:block for its exit animation only. */
+[role="dialog"][aria-hidden="true"]{
+  pointer-events:none !important;
+}
+
 @media (hover:hover) and (pointer:fine){
   *:focus:not(:focus-visible){
     outline:none;

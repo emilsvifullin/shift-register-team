@@ -62,7 +62,11 @@ test("fluid mobile contract covers safe areas narrow phones foldables and landsc
   assert.match(css,/@media \(max-width:319px\)/);
   assert.match(css,/@media \(min-width:521px\) and \(max-width:899px\)/);
   assert.match(css,/@media \(orientation:landscape\) and \(max-height:520px\)/);
-  assert.match(css,/max-height:calc\([\s\S]*?--app-viewport-height/);
+  assert.match(
+    css,
+    /max-height:min\([\s\S]*?--app-viewport-height[\s\S]*?100dvh/,
+    "overlays must be bounded by both JS viewport metrics and the live dynamic viewport"
+  );
 });
 
 test("PWA release includes the final interaction layer",async()=>{

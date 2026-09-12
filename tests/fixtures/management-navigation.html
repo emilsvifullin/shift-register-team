@@ -99,6 +99,7 @@
   }
 
   function openPointView(){
+    editor.style.display="block";
     editor.classList.add("on");
     editor.setAttribute("aria-hidden","false");
     document.body.classList.add("sheet-open");
@@ -132,6 +133,7 @@
     editor.setAttribute("aria-hidden","true");
     document.body.classList.remove("sheet-open");
     editorBody.innerHTML="";
+    editor.style.display="none";
   }
 
   app.addEventListener("click",event=>{

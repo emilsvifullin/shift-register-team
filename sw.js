@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.16";
+  "sr-team-runtime-v6.22.17";
 
 const INDEX_FILE=
   "./index.html";
@@ -43,7 +43,7 @@ const ASSETS=[
   "./src/management-employee-points.js",
   "./src/management-tap-intent.js",
   "./src/management-navigation.js",
-  "./src/month-paging.js",
+  "./src/month-motion-tuning.js",
   "./src/supabase.js",
   "./src/auth.js",
   "./src/frame-guard.js",
@@ -262,6 +262,7 @@ async function navigationResponse(
 
     const scope=
       new URL(
+        INDEX_FILE,
         self.registration.scope
       );
 
@@ -302,9 +303,7 @@ self.addEventListener(
       new URL(request.url);
 
     const scope=
-      new URL(
-        self.registration.scope
-      );
+      new URL(self.registration.scope);
 
     if(
       REMOTE_ASSETS.includes(

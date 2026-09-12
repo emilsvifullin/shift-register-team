@@ -1,0 +1,226 @@
+/* ===== interaction / touch polish ===== */
+
+:root{
+  --ui-target:44px;
+}
+
+/* Последний слой не должен уменьшать accessibility hit areas. */
+.period,
+nav.tabs button,
+.date-calendar-title,
+.date-calendar-nav,
+.date-day,
+.date-today,
+.month-today,
+.month-option,
+.date-jump-month,
+.picker-toolbar-btn,
+.lnk,
+.tariff-history-actions button,
+.tariff-inline-close{
+  min-height:var(--ui-target);
+}
+
+.nav > button,
+.date-calendar-nav{
+  width:var(--ui-target);
+  height:var(--ui-target);
+  min-width:var(--ui-target);
+}
+
+nav.tabs{
+  min-height:52px;
+}
+
+nav.tabs button{
+  min-height:44px;
+}
+
+.date-calendar-head{
+  grid-template-columns:44px minmax(0,1fr) 44px;
+}
+
+.date-day{
+  height:44px;
+}
+
+.date-today,
+.month-today{
+  height:44px;
+}
+
+.date-jump-month,
+.month-option{
+  min-height:44px;
+}
+
+/* Маленькая иконка удаления остаётся визуально компактной, hit area — нет. */
+.payout-record{
+  grid-template-columns:minmax(0,1fr) auto 44px;
+}
+
+.payout-record > button{
+  width:44px;
+  height:44px;
+  margin:-8px;
+  display:grid;
+  place-items:center;
+}
+
+.tariff-history-actions button,
+.tariff-inline-close{
+  min-height:44px;
+}
+
+/* Заголовок picker не может заходить под Отмена / Готово на 320–360 px. */
+.picker-toolbar{
+  min-height:44px;
+  height:44px;
+}
+
+.picker-toolbar-btn{
+  position:relative;
+  z-index:2;
+  min-width:64px;
+  padding-right:4px;
+  padding-left:4px;
+}
+
+.picker-toolbar-title{
+  left:76px;
+  right:76px;
+  width:auto;
+  max-width:none;
+  transform:translateY(-50%);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  text-align:center;
+}
+
+/* Один motion-contract для мыши, touch и pen. */
+.nav > button:not(:disabled),
+.period.clickable,
+nav.tabs button,
+.sh,
+.manage-row,
+.manage-add,
+.btn,
+.point-row,
+.employee-point,
+.point-option,
+.date-day,
+.month-option,
+.date-jump-month,
+.date-calendar-nav,
+.date-calendar-title,
+.date-today,
+.month-today,
+.picker-toolbar-btn,
+.lnk,
+.payout-summary,
+.tariff-history-actions button,
+.tariff-inline-close,
+.app-confirm-btn{
+  transition:
+    transform var(--ui-fast) var(--ui-ease),
+    background-color var(--ui-base) ease,
+    border-color var(--ui-base) ease,
+    color var(--ui-base) ease,
+    opacity var(--ui-base) ease,
+    box-shadow var(--ui-base) ease;
+}
+
+.nav > button.touch-active,
+.period.touch-active,
+nav.tabs button.touch-active,
+.sh.touch-active,
+.manage-row.touch-active,
+.manage-add.touch-active,
+.btn.touch-active,
+.point-row.touch-active,
+.employee-point.touch-active,
+.point-option.touch-active,
+.date-day.touch-active,
+.month-option.touch-active,
+.date-jump-month.touch-active,
+.date-calendar-nav.touch-active,
+.date-calendar-title.touch-active,
+.date-today.touch-active,
+.month-today.touch-active,
+.picker-toolbar-btn.touch-active,
+.lnk.touch-active,
+.payout-summary.touch-active,
+.tariff-history-actions button.touch-active,
+.tariff-inline-close.touch-active,
+.app-confirm-btn.touch-active{
+  transform:scale(.985);
+}
+
+/* Выбранная вкладка не должна подпрыгивать сильнее остальных. */
+nav.tabs button.touch-active,
+.seg button.touch-active,
+.seg button.on.touch-active{
+  transform:scale(.985);
+}
+
+@media (max-width:420px){
+  .date-day{
+    height:44px;
+  }
+
+  .picker-toolbar-btn{
+    min-width:60px;
+    font-size:13px;
+  }
+
+  .picker-toolbar-title{
+    left:68px;
+    right:68px;
+    font-size:10px;
+    letter-spacing:.12em;
+  }
+}
+
+@media (max-width:340px){
+  .picker-toolbar-title{
+    left:66px;
+    right:66px;
+    font-size:9px;
+    letter-spacing:.1em;
+  }
+
+  nav.tabs button{
+    padding-right:5px;
+    padding-left:5px;
+    font-size:11.5px;
+  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .nav > button,
+  .period,
+  nav.tabs button,
+  .sh,
+  .manage-row,
+  .manage-add,
+  .btn,
+  .point-row,
+  .employee-point,
+  .point-option,
+  .date-day,
+  .month-option,
+  .date-jump-month,
+  .date-calendar-nav,
+  .date-calendar-title,
+  .date-today,
+  .month-today,
+  .picker-toolbar-btn,
+  .lnk,
+  .payout-summary,
+  .tariff-history-actions button,
+  .tariff-inline-close,
+  .app-confirm-btn{
+    transition-duration:.001ms !important;
+  }
+}

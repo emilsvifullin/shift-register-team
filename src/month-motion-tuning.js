@@ -1,6 +1,24 @@
 const nativeAnimate=Element.prototype.animate;
 
-function isOldMonthTransition(keyframes,options){
+function isMonthTransitionElement(element){
+  if(!(element instanceof HTMLElement)) return false;
+
+  if(
+    element.id==="app" ||
+    element.id==="period"
+  ){
+    return true;
+  }
+
+  return (
+    element.getAttribute("aria-hidden")==="true" &&
+    element.hasAttribute("inert") &&
+    element.style.position==="fixed"
+  );
+}
+
+function isOldMonthTransition(element,keyframes,options){
+  if(!isMonthTransitionElement(element)) return false;
   if(!Array.isArray(keyframes) || keyframes.length!==2) return false;
   if(Number(options?.duration)!==320) return false;
 
@@ -96,7 +114,7 @@ function tunedKeyframes(keyframes){
 }
 
 Element.prototype.animate=function(keyframes,options){
-  if(!isOldMonthTransition(keyframes,options)){
+  if(!isOldMonthTransition(this,keyframes,options)){
     return nativeAnimate.call(this,keyframes,options);
   }
 

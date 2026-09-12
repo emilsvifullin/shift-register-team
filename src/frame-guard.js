@@ -14,7 +14,7 @@ if(globalThis.self!==globalThis.top){
   if(source){
     for(const modulePath of [
       "./management-navigation.js",
-      "./month-paging.js"
+      "./month-motion-tuning.js"
     ]){
       const script=
         document.createElement("script");

@@ -80,13 +80,13 @@ test("point deletion is admin-only and refuses points with shift history",async(
   );
 });
 
-test("mobile bottom navigation uses the same horizontal gutter as page content",async()=>{
+test("phone bottom navigation uses the same horizontal gutter as page content",async()=>{
   const css=await read(
     "styles/management.css"
   );
 
   assert.match(
     css,
-    /@media \(max-width:899px\)[\s\S]*?\.bottom-controls\{[\s\S]*?padding-left:calc\(var\(--ui-gutter,16px\) \+ env\(safe-area-inset-left\)\)[\s\S]*?padding-right:calc\(var\(--ui-gutter,16px\) \+ env\(safe-area-inset-right\)\)[\s\S]*?nav\.tabs\{[\s\S]*?width:100%/
+    /@media \(max-width:520px\)[\s\S]*?\.bottom-controls\{[\s\S]*?padding-left:calc\(var\(--ui-gutter,16px\) \+ env\(safe-area-inset-left\)\)[\s\S]*?padding-right:calc\(var\(--ui-gutter,16px\) \+ env\(safe-area-inset-right\)\)[\s\S]*?nav\.tabs\{[\s\S]*?width:100%/
   );
 });

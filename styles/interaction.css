@@ -77,7 +77,7 @@ nav.tabs button{
   min-height:44px;
 }
 
-/* Заголовок picker не может заходить под Отмена / Готово на 320–360 px. */
+/* Заголовок picker не может заходить под Отмена / Готово. */
 .picker-toolbar{
   min-height:44px;
   height:44px;
@@ -86,14 +86,14 @@ nav.tabs button{
 .picker-toolbar-btn{
   position:relative;
   z-index:2;
-  min-width:64px;
+  min-width:clamp(58px,18vw,72px);
   padding-right:4px;
   padding-left:4px;
 }
 
 .picker-toolbar-title{
-  left:76px;
-  right:76px;
+  left:clamp(68px,21vw,84px);
+  right:clamp(68px,21vw,84px);
   width:auto;
   max-width:none;
   transform:translateY(-50%);
@@ -101,6 +101,93 @@ nav.tabs button{
   text-overflow:ellipsis;
   white-space:nowrap;
   text-align:center;
+}
+
+/* Sheet toolbar использует такой же безопасный центральный диапазон. */
+.shead{
+  grid-template-columns:minmax(58px,1fr) minmax(0,auto) minmax(58px,1fr);
+  column-gap:6px;
+}
+
+.shead .ttl{
+  max-width:min(44vw,320px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.shead .lnk{
+  min-width:0;
+  display:inline-flex;
+  align-items:center;
+}
+
+/* Защита от горизонтального переполнения на узких и складных экранах. */
+html,
+body,
+main,
+header,
+.bottom-controls{
+  max-width:100%;
+}
+
+header{
+  padding-left:calc(var(--ui-gutter,16px) + env(safe-area-inset-left));
+  padding-right:calc(var(--ui-gutter,16px) + env(safe-area-inset-right));
+}
+
+main{
+  padding-left:calc(var(--ui-gutter,16px) + env(safe-area-inset-left));
+  padding-right:calc(var(--ui-gutter,16px) + env(safe-area-inset-right));
+  scroll-padding-top:calc(92px + env(safe-area-inset-top));
+  scroll-padding-bottom:calc(92px + env(safe-area-inset-bottom));
+}
+
+.bottom-controls{
+  padding-left:calc(8px + env(safe-area-inset-left));
+  padding-right:calc(8px + env(safe-area-inset-right));
+}
+
+nav.tabs{
+  width:min(100%,520px);
+  max-width:100%;
+}
+
+nav.tabs button{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.sheet,
+.point-picker,
+.month-picker,
+.date-picker{
+  max-height:calc(
+    var(--app-viewport-height,100dvh) -
+    env(safe-area-inset-top) -
+    6px
+  );
+}
+
+.sbody,
+.point-list{
+  min-height:0;
+  overscroll-behavior:contain;
+}
+
+.row,
+.sh,
+.manage-row,
+.seg,
+.seg button{
+  min-width:0;
+}
+
+.row .v{
+  max-width:58%;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 /* Один motion-contract для мыши, touch и pen. */
@@ -175,21 +262,39 @@ nav.tabs button.touch-active,
   transform:scale(.985);
 }
 
+/* Compact phones, включая узкие cover-screen складных устройств. */
 @media (max-width:420px){
+  :root{
+    --ui-gutter:12px;
+  }
+
   .date-day{
     height:44px;
   }
 
   .picker-toolbar-btn{
-    min-width:60px;
     font-size:13px;
   }
 
   .picker-toolbar-title{
-    left:76px;
-    right:76px;
-    font-size:10px;
+    font-size:clamp(9px,2.7vw,10px);
     letter-spacing:.12em;
+  }
+
+  .row,
+  .sh,
+  .manage-row{
+    gap:10px;
+  }
+
+  .row .v{
+    max-width:55%;
+  }
+
+  .seg button{
+    padding-right:3px;
+    padding-left:3px;
+    font-size:clamp(10px,3vw,12px);
   }
 }
 
@@ -203,20 +308,148 @@ nav.tabs button.touch-active,
     margin-left:-14px;
     column-gap:0;
   }
-}
 
-@media (max-width:340px){
-  .picker-toolbar-title{
-    left:76px;
-    right:76px;
-    font-size:9px;
-    letter-spacing:.1em;
+  .tab-label-full{
+    display:none;
+  }
+
+  .tab-label-short{
+    display:inline;
   }
 
   nav.tabs button{
     padding-right:5px;
     padding-left:5px;
     font-size:11.5px;
+  }
+
+  .sh{
+    gap:8px;
+    padding-right:10px;
+    padding-left:10px;
+  }
+
+  .sh .day{
+    width:30px;
+  }
+
+  .sh .p{
+    font-size:13.5px;
+  }
+
+  .sh .meta{
+    font-size:10.5px;
+  }
+
+  .sh .amt{
+    max-width:32%;
+    overflow:hidden;
+    font-size:13.5px;
+    text-overflow:ellipsis;
+  }
+}
+
+@media (max-width:319px){
+  :root{
+    --ui-gutter:10px;
+  }
+
+  nav.tabs{
+    min-height:50px;
+    padding:3px;
+  }
+
+  nav.tabs button{
+    min-height:44px;
+    padding-right:3px;
+    padding-left:3px;
+    font-size:10.5px;
+  }
+
+  .picker-toolbar-title,
+  .shead .ttl{
+    letter-spacing:.08em;
+  }
+
+  .shead{
+    padding-right:10px;
+    padding-left:10px;
+  }
+
+  .lnk{
+    font-size:13px;
+  }
+
+  .row,
+  .sh,
+  .manage-row{
+    padding-right:10px;
+    padding-left:10px;
+  }
+}
+
+/* Большие телефоны и раскрытые foldables используют доступную ширину, не превращаясь в desktop. */
+@media (min-width:521px) and (max-width:899px){
+  :root{
+    --ui-gutter:20px;
+  }
+
+  header .nav,
+  main{
+    width:100%;
+    max-width:760px;
+    margin-right:auto;
+    margin-left:auto;
+  }
+
+  nav.tabs{
+    width:min(100%,560px);
+  }
+
+  .sheet,
+  .point-picker{
+    width:min(calc(100% - 24px),760px);
+    max-width:760px;
+    margin-right:auto;
+    margin-left:auto;
+  }
+}
+
+/* Низкие landscape-экраны: панели остаются доступными и не съедают рабочую область. */
+@media (orientation:landscape) and (max-height:520px){
+  header{
+    padding-top:calc(6px + env(safe-area-inset-top));
+    padding-bottom:6px;
+  }
+
+  main{
+    padding-top:calc(64px + env(safe-area-inset-top));
+    padding-bottom:calc(78px + env(safe-area-inset-bottom));
+    scroll-padding-top:calc(68px + env(safe-area-inset-top));
+    scroll-padding-bottom:calc(74px + env(safe-area-inset-bottom));
+  }
+
+  .bottom-controls{
+    bottom:calc(4px + env(safe-area-inset-bottom));
+  }
+
+  nav.tabs{
+    min-height:48px;
+  }
+
+  .sheet,
+  .point-picker,
+  .month-picker,
+  .date-picker{
+    max-height:calc(
+      var(--app-viewport-height,100dvh) -
+      env(safe-area-inset-top) -
+      4px
+    );
+  }
+
+  .grab{
+    margin-top:5px;
   }
 }
 

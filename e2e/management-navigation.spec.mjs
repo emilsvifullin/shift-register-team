@@ -9,7 +9,7 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management tiles and header back work from the first user tap",async({page})=>{
+test("management tiles and header back work from the first user tap without pointer focus flash",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -47,6 +47,14 @@ test("management tiles and header back work from the first user tap",async({page
   await expect(
     page.locator("#manageBack")
   ).toBeHidden();
+
+  await headerBack.focus();
+
+  await expect.poll(
+    ()=>page.evaluate(()=>
+      document.activeElement?.id || ""
+    )
+  ).not.toBe("prevM");
 
   await headerBack.click();
 
@@ -126,6 +134,72 @@ test("point deletion is exposed only after entering point edit mode",async({page
   await page.screenshot({
     path:testInfo.outputPath(
       "management-point-edit-delete.png"
+    ),
+    fullPage:false
+  });
+});
+
+test("employee deletion is hidden in read-only view and appears after Edit",async({page},testInfo)=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  await page.evaluate(()=>{
+    window.openEmployeeView();
+  });
+
+  const originalDelete=
+    page.locator("#employeeDelete");
+
+  await expect(originalDelete).toBeHidden();
+  await expect(
+    page.locator("#employeeEditDelete")
+  ).toHaveCount(0);
+
+  await page.locator(
+    "#employeeSheetSave"
+  ).click();
+
+  await expect(
+    page.locator("#employeeName")
+  ).toBeVisible();
+
+  const editDelete=
+    page.locator("#employeeEditDelete");
+
+  await expect(editDelete).toBeVisible();
+  await expect(editDelete).toHaveText(
+    "Удалить сотрудника"
+  );
+
+  await editDelete.click();
+
+  await expect(
+    page.locator("#appConfirm")
+  ).toHaveClass(/on/);
+
+  expect(
+    await page.evaluate(()=>
+      window.employeeDeleteCalls
+    )
+  ).toBe(1);
+
+  await expect(
+    page.locator("#employeeSheetSave")
+  ).toHaveText("Готово");
+
+  await expect(
+    page.locator("#employeeName")
+  ).toBeVisible();
+
+  await page.locator(
+    "#appConfirmCancel"
+  ).click();
+
+  await expect(editDelete).toBeVisible();
+
+  await page.screenshot({
+    path:testInfo.outputPath(
+      "management-employee-edit-delete.png"
     ),
     fullPage:false
   });

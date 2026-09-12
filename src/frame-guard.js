@@ -12,11 +12,16 @@ if(globalThis.self!==globalThis.top){
     document.currentScript?.src;
 
   if(source){
-    void import(
+    const script=
+      document.createElement("script");
+
+    script.type="module";
+    script.src=
       new URL(
         "./management-navigation.js",
         source
-      ).href
-    );
+      ).href;
+
+    document.head.append(script);
   }
 }

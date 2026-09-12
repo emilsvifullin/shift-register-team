@@ -114,14 +114,17 @@ test("bottom dock clips page scrolling and keeps final navigation geometry consi
   assert.match(css,/#shiftFilterOpen\{[\s\S]*?width:100%[\s\S]*?min-height:52px/);
 });
 
-test("management detail keeps a visible chevron and fills the available list area",async()=>{
+test("management detail keeps the chevron in the header and sizes list rows for mobile",async()=>{
   const management=await read("styles/management.css");
 
-  assert.match(management,/\.manage-back[\s\S]*?position:absolute/);
+  assert.match(management,/\.manage-back[\s\S]*?position:fixed/);
+  assert.match(management,/\.manage-back[\s\S]*?top:calc\(14px \+ env\(safe-area-inset-top\)\)/);
   assert.match(management,/\.manage-back[\s\S]*?visibility:visible[\s\S]*?opacity:1/);
   assert.match(management,/\.manage-back svg[\s\S]*?stroke:currentColor/);
   assert.match(management,/#employeeList,[\s\S]*?#pointManageList[\s\S]*?flex:1 1 0/);
   assert.match(management,/#employeeList > \.manage-menu,[\s\S]*?#pointManageList > \.manage-menu[\s\S]*?height:100%[\s\S]*?overflow-y:auto/);
+  assert.match(management,/#employeeList \.employee-row\{[\s\S]*?min-height:clamp\(76px,8\.8dvh,79px\)/);
+  assert.match(management,/#pointManageList \.point-manage-row\{[\s\S]*?min-height:clamp\(54px,6\.15dvh,55px\)/);
 });
 
 test("standalone iOS shell uses the full app viewport and modal states remove the dock",async()=>{

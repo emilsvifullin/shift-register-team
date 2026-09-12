@@ -14,11 +14,12 @@ body[data-active-tab="manage"] main:has(> .manage-back){
   padding-top:calc(68px + env(safe-area-inset-top));
 }
 
+/* Кнопка назад визуально принадлежит верхней шапке, а не заголовку подраздела. */
 body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-  position:absolute;
-  top:calc(63px + env(safe-area-inset-top));
+  position:fixed;
+  top:calc(14px + env(safe-area-inset-top));
   left:calc(var(--ui-gutter,16px) + env(safe-area-inset-left));
-  z-index:4;
+  z-index:22;
 
   width:44px;
   height:44px;
@@ -68,7 +69,7 @@ body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back span{
 
 body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back + .ml{
   margin-top:8px;
-  margin-left:48px;
+  margin-left:3px;
 }
 
 body[data-active-tab="manage"] main:has(#employeeList),
@@ -108,6 +109,18 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   -webkit-overflow-scrolling:touch;
 }
 
+/*
+  На высоких телефонах строки слегка увеличиваются: последняя целая строка
+  аккуратно заканчивается у нижней границы окна, без тонкого хвоста следующей.
+*/
+#employeeList .employee-row{
+  min-height:clamp(76px,8.8dvh,79px);
+}
+
+#pointManageList .point-manage-row{
+  min-height:clamp(54px,6.15dvh,55px);
+}
+
 @media (hover:hover) and (pointer:fine){
   body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back:hover{
     color:var(--ink);
@@ -120,6 +133,6 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   }
 
   body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-    top:calc(47px + env(safe-area-inset-top));
+    top:calc(6px + env(safe-area-inset-top));
   }
 }

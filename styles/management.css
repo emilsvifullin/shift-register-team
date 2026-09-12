@@ -9,8 +9,8 @@ nav.tabs button{
   border-radius:12px;
 }
 
-/* На мобильных нижняя панель совпадает по рабочей ширине с карточками страницы. */
-@media (max-width:899px){
+/* На телефонах нижняя панель совпадает по рабочей ширине с карточками страницы. */
+@media (max-width:520px){
   .bottom-controls{
     padding-left:calc(var(--ui-gutter,16px) + env(safe-area-inset-left));
     padding-right:calc(var(--ui-gutter,16px) + env(safe-area-inset-right));

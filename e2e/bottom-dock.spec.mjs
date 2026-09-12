@@ -143,7 +143,7 @@ test(
 );
 
 test(
-  "active tab follows the same pill curvature as the navigation shell",
+  "bottom navigation uses the compact app curvature",
   async({page})=>{
     await page.setViewportSize({width:390,height:844});
     await page.goto(FIXTURE);
@@ -161,9 +161,9 @@ test(
       };
     });
 
-    expect(radii.outer).toBe("999px");
-    expect(radii.active).toBe("999px");
-    expect(radii.activeRight).toBe("999px");
+    expect(radii.outer).toBe("16px");
+    expect(radii.active).toBe("12px");
+    expect(radii.activeRight).toBe("12px");
   }
 );
 

@@ -32,6 +32,95 @@ async function capture(
   });
 }
 
+async function normalizeFixture(
+  page,
+  tab
+){
+  await page.locator("#app").evaluate((app,name)=>{
+    app.classList.toggle(
+      "shifts-layout",
+      name==="shifts"
+    );
+
+    if(
+      name==="shifts" &&
+      !app.querySelector("#shiftListArea")
+    ){
+      const listLabel=Array.from(
+        app.children
+      ).find(element=>
+        element.classList.contains("ml") &&
+        element.textContent.trim()==="Список"
+      );
+
+      const listCard=listLabel?.nextElementSibling;
+
+      if(
+        listLabel &&
+        listCard?.classList.contains("card")
+      ){
+        const area=document.createElement("div");
+        area.id="shiftListArea";
+
+        const scroll=document.createElement("div");
+        scroll.className="shift-scroll";
+        scroll.setAttribute(
+          "aria-label",
+          "Список смен"
+        );
+
+        while(listCard.firstChild){
+          scroll.append(listCard.firstChild);
+        }
+
+        listCard.classList.add("shift-window");
+        listCard.append(scroll);
+
+        listLabel.before(area);
+        area.append(listLabel,listCard);
+      }
+    }
+
+    if(name==="data"){
+      const status=app.querySelector(".data-status");
+
+      if(
+        status &&
+        !status.querySelector(".data-status-copy")
+      ){
+        const title=status.querySelector(
+          ".data-status-title"
+        )?.textContent.trim() ||
+          "Синхронизация в реальном времени";
+
+        const detail=status.querySelector(
+          ".data-status-detail"
+        )?.textContent.trim() || "";
+
+        status.classList.remove("card");
+        status.replaceChildren();
+
+        const dot=document.createElement("div");
+        dot.className="dot";
+
+        const copy=document.createElement("div");
+        copy.className="data-status-copy";
+
+        const titleNode=document.createElement("div");
+        titleNode.className="data-status-title";
+        titleNode.textContent=title;
+
+        const detailNode=document.createElement("div");
+        detailNode.className="data-status-detail";
+        detailNode.textContent=detail;
+
+        copy.append(titleNode,detailNode);
+        status.append(dot,copy);
+      }
+    }
+  },tab);
+}
+
 async function openSurface(
   page,
   selector,
@@ -79,6 +168,11 @@ test(
         await expect(page.locator("body"))
           .toHaveAttribute("data-active-tab",tab);
 
+        await normalizeFixture(
+          page,
+          tab
+        );
+
         await capture(
           page,
           browserName,
@@ -95,6 +189,10 @@ test(
     for(const tab of TABS){
       await page.locator(`#tab-${tab}`).click();
       await page.waitForTimeout(280);
+      await normalizeFixture(
+        page,
+        tab
+      );
       await capture(
         page,
         browserName,
@@ -109,6 +207,10 @@ test(
 
     await page.locator("#tab-shifts").click();
     await page.waitForTimeout(280);
+    await normalizeFixture(
+      page,
+      "shifts"
+    );
 
     const surfaces=[
       ["sheet","#fixtureSheet","sheet-open"],

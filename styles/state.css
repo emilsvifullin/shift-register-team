@@ -1,0 +1,65 @@
+/* ===== transient UI state / focus modality ===== */
+
+/*
+  Safari may paint :focus-visible for a programmatically restored button
+  after a touch interaction. Keep the DOM focus for accessibility, but do
+  not show a keyboard focus ring when the current modality is pointer/touch.
+*/
+body[data-input-modality="pointer"] button:focus,
+body[data-input-modality="pointer"] .period:focus,
+body[data-input-modality="pointer"] .sh:focus,
+body[data-input-modality="pointer"] [role="tab"]:focus,
+body[data-input-modality="pointer"] [role="option"]:focus{
+  outline:none !important;
+  outline-offset:0 !important;
+}
+
+/*
+  Hidden transient surfaces must never become hit targets during their
+  delayed display:none cleanup window.
+*/
+.sheet[aria-hidden="true"],
+.point-picker[aria-hidden="true"],
+.month-picker[aria-hidden="true"],
+.date-picker[aria-hidden="true"],
+.app-confirm[aria-hidden="true"]{
+  pointer-events:none !important;
+}
+
+/*
+  Keep compositor-backed moving surfaces stable while their transform is
+  animating. This avoids one-frame text/shadow raster jumps in WebKit PWA.
+*/
+#app,
+.sheet,
+.point-picker,
+.month-picker,
+.date-picker,
+.bottom-controls,
+nav.tabs{
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
+}
+
+.sheet.on,
+.point-picker.on,
+.month-picker.on,
+.date-picker.on{
+  will-change:transform;
+}
+
+body:not(.sheet-open) .sheet:not(.on),
+body:not(.point-picker-open) .point-picker:not(.on),
+body:not(.month-picker-open) .month-picker:not(.on),
+body:not(.date-picker-open) .date-picker:not(.on){
+  will-change:auto;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .sheet.on,
+  .point-picker.on,
+  .month-picker.on,
+  .date-picker.on{
+    will-change:auto;
+  }
+}

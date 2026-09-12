@@ -88,9 +88,7 @@ export async function addAdminTariff({
             fixedRate===""
               ? null
               : Number(fixedRate),
-          p_shk_tiers:shkTiers,
-          p_effective_from:
-            effectiveFrom
+          p_shk_tiers:shkTiers
         }
       );
 

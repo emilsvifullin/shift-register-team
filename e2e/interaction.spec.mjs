@@ -10,6 +10,80 @@ async function show(page,selector){
   });
 }
 
+async function hide(page,selector){
+  await page.locator(selector).evaluate(element=>{
+    element.classList.remove("on");
+    element.style.display="none";
+  });
+}
+
+async function installGeometryFixture(page){
+  await page.locator("#app").evaluate(app=>{
+    app.innerHTML=`
+      <div class="card">
+        <div class="sh">
+          <div class="day"><span class="d">28</span><span class="w">пн</span></div>
+          <div class="mid">
+            <div class="p">Большой Овчинниковский Переулок 16</div>
+            <div class="meta">650 ШК · Александр Очень-Длинная-Фамилия</div>
+          </div>
+          <div class="amt">10 000 ₽</div>
+        </div>
+        <div class="row">
+          <div class="l"><div class="t">Пункт</div></div>
+          <div class="v">Большой Овчинниковский Переулок 16</div>
+        </div>
+      </div>
+      <div class="segbox">
+        <div class="seg">
+          <button type="button" class="on">По умолчанию</button>
+          <button type="button">25 сентября 2026</button>
+          <button type="button">10 октября 2026</button>
+        </div>
+      </div>
+    `;
+  });
+
+  await page.evaluate(()=>{
+    const sheet=document.createElement("div");
+    sheet.id="fixtureSheet";
+    sheet.className="sheet on";
+    sheet.style.display="block";
+    sheet.innerHTML=`
+      <div class="grab"></div>
+      <div class="shead">
+        <button class="lnk">Отмена</button>
+        <div class="ttl">Редактирование сотрудника</div>
+        <button class="lnk b">Готово</button>
+      </div>
+      <div class="sbody"><div style="height:900px"></div></div>
+    `;
+    document.body.append(sheet);
+  });
+}
+
+async function expectInsideViewport(page,selector){
+  const result=await page.locator(selector).evaluate(element=>{
+    const box=element.getBoundingClientRect();
+    return {
+      left:box.left,
+      right:box.right,
+      top:box.top,
+      bottom:box.bottom,
+      width:box.width,
+      height:box.height,
+      viewportWidth:window.innerWidth,
+      viewportHeight:window.innerHeight
+    };
+  });
+
+  expect(result.left).toBeGreaterThanOrEqual(-1);
+  expect(result.right).toBeLessThanOrEqual(result.viewportWidth+1);
+  expect(result.width).toBeLessThanOrEqual(result.viewportWidth+1);
+
+  return result;
+}
+
 test(
   "320px navigation keeps comfortable vertical targets",
   async({page})=>{
@@ -27,7 +101,7 @@ test(
 test(
   "narrow employee picker title never collides with actions",
   async({page})=>{
-    await page.setViewportSize({width:320,height:568});
+    await page.setViewportSize({width:280,height:653});
     await page.goto(FIXTURE);
     await show(page,"#fixturePointPicker");
 
@@ -121,6 +195,187 @@ test(
         );
 
       expect(duration).not.toBe("0s");
+    }
+  }
+);
+
+test(
+  "fluid phone widths stay inside the viewport without collisions",
+  async({page})=>{
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(FIXTURE);
+    await installGeometryFixture(page);
+
+    const widths=new Set();
+    for(let width=280;width<=520;width+=8){
+      widths.add(width);
+    }
+    for(const width of [
+      320,360,375,384,390,393,402,412,414,428,430,440,480,512,520
+    ]){
+      widths.add(width);
+    }
+
+    for(const width of [...widths].sort((a,b)=>a-b)){
+      const height=Math.max(568,Math.round(width*2.15));
+      await page.setViewportSize({width,height});
+
+      const overflow=await page.evaluate(()=>({
+        scrollWidth:document.documentElement.scrollWidth,
+        innerWidth:window.innerWidth
+      }));
+      expect(overflow.scrollWidth,`horizontal overflow at ${width}px`)
+        .toBeLessThanOrEqual(overflow.innerWidth+1);
+
+      await expectInsideViewport(page,"nav.tabs");
+
+      for(const button of await page.locator("nav.tabs button").all()){
+        const box=await button.boundingBox();
+        expect(box,`missing tab box at ${width}px`).not.toBeNull();
+        expect(box.height,`tab target at ${width}px`).toBeGreaterThanOrEqual(44);
+      }
+
+      const rowOverflow=await page.locator("#app").evaluate(app=>
+        app.scrollWidth-app.clientWidth
+      );
+      expect(rowOverflow,`content overflow at ${width}px`).toBeLessThanOrEqual(1);
+
+      await show(page,"#fixturePointPicker");
+      const point=await expectInsideViewport(page,"#fixturePointPicker");
+      expect(point.bottom).toBeLessThanOrEqual(point.viewportHeight+1);
+
+      const toolbar=page.locator("#fixturePointPicker .picker-toolbar");
+      const [cancelBox,titleBox,doneBox]=await Promise.all([
+        toolbar.locator(".cancel").boundingBox(),
+        toolbar.locator(".picker-toolbar-title").boundingBox(),
+        toolbar.locator(".done").boundingBox()
+      ]);
+      expect(titleBox).not.toBeNull();
+      expect(cancelBox).not.toBeNull();
+      expect(doneBox).not.toBeNull();
+      expect(titleBox.x,`picker title left at ${width}px`)
+        .toBeGreaterThanOrEqual(cancelBox.x+cancelBox.width+2);
+      expect(titleBox.x+titleBox.width,`picker title right at ${width}px`)
+        .toBeLessThanOrEqual(doneBox.x-2);
+      await hide(page,"#fixturePointPicker");
+
+      await show(page,"#fixtureDatePicker");
+      const date=await expectInsideViewport(page,"#fixtureDatePicker");
+      expect(date.bottom).toBeLessThanOrEqual(date.viewportHeight+1);
+
+      const lastDay=page.locator("#fixtureDatePicker .date-day").last();
+      const lastDayBox=await lastDay.boundingBox();
+      expect(lastDayBox).not.toBeNull();
+      expect(lastDayBox.x+lastDayBox.width,`calendar width at ${width}px`)
+        .toBeLessThanOrEqual(width+1);
+      await hide(page,"#fixtureDatePicker");
+
+      const sheet=await expectInsideViewport(page,"#fixtureSheet");
+      expect(sheet.bottom).toBeLessThanOrEqual(sheet.viewportHeight+1);
+
+      const sheetToolbar=page.locator("#fixtureSheet .shead");
+      const [sheetCancel,sheetTitle,sheetDone]=await Promise.all([
+        sheetToolbar.locator(".lnk").first().boundingBox(),
+        sheetToolbar.locator(".ttl").boundingBox(),
+        sheetToolbar.locator(".lnk").last().boundingBox()
+      ]);
+      expect(sheetCancel).not.toBeNull();
+      expect(sheetTitle).not.toBeNull();
+      expect(sheetDone).not.toBeNull();
+      expect(sheetTitle.x,`sheet title left at ${width}px`)
+        .toBeGreaterThanOrEqual(sheetCancel.x+sheetCancel.width);
+      expect(sheetTitle.x+sheetTitle.width,`sheet title right at ${width}px`)
+        .toBeLessThanOrEqual(sheetDone.x);
+    }
+  }
+);
+
+test(
+  "common portrait geometries keep controls reachable",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    for(const viewport of [
+      {width:320,height:568},
+      {width:360,height:640},
+      {width:360,height:780},
+      {width:375,height:667},
+      {width:375,height:812},
+      {width:390,height:844},
+      {width:393,height:852},
+      {width:402,height:874},
+      {width:412,height:915},
+      {width:414,height:736},
+      {width:414,height:896},
+      {width:428,height:926},
+      {width:430,height:932},
+      {width:440,height:956},
+      {width:480,height:1040},
+      {width:512,height:1112}
+    ]){
+      await page.setViewportSize(viewport);
+
+      const tabs=await expectInsideViewport(page,"nav.tabs");
+      expect(tabs.bottom).toBeLessThanOrEqual(viewport.height+1);
+
+      await show(page,"#fixturePointPicker");
+      const picker=await expectInsideViewport(page,"#fixturePointPicker");
+      expect(picker.bottom).toBeLessThanOrEqual(viewport.height+1);
+      await hide(page,"#fixturePointPicker");
+    }
+  }
+);
+
+test(
+  "wide foldable and tablet widths use space without becoming desktop",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    for(const width of [520,540,600,653,720,768,820,853,884,899]){
+      await page.setViewportSize({width,height:1104});
+
+      const mainBox=await page.locator("#app").boundingBox();
+      expect(mainBox).not.toBeNull();
+      if(width>=521){
+        expect(mainBox.width,`main too narrow at ${width}px`).toBeGreaterThan(500);
+      }
+      expect(mainBox.width,`main too wide at ${width}px`).toBeLessThanOrEqual(761);
+
+      const tabs=await expectInsideViewport(page,"nav.tabs");
+      expect(tabs.width).toBeLessThanOrEqual(561);
+    }
+  }
+);
+
+test(
+  "short landscape phones keep fixed controls and overlays reachable",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    for(const viewport of [
+      {width:568,height:280},
+      {width:568,height:320},
+      {width:667,height:375},
+      {width:736,height:414},
+      {width:740,height:360},
+      {width:812,height:375},
+      {width:844,height:390},
+      {width:852,height:393},
+      {width:896,height:414},
+      {width:926,height:428},
+      {width:932,height:430},
+      {width:956,height:440}
+    ]){
+      await page.setViewportSize(viewport);
+
+      const tabs=await expectInsideViewport(page,"nav.tabs");
+      expect(tabs.bottom).toBeLessThanOrEqual(viewport.height+1);
+
+      await show(page,"#fixtureDatePicker");
+      const date=await expectInsideViewport(page,"#fixtureDatePicker");
+      expect(date.height).toBeLessThanOrEqual(viewport.height+1);
+      expect(date.bottom).toBeLessThanOrEqual(viewport.height+1);
+      await hide(page,"#fixtureDatePicker");
     }
   }
 );

@@ -43,7 +43,7 @@ test("interaction layer restores touch geometry after refinement",async()=>{
   assert.match(css,/--ui-target:44px/);
   assert.match(css,/nav\.tabs button[\s\S]*?min-height:44px/);
   assert.match(css,/\.date-day[\s\S]*?height:44px/);
-  assert.match(css,/\.picker-toolbar-title[\s\S]*?left:clamp\(68px,21vw,84px\)[\s\S]*?right:clamp\(68px,21vw,84px\)/);
+  assert.match(css,/\.picker-toolbar-title[\s\S]*?left:clamp\(76px,21vw,84px\)[\s\S]*?right:clamp\(76px,21vw,84px\)/);
   assert.match(css,/touch-active[\s\S]*?transform:scale\(\.985\)/);
   assert.match(css,/prefers-reduced-motion:reduce/);
 

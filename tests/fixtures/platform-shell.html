@@ -6,50 +6,22 @@
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   >
-  <link
-    rel="stylesheet"
-    href="../../styles.css"
-  >
-  <link
-    rel="stylesheet"
-    href="../../styles/accessibility.css"
-  >
-  <link
-    rel="stylesheet"
-    href="../../styles/platform.css"
-  >
-  <link
-    rel="stylesheet"
-    href="../../styles/refinement.css"
-  >
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../../styles/accessibility.css">
+  <link rel="stylesheet" href="../../styles/motion.css">
+  <link rel="stylesheet" href="../../styles/workflow.css">
+  <link rel="stylesheet" href="../../styles/auth.css">
+  <link rel="stylesheet" href="../../styles/platform.css">
+  <link rel="stylesheet" href="../../styles/refinement.css">
   <script src="../../src/frame-guard.js"></script>
-  <script
-    type="module"
-    src="../../src/platform-shell.js"
-  ></script>
+  <script type="module" src="../../src/platform-shell.js"></script>
 </head>
 <body class="app-booting">
-  <main
-    id="app"
-    role="tabpanel"
-  >
-    Test panel
-  </main>
+  <main id="app" role="tabpanel">Test panel</main>
 
-  <div
-    class="point-veil"
-    id="fixturePointVeil"
-    aria-hidden="true"
-  ></div>
-
-  <div
-    class="point-picker app-picker-anchored"
-    id="fixturePointPicker"
-    aria-hidden="true"
-  >
-    <div class="point-picker-handle">
-      <div class="point-picker-grab"></div>
-    </div>
+  <div class="point-veil" id="fixturePointVeil" aria-hidden="true"></div>
+  <div class="point-picker app-picker-anchored" id="fixturePointPicker" aria-hidden="true">
+    <div class="point-picker-handle"><div class="point-picker-grab"></div></div>
     <div class="picker-toolbar">
       <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
       <div class="picker-toolbar-title">Сотрудник для итогов</div>
@@ -59,21 +31,12 @@
       <input type="search" value="" aria-label="Поиск">
     </label>
     <div class="point-list">
-      <button type="button" class="point-option on">
-        <span class="point-check">✓</span>
-        <span class="point-name">Сотрудник</span>
-      </button>
+      <button type="button" class="point-option on"><span class="point-check">✓</span><span class="point-name">Сотрудник</span></button>
     </div>
   </div>
 
-  <div
-    class="date-picker"
-    id="fixtureDatePicker"
-    aria-hidden="true"
-  >
-    <div class="date-picker-handle">
-      <div class="date-picker-grab"></div>
-    </div>
+  <div class="date-picker" id="fixtureDatePicker" aria-hidden="true">
+    <div class="date-picker-handle"><div class="date-picker-grab"></div></div>
     <div class="picker-toolbar">
       <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
       <div class="picker-toolbar-title">Дата</div>
@@ -84,97 +47,34 @@
       <button type="button" class="date-calendar-title">Сентябрь 2026</button>
       <button type="button" class="date-calendar-nav" aria-label="Вперёд">›</button>
     </div>
-    <div class="date-weekdays">
-      <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
-    </div>
+    <div class="date-weekdays"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
     <div class="date-grid">
-      <button type="button" class="date-day">1</button>
-      <button type="button" class="date-day">2</button>
-      <button type="button" class="date-day">3</button>
-      <button type="button" class="date-day">4</button>
-      <button type="button" class="date-day">5</button>
-      <button type="button" class="date-day">6</button>
-      <button type="button" class="date-day on">7</button>
+      <button type="button" class="date-day">1</button><button type="button" class="date-day">2</button><button type="button" class="date-day">3</button><button type="button" class="date-day">4</button><button type="button" class="date-day">5</button><button type="button" class="date-day">6</button><button type="button" class="date-day on">7</button>
     </div>
     <button type="button" class="date-today">Сегодня</button>
   </div>
 
   <div class="bottom-controls">
-    <nav
-      class="tabs"
-      role="tablist"
-      aria-label="Разделы"
-    >
-      <button
-        type="button"
-        role="tab"
-        id="tab-shifts"
-        aria-controls="app"
-        aria-selected="true"
-        tabindex="0"
-      >Смены</button>
-
-      <button
-        type="button"
-        role="tab"
-        id="tab-stats"
-        aria-controls="app"
-        aria-selected="false"
-        tabindex="-1"
-      >Итоги</button>
-
-      <button
-        type="button"
-        role="tab"
-        id="tab-manage"
-        aria-controls="app"
-        aria-selected="false"
-        tabindex="-1"
-      >Управление</button>
-
-      <button
-        type="button"
-        role="tab"
-        id="tab-data"
-        aria-controls="app"
-        aria-selected="false"
-        tabindex="-1"
-      >Данные</button>
+    <nav class="tabs" role="tablist" aria-label="Разделы">
+      <button type="button" role="tab" id="tab-shifts" aria-controls="app" aria-selected="true" tabindex="0">Смены</button>
+      <button type="button" role="tab" id="tab-stats" aria-controls="app" aria-selected="false" tabindex="-1">Итоги</button>
+      <button type="button" role="tab" id="tab-manage" aria-controls="app" aria-selected="false" tabindex="-1">Управление</button>
+      <button type="button" role="tab" id="tab-data" aria-controls="app" aria-selected="false" tabindex="-1">Данные</button>
     </nav>
   </div>
 
   <script>
-    const tabs=Array.from(
-      document.querySelectorAll(
-        '[role="tab"]'
-      )
-    );
-
+    const tabs=Array.from(document.querySelectorAll('[role="tab"]'));
     for(const tab of tabs){
-      tab.addEventListener(
-        "click",
-        ()=>{
-          for(const item of tabs){
-            const selected=
-              item===tab;
-
-            item.setAttribute(
-              "aria-selected",
-              String(selected)
-            );
-
-            item.tabIndex=
-              selected
-                ? 0
-                : -1;
-          }
+      tab.addEventListener("click",()=>{
+        for(const item of tabs){
+          const selected=item===tab;
+          item.setAttribute("aria-selected",String(selected));
+          item.tabIndex=selected?0:-1;
         }
-      );
+      });
     }
-
-    document.body.classList.remove(
-      "app-booting"
-    );
+    document.body.classList.remove("app-booting");
   </script>
 </body>
 </html>

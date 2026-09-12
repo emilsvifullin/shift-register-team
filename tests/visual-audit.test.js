@@ -69,9 +69,19 @@ test("fluid mobile contract covers safe areas narrow phones foldables and landsc
   );
 });
 
+test("bottom dock clips page scrolling and keeps shift search geometry consistent",async()=>{
+  const css=await read("styles/interaction.css");
+
+  assert.match(css,/--bottom-dock-space:calc\(/);
+  assert.match(css,/\.bottom-controls\{[\s\S]*?bottom:0;[\s\S]*?background:var\(--bg\)/);
+  assert.match(css,/main\{[\s\S]*?height:calc\([\s\S]*?--bottom-dock-space[\s\S]*?padding-bottom:16px/);
+  assert.match(css,/#shiftSearch\{[\s\S]*?width:100%/);
+  assert.match(css,/#shiftFilterOpen\{[\s\S]*?width:100%[\s\S]*?min-height:52px/);
+});
+
 test("PWA release includes the final interaction layer",async()=>{
   const sw=await read("sw.js");
 
-  assert.match(sw,/sr-team-runtime-v7/);
+  assert.match(sw,/sr-team-runtime-v8/);
   assert.match(sw,/"\.\/styles\/interaction\.css"/);
 });

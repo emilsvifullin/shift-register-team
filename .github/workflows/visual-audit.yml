@@ -1,0 +1,59 @@
+name: Visual Audit
+
+on:
+  push:
+    branches:
+      - "audit/**"
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install project
+        run: npm ci
+
+      - name: Install Playwright
+        run: npm install --no-save --package-lock=false @playwright/test@1.63.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start server
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/audit-http.log 2>&1 &
+          echo $! > /tmp/audit-http.pid
+
+      - name: Wait for server
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/tests/fixtures/platform-shell.html > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/audit-http.log
+          exit 1
+
+      - name: Capture matrix
+        run: npx playwright test e2e/visual-audit.spec.mjs --browser=chromium --reporter=line
+
+      - name: Upload visual audit
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: visual-audit
+          path: visual-audit
+          if-no-files-found: error

@@ -12,16 +12,21 @@ if(globalThis.self!==globalThis.top){
     document.currentScript?.src;
 
   if(source){
-    const script=
-      document.createElement("script");
+    for(const modulePath of [
+      "./management-navigation.js",
+      "./month-paging.js"
+    ]){
+      const script=
+        document.createElement("script");
 
-    script.type="module";
-    script.src=
-      new URL(
-        "./management-navigation.js",
-        source
-      ).href;
+      script.type="module";
+      script.src=
+        new URL(
+          modulePath,
+          source
+        ).href;
 
-    document.head.append(script);
+      document.head.append(script);
+    }
   }
 }

@@ -17,6 +17,20 @@ async function hide(page,selector){
   });
 }
 
+async function waitForViewportHeight(page,height){
+  await expect.poll(
+    ()=>page.evaluate(()=>
+      Number.parseInt(
+        document.documentElement.style
+          .getPropertyValue(
+            "--app-viewport-height"
+          ),
+        10
+      )
+    )
+  ).toBe(height);
+}
+
 async function installGeometryFixture(page){
   await page.locator("#app").evaluate(app=>{
     app.innerHTML=`
@@ -219,6 +233,7 @@ test(
     for(const width of [...widths].sort((a,b)=>a-b)){
       const height=Math.max(568,Math.round(width*2.15));
       await page.setViewportSize({width,height});
+      await waitForViewportHeight(page,height);
 
       const overflow=await page.evaluate(()=>({
         scrollWidth:document.documentElement.scrollWidth,
@@ -314,6 +329,7 @@ test(
       {width:512,height:1112}
     ]){
       await page.setViewportSize(viewport);
+      await waitForViewportHeight(page,viewport.height);
 
       const tabs=await expectInsideViewport(page,"nav.tabs");
       expect(tabs.bottom).toBeLessThanOrEqual(viewport.height+1);
@@ -333,6 +349,7 @@ test(
 
     for(const width of [520,540,600,653,720,768,820,853,884,899]){
       await page.setViewportSize({width,height:1104});
+      await waitForViewportHeight(page,1104);
 
       const mainBox=await page.locator("#app").boundingBox();
       expect(mainBox).not.toBeNull();
@@ -367,6 +384,7 @@ test(
       {width:956,height:440}
     ]){
       await page.setViewportSize(viewport);
+      await waitForViewportHeight(page,viewport.height);
 
       const tabs=await expectInsideViewport(page,"nav.tabs");
       expect(tabs.bottom).toBeLessThanOrEqual(viewport.height+1);

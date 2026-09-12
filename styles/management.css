@@ -9,6 +9,18 @@ nav.tabs button{
   border-radius:12px;
 }
 
+/* На мобильных нижняя панель совпадает по рабочей ширине с карточками страницы. */
+@media (max-width:899px){
+  .bottom-controls{
+    padding-left:calc(var(--ui-gutter,16px) + env(safe-area-inset-left));
+    padding-right:calc(var(--ui-gutter,16px) + env(safe-area-inset-right));
+  }
+
+  nav.tabs{
+    width:100%;
+  }
+}
+
 /* Детальные экраны управления используют оставшуюся высоту как рабочую область. */
 body[data-active-tab="manage"] main:has(> .manage-back){
   padding-top:calc(68px + env(safe-area-inset-top));
@@ -118,6 +130,10 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
 
 #pointManageList .point-manage-row{
   min-height:54px;
+}
+
+.manage-point-delete{
+  margin-top:16px;
 }
 
 /*

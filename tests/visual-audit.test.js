@@ -73,15 +73,27 @@ test("bottom dock clips page scrolling and keeps shift search geometry consisten
   const css=await read("styles/interaction.css");
 
   assert.match(css,/--bottom-dock-space:calc\(/);
+  assert.match(css,/--app-shell-height:max\(/);
   assert.match(css,/\.bottom-controls\{[\s\S]*?bottom:0;[\s\S]*?background:var\(--bg\)/);
-  assert.match(css,/main\{[\s\S]*?height:calc\([\s\S]*?--bottom-dock-space[\s\S]*?padding-bottom:16px/);
+  assert.match(css,/nav\.tabs\{[\s\S]*?border-radius:999px/);
+  assert.match(css,/nav\.tabs button\{[\s\S]*?border-radius:999px/);
+  assert.match(css,/main\{[\s\S]*?height:calc\([\s\S]*?--app-shell-height[\s\S]*?--bottom-dock-space[\s\S]*?padding-bottom:16px/);
   assert.match(css,/#shiftSearch\{[\s\S]*?width:100%/);
   assert.match(css,/#shiftFilterOpen\{[\s\S]*?width:100%[\s\S]*?min-height:52px/);
+});
+
+test("standalone iOS shell uses the full app viewport and modal states remove the dock",async()=>{
+  const css=await read("styles/interaction.css");
+
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?--app-shell-height:100vh/);
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.bottom-controls\{[\s\S]*?position:absolute;[\s\S]*?bottom:0/);
+  assert.match(css,/body\.point-picker-open \.bottom-controls[\s\S]*?visibility:hidden[\s\S]*?pointer-events:none/);
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:100vh/);
 });
 
 test("PWA release includes the final interaction layer",async()=>{
   const sw=await read("sw.js");
 
-  assert.match(sw,/sr-team-runtime-v8/);
+  assert.match(sw,/sr-team-runtime-v9/);
   assert.match(sw,/"\.\/styles\/interaction\.css"/);
 });

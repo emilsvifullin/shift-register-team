@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v4";
+  "sr-team-runtime-v5";
 
 const INDEX_FILE=
   "./index.html";
@@ -18,6 +18,7 @@ const ASSETS=[
   "./styles/workflow.css",
   "./styles/auth.css",
   "./styles/refinement.css",
+  "./styles/interaction.css",
   "./src/ui/input-behavior.js",
   "./manifest.webmanifest",
   "./src/config.js",

@@ -7183,7 +7183,7 @@ function openStatsEmployeePicker(){
   openChoicePicker({
     kind:"stats-employee",
     value:statsEmployeeId,
-    title:"Сотрудник для итогов",
+    title:"Сотрудник",
     searchable:true,
     options:statsEmployeeOptions()
       .map(employee=>({

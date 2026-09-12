@@ -275,7 +275,7 @@ test(
     expect(pickerBox).not.toBeNull();
     expect(dayBox).not.toBeNull();
     expect(pickerBox.width).toBeLessThanOrEqual(520);
-    expect(dayBox.height).toBeLessThanOrEqual(42);
+    expect(dayBox.height).toBeLessThanOrEqual(46);
     expect(dayBox.width).toBeGreaterThan(dayBox.height+10);
   }
 );

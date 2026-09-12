@@ -98,14 +98,6 @@ jobs:
       - name: Run browser smoke
         run: npx playwright test e2e/platform-shell.spec.mjs e2e/interaction.spec.mjs e2e/state-transitions.spec.mjs e2e/bottom-dock.spec.mjs e2e/management-layout.spec.mjs --browser=${{ matrix.browser }} --reporter=line
 
-      - name: Upload management previews
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: management-layout-${{ matrix.browser }}
-          path: test-results/**/management-*.png
-          if-no-files-found: ignore
-
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v6

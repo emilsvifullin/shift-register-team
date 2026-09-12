@@ -163,10 +163,17 @@ nav.tabs button{
 .point-picker,
 .month-picker,
 .date-picker{
-  max-height:calc(
-    var(--app-viewport-height,100dvh) -
-    env(safe-area-inset-top) -
-    6px
+  max-height:min(
+    calc(
+      var(--app-viewport-height,100dvh) -
+      env(safe-area-inset-top) -
+      6px
+    ),
+    calc(
+      100dvh -
+      env(safe-area-inset-top) -
+      6px
+    )
   );
 }
 
@@ -441,10 +448,17 @@ nav.tabs button.touch-active,
   .point-picker,
   .month-picker,
   .date-picker{
-    max-height:calc(
-      var(--app-viewport-height,100dvh) -
-      env(safe-area-inset-top) -
-      4px
+    max-height:min(
+      calc(
+        var(--app-viewport-height,100dvh) -
+        env(safe-area-inset-top) -
+        4px
+      ),
+      calc(
+        100dvh -
+        env(safe-area-inset-top) -
+        4px
+      )
     );
   }
 

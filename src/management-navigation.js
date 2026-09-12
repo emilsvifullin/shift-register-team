@@ -1,6 +1,7 @@
-const MANAGE_RETRY_INTERVAL=90;
-const MANAGE_RETRY_TIMEOUT=720;
+const MANAGE_RETRY_INTERVAL=60;
+const MANAGE_RETRY_TIMEOUT=2200;
 const POINT_DELETE_BUTTON_ID="managePointDelete";
+const EMPLOYEE_EDIT_DELETE_BUTTON_ID="employeeEditDelete";
 
 function closestElement(
   target,
@@ -65,6 +66,26 @@ export function installManagementNavigation({
       "manageEditorBody"
     );
 
+  const employeeSheet=
+    documentRef.getElementById(
+      "employeeSheet"
+    );
+
+  const employeeSheetBody=
+    documentRef.getElementById(
+      "employeeSheetBody"
+    );
+
+  const employeeSheetSave=
+    documentRef.getElementById(
+      "employeeSheetSave"
+    );
+
+  const employeeSheetCancel=
+    documentRef.getElementById(
+      "employeeSheetCancel"
+    );
+
   if(!panel || !previous){
     return ()=>{};
   }
@@ -74,6 +95,7 @@ export function installManagementNavigation({
 
   let reconcileFrame=0;
   let editorFrame=0;
+  let employeeFrame=0;
   let retryTimer=0;
   let retryToken=0;
   let syntheticSectionClick=false;
@@ -85,6 +107,10 @@ export function installManagementNavigation({
     documentRef.body.dataset.activeTab===
       "manage";
 
+  const pointerInput=()=>
+    documentRef.body.dataset.inputModality===
+      "pointer";
+
   const sourceBack=()=>
     panel.querySelector(
       ":scope > #manageBack"
@@ -93,6 +119,30 @@ export function installManagementNavigation({
   const detailOpen=()=>
     activeManage() &&
     Boolean(sourceBack());
+
+  const sectionDestinationOpen=section=>{
+    if(!detailOpen()){
+      return false;
+    }
+
+    if(section==="employees"){
+      return Boolean(
+        panel.querySelector(
+          "#employeeList"
+        )
+      );
+    }
+
+    if(section==="points"){
+      return Boolean(
+        panel.querySelector(
+          "#pointManageList"
+        )
+      );
+    }
+
+    return false;
+  };
 
   const pointEditorOpen=()=>
     Boolean(
@@ -109,6 +159,27 @@ export function installManagementNavigation({
     Boolean(
       manageEditorBody?.querySelector(
         "#managePointName"
+      )
+    );
+
+  const employeeEditorOpen=()=>
+    Boolean(
+      employeeSheet &&
+      employeeSheet.classList.contains("on") &&
+      employeeSheet.getAttribute(
+        "aria-hidden"
+      )!=="true"
+    );
+
+  const employeeEditing=()=>
+    Boolean(
+      employeeEditorOpen() &&
+      employeeSheetSave?.textContent
+        ?.trim()==="Готово" &&
+      employeeSheetCancel?.textContent
+        ?.trim()==="Назад" &&
+      employeeSheetBody?.querySelector(
+        "#employeeName"
       )
     );
 
@@ -301,6 +372,15 @@ export function installManagementNavigation({
     });
   };
 
+  const clearPointerFocus=()=>{
+    if(
+      pointerInput() &&
+      documentRef.activeElement===previous
+    ){
+      previous.blur();
+    }
+  };
+
   const syncHeaderBack=()=>{
     reconcileFrame=0;
 
@@ -325,6 +405,7 @@ export function installManagementNavigation({
         next.disabled=true;
       }
 
+      clearPointerFocus();
       return;
     }
 
@@ -401,6 +482,65 @@ export function installManagementNavigation({
     }
   };
 
+  const syncEmployeeDeleteButton=()=>{
+    employeeFrame=0;
+
+    const original=
+      documentRef.getElementById(
+        "employeeDelete"
+      );
+
+    if(original){
+      original.hidden=true;
+      original.setAttribute(
+        "aria-hidden",
+        "true"
+      );
+      original.tabIndex=-1;
+    }
+
+    const existing=
+      documentRef.getElementById(
+        EMPLOYEE_EDIT_DELETE_BUTTON_ID
+      );
+
+    const shouldShow=
+      activeManage() &&
+      employeeEditing();
+
+    if(!shouldShow){
+      existing?.remove();
+      return;
+    }
+
+    if(existing){
+      existing.disabled=
+        Boolean(
+          employeeSheetSave?.disabled
+        );
+      return;
+    }
+
+    const button=
+      documentRef.createElement(
+        "button"
+      );
+
+    button.type="button";
+    button.className=
+      "btn warn manage-employee-delete";
+    button.id=
+      EMPLOYEE_EDIT_DELETE_BUTTON_ID;
+    button.textContent=
+      "Удалить сотрудника";
+    button.disabled=
+      Boolean(
+        employeeSheetSave?.disabled
+      );
+
+    employeeSheetBody?.append(button);
+  };
+
   const queueHeaderSync=()=>{
     if(reconcileFrame){
       return;
@@ -420,6 +560,17 @@ export function installManagementNavigation({
     editorFrame=
       windowRef.requestAnimationFrame(
         syncPointDeleteButton
+      );
+  };
+
+  const queueEmployeeSync=()=>{
+    if(employeeFrame){
+      return;
+    }
+
+    employeeFrame=
+      windowRef.requestAnimationFrame(
+        syncEmployeeDeleteButton
       );
   };
 
@@ -444,6 +595,22 @@ export function installManagementNavigation({
         section
     ) || null;
 
+  const scheduleSectionRetry=(
+    section,
+    startedAt,
+    token
+  )=>{
+    retryTimer=
+      windowRef.setTimeout(
+        ()=>retrySectionNavigation(
+          section,
+          startedAt,
+          token
+        ),
+        MANAGE_RETRY_INTERVAL
+      );
+  };
+
   const retrySectionNavigation=(
     section,
     startedAt,
@@ -452,7 +619,7 @@ export function installManagementNavigation({
     if(
       token!==retryToken ||
       !activeManage() ||
-      detailOpen()
+      sectionDestinationOpen(section)
     ){
       retryTimer=0;
       return;
@@ -470,28 +637,21 @@ export function installManagementNavigation({
     const button=
       sectionButton(section);
 
-    if(!button){
-      retryTimer=0;
-      return;
+    if(button){
+      syntheticSectionClick=true;
+
+      try{
+        button.click();
+      }finally{
+        syntheticSectionClick=false;
+      }
     }
 
-    syntheticSectionClick=true;
-
-    try{
-      button.click();
-    }finally{
-      syntheticSectionClick=false;
-    }
-
-    retryTimer=
-      windowRef.setTimeout(
-        ()=>retrySectionNavigation(
-          section,
-          startedAt,
-          token
-        ),
-        MANAGE_RETRY_INTERVAL
-      );
+    scheduleSectionRetry(
+      section,
+      startedAt,
+      token
+    );
   };
 
   const ensureSectionNavigation=section=>{
@@ -503,15 +663,11 @@ export function installManagementNavigation({
     const startedAt=
       windowRef.performance.now();
 
-    retryTimer=
-      windowRef.setTimeout(
-        ()=>retrySectionNavigation(
-          section,
-          startedAt,
-          token
-        ),
-        MANAGE_RETRY_INTERVAL
-      );
+    scheduleSectionRetry(
+      section,
+      startedAt,
+      token
+    );
   };
 
   const retryBackNavigation=(
@@ -647,7 +803,65 @@ export function installManagementNavigation({
     }
   };
 
+  const deleteEmployeeFromEdit=()=>{
+    if(
+      !employeeEditing() ||
+      !employeeSheetCancel ||
+      !employeeSheetSave
+    ){
+      return;
+    }
+
+    employeeSheetCancel.click();
+
+    const original=
+      documentRef.getElementById(
+        "employeeDelete"
+      );
+
+    if(
+      !original ||
+      employeeSheetSave.textContent
+        .trim()!=="Изменить"
+    ){
+      queueEmployeeSync();
+      return;
+    }
+
+    original.click();
+
+    const confirm=
+      documentRef.getElementById(
+        "appConfirm"
+      );
+
+    if(
+      employeeEditorOpen() &&
+      confirm?.classList.contains("on") &&
+      employeeSheetSave.textContent
+        .trim()==="Изменить"
+    ){
+      employeeSheetSave.click();
+    }
+
+    queueEmployeeSync();
+  };
+
   const onClickCapture=event=>{
+    const employeeDelete=
+      closestElement(
+        event.target,
+        `#${EMPLOYEE_EDIT_DELETE_BUTTON_ID}`
+      );
+
+    if(employeeDelete){
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      deleteEmployeeFromEdit();
+      return;
+    }
+
     const pointDelete=
       closestElement(
         event.target,
@@ -736,9 +950,30 @@ export function installManagementNavigation({
     }
   };
 
+  const onFocusIn=event=>{
+    if(
+      event.target!==previous ||
+      previous.dataset.manageBackProxy!==
+        "true" ||
+      !pointerInput()
+    ){
+      return;
+    }
+
+    windowRef.requestAnimationFrame(
+      clearPointerFocus
+    );
+  };
+
   documentRef.addEventListener(
     "click",
     onClickCapture,
+    true
+  );
+
+  documentRef.addEventListener(
+    "focusin",
+    onFocusIn,
     true
   );
 
@@ -746,6 +981,7 @@ export function installManagementNavigation({
     new windowRef.MutationObserver(()=>{
       queueHeaderSync();
       queueEditorSync();
+      queueEmployeeSync();
     });
 
   panelObserver.observe(
@@ -760,6 +996,7 @@ export function installManagementNavigation({
     new windowRef.MutationObserver(()=>{
       queueHeaderSync();
       queueEditorSync();
+      queueEmployeeSync();
     });
 
   bodyObserver.observe(
@@ -767,7 +1004,8 @@ export function installManagementNavigation({
     {
       attributes:true,
       attributeFilter:[
-        "data-active-tab"
+        "data-active-tab",
+        "data-input-modality"
       ]
     }
   );
@@ -788,7 +1026,32 @@ export function installManagementNavigation({
         attributes:true,
         attributeFilter:[
           "class",
-          "aria-hidden"
+          "aria-hidden",
+          "disabled"
+        ]
+      }
+    );
+  }
+
+  let employeeObserver=null;
+
+  if(employeeSheet){
+    employeeObserver=
+      new windowRef.MutationObserver(
+        queueEmployeeSync
+      );
+
+    employeeObserver.observe(
+      employeeSheet,
+      {
+        childList:true,
+        subtree:true,
+        attributes:true,
+        characterData:true,
+        attributeFilter:[
+          "class",
+          "aria-hidden",
+          "disabled"
         ]
       }
     );
@@ -796,6 +1059,7 @@ export function installManagementNavigation({
 
   queueHeaderSync();
   queueEditorSync();
+  queueEmployeeSync();
 
   return ()=>{
     clearRetry();
@@ -814,6 +1078,7 @@ export function installManagementNavigation({
     panelObserver.disconnect();
     bodyObserver.disconnect();
     editorObserver?.disconnect();
+    employeeObserver?.disconnect();
 
     documentRef.removeEventListener(
       "click",
@@ -821,9 +1086,21 @@ export function installManagementNavigation({
       true
     );
 
+    documentRef.removeEventListener(
+      "focusin",
+      onFocusIn,
+      true
+    );
+
     documentRef
       .getElementById(
         POINT_DELETE_BUTTON_ID
+      )
+      ?.remove();
+
+    documentRef
+      .getElementById(
+        EMPLOYEE_EDIT_DELETE_BUTTON_ID
       )
       ?.remove();
 
@@ -836,6 +1113,12 @@ export function installManagementNavigation({
     if(editorFrame){
       windowRef.cancelAnimationFrame(
         editorFrame
+      );
+    }
+
+    if(employeeFrame){
+      windowRef.cancelAnimationFrame(
+        employeeFrame
       );
     }
   };

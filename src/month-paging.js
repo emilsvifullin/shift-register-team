@@ -24,7 +24,6 @@ function selectedTab(){
 function swipeEnabled(){
   if(!ACTIVE_TABS.has(selectedTab())) return false;
   if(settling) return false;
-
   return !MODAL_CLASSES.some(name=>
     document.body.classList.contains(name)
   );
@@ -33,20 +32,6 @@ function swipeEnabled(){
 function blockedStart(target){
   return !(target instanceof Element) ||
     Boolean(target.closest(BLOCKED_START));
-}
-
-function touchById(list,id){
-  for(let index=0;index<list.length;index+=1){
-    if(list[index].identifier===id) return list[index];
-  }
-
-  return null;
-}
-
-function prefersReducedMotion(){
-  return window.matchMedia?.(
-    "(prefers-reduced-motion: reduce)"
-  ).matches===true;
 }
 
 function withReducedMotion(callback){
@@ -81,120 +66,92 @@ function invokeMonthButton(direction){
 
   withReducedMotion(()=>{
     if(typeof button.onclick==="function"){
-      button.onclick.call(
-        button,
-        new MouseEvent("click")
-      );
+      button.onclick.call(button,new MouseEvent("click"));
     }else{
       button.click();
     }
   });
 }
 
-function transitionTargets(){
-  return [
-    {
-      element:document.getElementById("app"),
-      distance:14
-    },
-    {
-      element:document.getElementById("period"),
-      distance:6
-    }
-  ].filter(item=>
-    item.element instanceof HTMLElement
-  );
-}
-
-function animateTargets(
-  direction,
-  phase
-){
-  const incoming=phase==="in";
-  const items=transitionTargets();
-
+function animateElement(element,keyframes,options){
   if(
-    prefersReducedMotion() ||
-    !items.every(item=>
-      typeof item.element.animate==="function"
-    )
+    !(element instanceof HTMLElement) ||
+    typeof element.animate!=="function" ||
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
   ){
     return Promise.resolve();
   }
 
-  const animations=items.map(({element,distance})=>{
-    const signed=
-      (direction>0 ? -1 : 1)*distance;
+  const animation=element.animate(keyframes,options);
 
-    const fromTransform=incoming
-      ? `translate3d(${-signed}px,0,0)`
-      : "translate3d(0,0,0)";
-
-    const toTransform=incoming
-      ? "translate3d(0,0,0)"
-      : `translate3d(${signed}px,0,0)`;
-
-    const animation=element.animate(
-      [
-        {
-          opacity:incoming ? .94 : 1,
-          transform:fromTransform
-        },
-        {
-          opacity:incoming ? 1 : .94,
-          transform:toTransform
-        }
-      ],
-      {
-        duration:incoming ? 145 : 95,
-        easing:incoming
-          ? "cubic-bezier(.2,.8,.2,1)"
-          : "cubic-bezier(.4,0,.8,.2)",
-        fill:"both"
-      }
-    );
-
-    return animation;
-  });
-
-  return Promise.allSettled(
-    animations.map(animation=>
-      animation.finished
-    )
-  ).finally(()=>{
-    animations.forEach(animation=>
-      animation.cancel()
-    );
-  });
+  return animation.finished
+    .catch(()=>{})
+    .finally(()=>animation.cancel());
 }
 
-async function transitionMonth(direction){
-  if(settling) return;
+async function runTransition(direction){
   settling=true;
+  const app=document.getElementById("app");
+  const period=document.getElementById("period");
+  const outX=direction>0 ? -12 : 12;
+  const inX=-outX;
+  const options={
+    duration:220,
+    easing:"cubic-bezier(.22,.72,.22,1)",
+    fill:"both"
+  };
 
   try{
-    await animateTargets(
-      direction,
-      "out"
-    );
+    await Promise.all([
+      animateElement(
+        app,
+        [
+          {opacity:1,transform:"translate3d(0,0,0)"},
+          {opacity:.15,transform:`translate3d(${outX}px,0,0)`}
+        ],
+        {...options,duration:105}
+      ),
+      animateElement(
+        period,
+        [
+          {opacity:1,transform:"translate3d(0,0,0)"},
+          {opacity:.15,transform:`translate3d(${outX*.45}px,0,0)`}
+        ],
+        {...options,duration:105}
+      )
+    ]);
 
     invokeMonthButton(direction);
 
-    await new Promise(resolve=>
-      requestAnimationFrame(()=>
-        requestAnimationFrame(resolve)
+    await Promise.all([
+      animateElement(
+        app,
+        [
+          {opacity:.15,transform:`translate3d(${inX}px,0,0)`},
+          {opacity:1,transform:"translate3d(0,0,0)"}
+        ],
+        {...options,duration:115}
+      ),
+      animateElement(
+        period,
+        [
+          {opacity:.15,transform:`translate3d(${inX*.45}px,0,0)`},
+          {opacity:1,transform:"translate3d(0,0,0)"}
+        ],
+        {...options,duration:115}
       )
-    );
-
-    await animateTargets(
-      direction,
-      "in"
-    );
+    ]);
   }finally{
     settling=false;
-    suppressClickUntil=
-      performance.now()+350;
+    suppressClickUntil=performance.now()+300;
   }
+}
+
+function touchById(list,id){
+  for(let index=0;index<list.length;index+=1){
+    if(list[index].identifier===id) return list[index];
+  }
+  return null;
 }
 
 function startGesture(event){
@@ -223,11 +180,7 @@ function startGesture(event){
 function moveGesture(event){
   if(!gesture || settling) return;
 
-  const touch=touchById(
-    event.touches,
-    gesture.id
-  );
-
+  const touch=touchById(event.touches,gesture.id);
   if(!touch) return;
 
   gesture.lastX=touch.clientX;
@@ -243,6 +196,7 @@ function moveGesture(event){
 
     if(absX>=10 && absX>absY*1.10){
       gesture.axis="x";
+      document.body.classList.add("month-swiping");
     }else if(absY>=14 && absY>absX*1.25){
       gesture.axis="y";
       return;
@@ -253,16 +207,7 @@ function moveGesture(event){
 
   if(gesture.axis!=="x") return;
 
-  if(event.cancelable){
-    event.preventDefault();
-  }
-
-  /*
-    Никакого движения страницы за пальцем.
-    Мы только распознаём жест, а после
-    отпускания делаем короткий спокойный
-    переход между месяцами.
-  */
+  if(event.cancelable) event.preventDefault();
   event.stopImmediatePropagation();
 }
 
@@ -275,97 +220,51 @@ function finishGesture(event){
   if(current.axis!=="x") return;
 
   event.stopImmediatePropagation();
+  document.body.classList.remove("month-swiping");
 
-  const touch=touchById(
-    event.changedTouches,
-    current.id
-  );
-
+  const touch=touchById(event.changedTouches,current.id);
   const endX=touch?.clientX ?? current.lastX;
   const endY=touch?.clientY ?? current.lastY;
   const dx=endX-current.x;
   const dy=endY-current.y;
   const absX=Math.abs(dx);
   const absY=Math.abs(dy);
-  const elapsed=
-    Math.max(
-      1,
-      performance.now()-current.started
-    );
+  const elapsed=Math.max(1,performance.now()-current.started);
   const velocity=absX/elapsed;
 
-  const horizontal=
-    absX>absY*1.08;
+  const horizontal=absX>absY*1.08;
+  const enoughDistance=absX>=38;
+  const fastSwipe=absX>=22 && velocity>=0.30;
 
-  const enoughDistance=
-    absX>=38;
+  suppressClickUntil=performance.now()+400;
 
-  const fastSwipe=
-    absX>=22 &&
-    velocity>=0.30;
-
-  suppressClickUntil=
-    performance.now()+450;
-
-  if(
-    horizontal &&
-    (enoughDistance || fastSwipe)
-  ){
-    void transitionMonth(
-      dx<0 ? 1 : -1
-    );
+  if(horizontal && (enoughDistance || fastSwipe)){
+    void runTransition(dx<0 ? 1 : -1);
   }
 }
 
 function cancelGesture(event){
   if(!gesture) return;
 
-  const horizontal=
-    gesture.axis==="x";
-
+  const current=gesture;
   gesture=null;
+  document.body.classList.remove("month-swiping");
 
-  if(horizontal){
+  if(current.axis==="x"){
     event.stopImmediatePropagation();
   }
 }
 
-document.addEventListener(
-  "touchstart",
-  startGesture,
-  {capture:true,passive:true}
-);
-
-document.addEventListener(
-  "touchmove",
-  moveGesture,
-  {capture:true,passive:false}
-);
-
-document.addEventListener(
-  "touchend",
-  finishGesture,
-  {capture:true,passive:true}
-);
-
-document.addEventListener(
-  "touchcancel",
-  cancelGesture,
-  {capture:true,passive:true}
-);
+document.addEventListener("touchstart",startGesture,{capture:true,passive:true});
+document.addEventListener("touchmove",moveGesture,{capture:true,passive:false});
+document.addEventListener("touchend",finishGesture,{capture:true,passive:true});
+document.addEventListener("touchcancel",cancelGesture,{capture:true,passive:true});
 
 document.addEventListener(
   "click",
   event=>{
-    if(
-      performance.now()>
-      suppressClickUntil
-    ){
-      return;
-    }
-
+    if(performance.now()>suppressClickUntil) return;
     suppressClickUntil=0;
-
     event.preventDefault();
     event.stopImmediatePropagation();
   },

@@ -28,8 +28,38 @@
 
 <main id="app" role="tabpanel"></main>
 
+<div class="veil" id="manageEditorVeil" aria-hidden="true"></div>
+<div class="sheet" id="manageEditorSheet" aria-hidden="true" tabindex="-1">
+  <div class="grab"></div>
+  <div class="shead">
+    <button type="button" class="lnk" id="manageEditorCancel">Закрыть</button>
+    <div class="ttl" id="manageEditorTitle">Пункт выдачи</div>
+    <button type="button" class="lnk b" id="manageEditorSave">Изменить</button>
+  </div>
+  <div class="sbody" id="manageEditorBody"></div>
+</div>
+
+<div class="app-confirm" id="appConfirm" aria-hidden="true">
+  <div class="app-confirm-box">
+    <div class="app-confirm-text">
+      <div class="app-confirm-title" id="appConfirmTitle"></div>
+      <div class="app-confirm-detail" id="appConfirmDetail" hidden></div>
+    </div>
+    <div class="app-confirm-actions">
+      <button type="button" class="app-confirm-btn" id="appConfirmCancel">Отмена</button>
+      <button type="button" class="app-confirm-btn ok" id="appConfirmOk">Подтвердить</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
 <script>
   const app=document.getElementById("app");
+  const editor=document.getElementById("manageEditorSheet");
+  const editorBody=document.getElementById("manageEditorBody");
+  const editorSave=document.getElementById("manageEditorSave");
+  const editorCancel=document.getElementById("manageEditorCancel");
+
   window.manageForwardAttempts=0;
   window.manageBackAttempts=0;
 
@@ -55,8 +85,53 @@
         <span>Управление</span>
       </button>
       <div class="ml">Пункты выдачи и тарифы</div>
-      <button type="button" class="manage-add">＋ Добавить ПВЗ</button>
+      <button type="button" class="manage-add" id="pointAdd">＋ Добавить ПВЗ</button>
+      <div class="ml">Список</div>
+      <div id="pointManageList">
+        <div class="card manage-menu point-manage-menu">
+          <button type="button" class="manage-row point-manage-row" data-point-id="point-demo">
+            <span class="manage-row-copy"><span class="manage-row-title">Тестовый ПВЗ</span></span>
+            <span class="manage-chevron" aria-hidden="true">›</span>
+          </button>
+        </div>
+      </div>
     `;
+  }
+
+  function openPointView(){
+    editor.classList.add("on");
+    editor.setAttribute("aria-hidden","false");
+    document.body.classList.add("sheet-open");
+    editorSave.textContent="Изменить";
+    editorCancel.textContent="Закрыть";
+    editorBody.innerHTML=`
+      <div class="ml">Пункт выдачи</div>
+      <div class="card employee-detail point-info-card">
+        <div class="row"><div class="l"><div class="s">Название</div><div class="t">Тестовый ПВЗ</div></div></div>
+      </div>
+      <div class="sheet-spacer" aria-hidden="true"></div>
+    `;
+  }
+
+  function openPointEdit(){
+    editorSave.textContent="Готово";
+    editorCancel.textContent="Отмена";
+    editorBody.innerHTML=`
+      <div class="ml">Пункт выдачи</div>
+      <div class="card employee-editor">
+        <label class="row"><div class="t">Название</div><input id="managePointName" value="Тестовый ПВЗ"></label>
+      </div>
+      <div class="ml">Статус</div>
+      <div class="card segbox"><div class="seg"><button type="button" class="on">Активен</button><button type="button">В архиве</button></div></div>
+      <div class="sheet-spacer" aria-hidden="true"></div>
+    `;
+  }
+
+  function closePointEditor(){
+    editor.classList.remove("on");
+    editor.setAttribute("aria-hidden","true");
+    document.body.classList.remove("sheet-open");
+    editorBody.innerHTML="";
   }
 
   app.addEventListener("click",event=>{
@@ -83,7 +158,31 @@
       }
 
       renderHome();
+      return;
     }
+
+    const point=event.target.closest?.("[data-point-id]");
+    if(point){
+      openPointView();
+    }
+  });
+
+  editorSave.addEventListener("click",()=>{
+    if(editorSave.textContent==="Изменить"){
+      openPointEdit();
+    }
+  });
+
+  editorCancel.addEventListener("click",closePointEditor);
+
+  document.getElementById("appConfirmCancel").addEventListener("click",()=>{
+    document.getElementById("appConfirm").classList.remove("on");
+    document.getElementById("appConfirm").setAttribute("aria-hidden","true");
+  });
+
+  document.getElementById("appConfirmOk").addEventListener("click",()=>{
+    document.getElementById("appConfirm").classList.remove("on");
+    document.getElementById("appConfirm").setAttribute("aria-hidden","true");
   });
 
   renderHome();

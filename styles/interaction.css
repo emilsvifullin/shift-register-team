@@ -508,7 +508,7 @@ nav.tabs button.touch-active,
     var(--bottom-dock-gap) +
     var(--bottom-dock-safe)
   );
-  --app-shell-height:max(var(--app-viewport-height,100dvh),100dvh);
+  --app-shell-height:100dvh;
 }
 
 .bottom-controls{

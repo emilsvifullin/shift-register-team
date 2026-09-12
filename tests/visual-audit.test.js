@@ -73,7 +73,8 @@ test("bottom dock clips page scrolling and keeps shift search geometry consisten
   const css=await read("styles/interaction.css");
 
   assert.match(css,/--bottom-dock-space:calc\(/);
-  assert.match(css,/--app-shell-height:max\(/);
+  assert.match(css,/--app-shell-height:100dvh/);
+  assert.doesNotMatch(css,/--app-shell-height:max\(/);
   assert.match(css,/\.bottom-controls\{[\s\S]*?bottom:0;[\s\S]*?background:var\(--bg\)/);
   assert.match(css,/nav\.tabs\{[\s\S]*?border-radius:999px/);
   assert.match(css,/nav\.tabs button\{[\s\S]*?border-radius:999px/);
@@ -94,6 +95,6 @@ test("standalone iOS shell uses the full app viewport and modal states remove th
 test("PWA release includes the final interaction layer",async()=>{
   const sw=await read("sw.js");
 
-  assert.match(sw,/sr-team-runtime-v9/);
+  assert.match(sw,/sr-team-runtime-v10/);
   assert.match(sw,/"\.\/styles\/interaction\.css"/);
 });

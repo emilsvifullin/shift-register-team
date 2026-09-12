@@ -508,6 +508,7 @@ nav.tabs button.touch-active,
     var(--bottom-dock-gap) +
     var(--bottom-dock-safe)
   );
+  --app-shell-height:max(var(--app-viewport-height,100dvh),100dvh);
 }
 
 .bottom-controls{
@@ -525,12 +526,23 @@ nav.tabs button.touch-active,
 nav.tabs{
   height:var(--bottom-tabs-height);
   min-height:var(--bottom-tabs-height);
+  border-radius:999px;
+}
+
+nav.tabs button{
+  border-radius:999px;
 }
 
 /* Скроллируемый экран физически заканчивается перед dock: строки не просвечивают под ним. */
+html,
+body{
+  height:var(--app-shell-height);
+  min-height:var(--app-shell-height);
+}
+
 main{
   height:calc(
-    min(var(--app-viewport-height,100dvh),100dvh) -
+    var(--app-shell-height) -
     var(--bottom-dock-space)
   );
   padding-bottom:16px;
@@ -564,10 +576,58 @@ main.shifts-layout{
   min-height:52px;
 }
 
+/* Модальные поверхности полностью отделяются от нижней навигации. */
+body.sheet-open .bottom-controls,
+body.point-picker-open .bottom-controls,
+body.month-picker-open .bottom-controls,
+body.date-picker-open .bottom-controls{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+}
+
+/*
+  iOS standalone может сообщать visualViewport ниже фактического окна приложения.
+  В PWA shell привязывается к полному layout viewport, а внутренние overlay по-прежнему
+  используют visualViewport для клавиатуры и zoom.
+*/
+@media (display-mode:standalone){
+  :root{
+    --app-shell-height:100vh;
+  }
+
+  html,
+  body{
+    height:100vh;
+    min-height:100vh;
+  }
+
+  .bottom-controls{
+    position:absolute;
+    bottom:0;
+  }
+
+  .veil,
+  .point-veil,
+  .month-veil,
+  .date-veil{
+    position:absolute;
+    top:0;
+    right:0;
+    bottom:auto;
+    left:0;
+    height:100vh;
+  }
+}
+
 @media (orientation:landscape) and (max-height:520px){
   :root{
     --bottom-tabs-height:48px;
     --bottom-dock-gap:4px;
+  }
+
+  .bottom-controls{
+    bottom:0;
   }
 
   nav.tabs{

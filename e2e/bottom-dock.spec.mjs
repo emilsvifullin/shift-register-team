@@ -141,3 +141,85 @@ test(
     expect(shiftWindow.y+shiftWindow.height).toBeLessThanOrEqual(box.dockTop+1);
   }
 );
+
+test(
+  "active tab follows the same pill curvature as the navigation shell",
+  async({page})=>{
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(FIXTURE);
+
+    const radii=await page.evaluate(()=>{
+      const tabs=document.querySelector("nav.tabs");
+      const active=document.querySelector('nav.tabs [aria-selected="true"]');
+      const tabsStyle=getComputedStyle(tabs);
+      const activeStyle=getComputedStyle(active);
+
+      return {
+        outer:tabsStyle.borderTopLeftRadius,
+        active:activeStyle.borderTopLeftRadius,
+        activeRight:activeStyle.borderTopRightRadius
+      };
+    });
+
+    expect(radii.outer).toBe("999px");
+    expect(radii.active).toBe("999px");
+    expect(radii.activeRight).toBe("999px");
+  }
+);
+
+test(
+  "modal picker state removes the bottom navigation from the visible stack",
+  async({page})=>{
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(FIXTURE);
+
+    await page.evaluate(()=>{
+      document.body.classList.add("point-picker-open");
+      document.getElementById("fixturePointVeil")?.classList.add("on");
+    });
+
+    const dockState=await page.locator(".bottom-controls").evaluate(element=>{
+      const style=getComputedStyle(element);
+      return {
+        visibility:style.visibility,
+        opacity:style.opacity,
+        pointerEvents:style.pointerEvents
+      };
+    });
+
+    expect(dockState.visibility).toBe("hidden");
+    expect(Number(dockState.opacity)).toBe(0);
+    expect(dockState.pointerEvents).toBe("none");
+  }
+);
+
+test(
+  "shell height can stay full even when visual viewport metrics are shorter",
+  async({page})=>{
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(FIXTURE);
+    await installLongView(page,"manage");
+
+    const shell=await page.evaluate(()=>{
+      const root=document.documentElement;
+      root.style.setProperty("--app-viewport-height","760px");
+      root.style.setProperty("--app-shell-height","844px");
+
+      const html=getComputedStyle(document.documentElement);
+      const body=getComputedStyle(document.body);
+      const main=document.querySelector("main").getBoundingClientRect();
+      const dock=document.querySelector(".bottom-controls").getBoundingClientRect();
+
+      return {
+        htmlHeight:parseFloat(html.height),
+        bodyHeight:parseFloat(body.height),
+        mainBottom:main.bottom,
+        dockTop:dock.top
+      };
+    });
+
+    expect(shell.htmlHeight).toBeCloseTo(844,0);
+    expect(shell.bodyHeight).toBeCloseTo(844,0);
+    expect(shell.mainBottom).toBeLessThanOrEqual(shell.dockTop+1);
+  }
+);

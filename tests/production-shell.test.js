@@ -179,7 +179,7 @@ test(
 
     assert.match(
       sw,
-      /sr-team-runtime-v6/
+      /sr-team-runtime-v7/
     );
 
     assert.match(

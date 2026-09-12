@@ -1,7 +1,8 @@
+import "./management-employee-points.js";
 import "./management-tap-intent.js";
 import "./management-navigation.js";
 
-export const APP_VERSION = "6.22.11";
+export const APP_VERSION = "6.22.12";
 export const SCHEMA_VERSION = 3;
 export const RULES_VERSION = "2026-08-12-v3";
 

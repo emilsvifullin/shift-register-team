@@ -100,10 +100,15 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   flex:none;
 }
 
+/*
+  Короткий список занимает ровно высоту своих строк. Когда строк становится
+  больше доступного места, flex-shrink ограничивает окно и включает внутренний
+  скролл — без пустого высокого контейнера под двумя-тремя плитками.
+*/
 #employeeList,
 #pointManageList{
   min-height:0;
-  flex:1 1 0;
+  flex:0 1 auto;
   display:flex;
   flex-direction:column;
   overflow:hidden;
@@ -112,9 +117,10 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
 #employeeList > .manage-menu,
 #pointManageList > .manage-menu{
   min-height:0;
-  height:100%;
-  max-height:none;
-  flex:1 1 0;
+  width:100%;
+  height:auto;
+  max-height:100%;
+  flex:0 1 auto;
 
   overflow-x:hidden;
   overflow-y:auto;
@@ -142,17 +148,36 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   display:none !important;
 }
 
+/* Архивные ПВЗ видны в полном списке назначений, но не назначаются заново. */
+.employee-point-state{
+  margin-left:auto;
+  flex:none;
+  color:var(--ink3);
+  font-size:11px;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.employee-point-archived:not(.on){
+  color:var(--ink2);
+}
+
+.employee-point-archived:disabled{
+  opacity:.68;
+  cursor:default;
+}
+
 /*
-  На телефоне окно списка показывает ровно пять полных сотрудников или семь ПВЗ.
-  Следующая строка начинается уже за границей скролл-окна, без тонкого хвоста снизу.
+  На телефоне длинный список показывает максимум пять сотрудников или семь ПВЗ.
+  Короткий список остаётся естественной высоты и растёт строка за строкой.
 */
 @media (max-width:520px) and (min-height:760px){
-  #employeeList .employee-row{
-    min-height:20%;
+  #employeeList > .manage-menu{
+    max-height:382px;
   }
 
-  #pointManageList .point-manage-row{
-    min-height:calc(100% / 7);
+  #pointManageList > .manage-menu{
+    max-height:380px;
   }
 }
 

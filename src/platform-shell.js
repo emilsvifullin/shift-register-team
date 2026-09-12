@@ -218,6 +218,61 @@ function installInputModality({
   };
 }
 
+function installTransientFocusStabilizer({
+  documentRef
+}){
+  const windowRef=
+    documentRef.defaultView;
+
+  const onFocusIn=event=>{
+    if(
+      !windowRef ||
+      !(event.target instanceof windowRef.Element)
+    ){
+      return;
+    }
+
+    const surface=
+      event.target.closest(
+        ".sheet.on,"+
+        ".point-picker.on,"+
+        ".month-picker.on,"+
+        ".date-picker.on"
+      );
+
+    if(!surface){
+      return;
+    }
+
+    const animations=
+      typeof surface.getAnimations==="function"
+        ? surface.getAnimations()
+        : [];
+
+    for(const animation of animations){
+      try{
+        animation.finish();
+      }catch{
+        /* A cancelled transition needs no further work. */
+      }
+    }
+  };
+
+  documentRef.addEventListener(
+    "focusin",
+    onFocusIn,
+    true
+  );
+
+  return ()=>{
+    documentRef.removeEventListener(
+      "focusin",
+      onFocusIn,
+      true
+    );
+  };
+}
+
 function visibleTabs(
   documentRef
 ){
@@ -714,6 +769,11 @@ export function installPlatformShell({
       documentRef
     });
 
+  const cleanupTransientFocus=
+    installTransientFocusStabilizer({
+      documentRef
+    });
+
   const cleanupTabs=
     installTabShell({
       windowRef,
@@ -722,6 +782,7 @@ export function installPlatformShell({
 
   return ()=>{
     cleanupTabs();
+    cleanupTransientFocus();
     cleanupInputModality();
 
     windowRef.removeEventListener(

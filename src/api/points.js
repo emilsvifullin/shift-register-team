@@ -49,6 +49,23 @@ export async function saveAdminPoint({
   );
 }
 
+export async function deleteAdminPoint(
+  id
+){
+  const result=
+    await supabaseClient.rpc(
+      "admin_delete_point",
+      {
+        p_point_id:id
+      }
+    );
+
+  return resultData(
+    result,
+    "Не удалось удалить ПВЗ"
+  );
+}
+
 export async function addAdminTariff({
   pointId,
   effectiveFrom,
@@ -71,7 +88,9 @@ export async function addAdminTariff({
             fixedRate===""
               ? null
               : Number(fixedRate),
-          p_shk_tiers:shkTiers
+          p_shk_tiers:shkTiers,
+          p_effective_from:
+            effectiveFrom
         }
       );
 

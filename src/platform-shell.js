@@ -164,6 +164,60 @@ function setViewportVariables(
   );
 }
 
+function installInputModality({
+  documentRef
+}){
+  const setModality=value=>{
+    documentRef.body.dataset.inputModality=
+      value;
+  };
+
+  const onPointerDown=()=>{
+    setModality("pointer");
+  };
+
+  const onKeyDown=event=>{
+    if(
+      [
+        "Shift",
+        "Control",
+        "Alt",
+        "Meta"
+      ].includes(event.key)
+    ){
+      return;
+    }
+
+    setModality("keyboard");
+  };
+
+  documentRef.addEventListener(
+    "pointerdown",
+    onPointerDown,
+    true
+  );
+
+  documentRef.addEventListener(
+    "keydown",
+    onKeyDown,
+    true
+  );
+
+  return ()=>{
+    documentRef.removeEventListener(
+      "pointerdown",
+      onPointerDown,
+      true
+    );
+
+    documentRef.removeEventListener(
+      "keydown",
+      onKeyDown,
+      true
+    );
+  };
+}
+
 function visibleTabs(
   documentRef
 ){
@@ -254,6 +308,21 @@ function installTabShell({
   let routing=false;
   let pendingHistoryMode="replace";
   let initialRouteApplied=false;
+  let reconcileFrame=0;
+
+  const queueVisualReconcile=()=>{
+    if(reconcileFrame){
+      return;
+    }
+
+    reconcileFrame=
+      windowRef.requestAnimationFrame(()=>{
+        reconcileFrame=0;
+        syncPanelAccessibility(
+          documentRef
+        );
+      });
+  };
 
   const syncRoute=(
     mode=pendingHistoryMode
@@ -334,6 +403,11 @@ function installTabShell({
     routing=true;
     pendingHistoryMode="none";
 
+    /*
+      The application renders synchronously from the tab click.
+      Prime tab-scoped CSS before that render so the first visible
+      frame is already in the destination state.
+    */
     primeActiveTab(
       documentRef,
       target
@@ -426,15 +500,17 @@ function installTabShell({
       ){
         pendingHistoryMode="push";
 
-        /*
-          The app renders the next panel synchronously in its own
-          click handler. Prime the visual state in capture phase so
-          tab-scoped CSS is already correct for that very first frame.
-        */
         primeActiveTab(
           documentRef,
           tab
         );
+
+        /*
+          A rapid second click can be rejected by the app while a
+          transition is running. Reconcile on the next frame so a
+          speculative visual state can never remain stuck.
+        */
+        queueVisualReconcile();
       }
     },
     true
@@ -487,6 +563,8 @@ function installTabShell({
             documentRef,
             target
           );
+
+          queueVisualReconcile();
         }
 
         pendingHistoryMode="push";
@@ -560,6 +638,12 @@ function installTabShell({
     observer.disconnect();
     bodyObserver.disconnect();
 
+    if(reconcileFrame){
+      windowRef.cancelAnimationFrame(
+        reconcileFrame
+      );
+    }
+
     windowRef.removeEventListener(
       "popstate",
       handleHistory
@@ -625,6 +709,11 @@ export function installPlatformShell({
       {passive:true}
     );
 
+  const cleanupInputModality=
+    installInputModality({
+      documentRef
+    });
+
   const cleanupTabs=
     installTabShell({
       windowRef,
@@ -633,6 +722,7 @@ export function installPlatformShell({
 
   return ()=>{
     cleanupTabs();
+    cleanupInputModality();
 
     windowRef.removeEventListener(
       "resize",

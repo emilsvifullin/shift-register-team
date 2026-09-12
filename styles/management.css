@@ -132,8 +132,14 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   min-height:54px;
 }
 
-.manage-point-delete{
+.manage-point-delete,
+.manage-employee-delete{
   margin-top:16px;
+}
+
+/* Удаление сотрудника доступно только после перехода в режим редактирования. */
+#employeeSheet #employeeDelete{
+  display:none !important;
 }
 
 /*
@@ -188,6 +194,14 @@ body[data-management-navigation="ready"][data-active-tab="manage"] main:has(> .m
   width:11px;
   height:18px;
   stroke-width:1.8;
+}
+
+/* Touch/pointer-переходы не должны кратко подсвечивать стрелку фокусом. */
+body[data-input-modality="pointer"] #prevM[data-manage-back-proxy="true"]:focus,
+body[data-input-modality="pointer"] #prevM[data-manage-back-proxy="true"]:focus-visible{
+  outline:none !important;
+  box-shadow:none !important;
+  background:transparent !important;
 }
 
 @media (hover:hover) and (pointer:fine){

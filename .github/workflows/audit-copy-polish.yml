@@ -1,0 +1,38 @@
+name: Audit Copy Polish
+on:
+  push:
+    branches:
+      - audit/full-visual-mobile-v1
+permissions:
+  contents: write
+jobs:
+  polish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: audit/full-visual-mobile-v1
+      - shell: python
+        run: |
+          from pathlib import Path
+
+          app=Path('src/app.js')
+          source=app.read_text()
+          old='title:"Сотрудник для итогов"'
+          if source.count(old)!=1:
+              raise SystemExit(f'expected one stats picker title, found {source.count(old)}')
+          app.write_text(source.replace(old,'title:"Сотрудник"'))
+
+          fixture=Path('tests/fixtures/platform-shell.html')
+          source=fixture.read_text().replace('Сотрудник для итогов','Сотрудник')
+          source=source.replace('type="search" value="" aria-label="Поиск"','type="search" value="" placeholder="Поиск" aria-label="Поиск"')
+          fixture.write_text(source)
+
+          Path('.github/workflows/audit-copy-polish.yml').unlink()
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: simplify stats picker on narrow screens"
+          git push origin HEAD:audit/full-visual-mobile-v1

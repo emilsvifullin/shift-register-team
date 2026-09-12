@@ -46,7 +46,7 @@ async function installGeometryFixture(page){
 
   await page.evaluate(()=>{
     const sheet=document.createElement("div");
-    sheet.id="fixtureSheet";
+    sheet.id="fixtureGeometrySheet";
     sheet.className="sheet on";
     sheet.style.display="block";
     sheet.innerHTML=`
@@ -270,10 +270,10 @@ test(
         .toBeLessThanOrEqual(width+1);
       await hide(page,"#fixtureDatePicker");
 
-      const sheet=await expectInsideViewport(page,"#fixtureSheet");
+      const sheet=await expectInsideViewport(page,"#fixtureGeometrySheet");
       expect(sheet.bottom).toBeLessThanOrEqual(sheet.viewportHeight+1);
 
-      const sheetToolbar=page.locator("#fixtureSheet .shead");
+      const sheetToolbar=page.locator("#fixtureGeometrySheet .shead");
       const [sheetCancel,sheetTitle,sheetDone]=await Promise.all([
         sheetToolbar.locator(".lnk").first().boundingBox(),
         sheetToolbar.locator(".ttl").boundingBox(),

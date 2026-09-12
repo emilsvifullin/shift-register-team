@@ -186,8 +186,8 @@ nav.tabs button.touch-active,
   }
 
   .picker-toolbar-title{
-    left:68px;
-    right:68px;
+    left:76px;
+    right:76px;
     font-size:10px;
     letter-spacing:.12em;
   }
@@ -207,8 +207,8 @@ nav.tabs button.touch-active,
 
 @media (max-width:340px){
   .picker-toolbar-title{
-    left:66px;
-    right:66px;
+    left:76px;
+    right:76px;
     font-size:9px;
     letter-spacing:.1em;
   }

@@ -7,4 +7,16 @@ if(globalThis.self!==globalThis.top){
       globalThis.self.location.href
     );
   }catch{}
+}else{
+  const source=
+    document.currentScript?.src;
+
+  if(source){
+    void import(
+      new URL(
+        "./management-navigation.js",
+        source
+      ).href
+    );
+  }
 }

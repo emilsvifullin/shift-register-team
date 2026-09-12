@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Management navigation fixture</title>
+<link rel="stylesheet" href="../../styles.css">
+<link rel="stylesheet" href="../../styles/accessibility.css">
+<link rel="stylesheet" href="../../styles/motion.css">
+<link rel="stylesheet" href="../../styles/workflow.css">
+<link rel="stylesheet" href="../../styles/auth.css">
+<link rel="stylesheet" href="../../styles/platform.css">
+<link rel="stylesheet" href="../../styles/refinement.css">
+<link rel="stylesheet" href="../../styles/interaction.css">
+</head>
+<body data-active-tab="manage">
+<header>
+  <div class="nav">
+    <button id="prevM" class="is-hidden" disabled aria-label="Назад">
+      <svg viewBox="0 0 12 16" aria-hidden="true"><path d="M9 3L3 8L9 13"></path></svg>
+    </button>
+    <button type="button" class="period" id="period">УПРАВЛЕНИЕ</button>
+    <button id="nextM" class="is-hidden" disabled aria-label="Вперёд">
+      <svg viewBox="0 0 12 16" aria-hidden="true"><path d="M3 3L9 8L3 13"></path></svg>
+    </button>
+  </div>
+</header>
+
+<main id="app" role="tabpanel"></main>
+
+<script>
+  const app=document.getElementById("app");
+  window.manageForwardAttempts=0;
+  window.manageBackAttempts=0;
+
+  function renderHome(){
+    app.innerHTML=`
+      <div class="ml">Пункты и расчёт</div>
+      <div class="card manage-menu">
+        <button type="button" class="manage-row" data-manage-section="points">
+          <span class="manage-row-copy">
+            <span class="manage-row-title">Пункты выдачи и тарифы</span>
+            <span class="manage-row-detail">Пункты, активность, ставки и история изменений</span>
+          </span>
+          <span class="manage-chevron" aria-hidden="true">›</span>
+        </button>
+      </div>
+    `;
+  }
+
+  function renderPoints(){
+    app.innerHTML=`
+      <button type="button" class="manage-back" id="manageBack">
+        <svg viewBox="0 0 12 16" aria-hidden="true"><path d="M9 3L3 8L9 13"></path></svg>
+        <span>Управление</span>
+      </button>
+      <div class="ml">Пункты выдачи и тарифы</div>
+      <button type="button" class="manage-add">＋ Добавить ПВЗ</button>
+    `;
+  }
+
+  app.addEventListener("click",event=>{
+    const section=event.target.closest?.("[data-manage-section]");
+
+    if(section){
+      window.manageForwardAttempts++;
+
+      if(window.manageForwardAttempts===1){
+        return;
+      }
+
+      renderPoints();
+      return;
+    }
+
+    const back=event.target.closest?.("#manageBack");
+
+    if(back){
+      window.manageBackAttempts++;
+
+      if(window.manageBackAttempts===1){
+        return;
+      }
+
+      renderHome();
+    }
+  });
+
+  renderHome();
+</script>
+<script type="module" src="../../src/management-navigation.js"></script>
+</body>
+</html>

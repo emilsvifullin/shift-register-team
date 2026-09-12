@@ -149,3 +149,34 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
     top:calc(6px + env(safe-area-inset-top));
   }
 }
+
+/*
+  В production видимый back-control живёт в штатной шапке. Исходная кнопка
+  остаётся в #app как действие для существующей логики и нажимается proxy-кнопкой.
+*/
+body[data-management-navigation="ready"][data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
+  display:none !important;
+}
+
+#prevM[data-manage-back-proxy="true"]{
+  visibility:visible !important;
+  pointer-events:auto !important;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:var(--ink2);
+  box-shadow:none;
+}
+
+#prevM[data-manage-back-proxy="true"] svg{
+  width:11px;
+  height:18px;
+  stroke-width:1.8;
+}
+
+@media (hover:hover) and (pointer:fine){
+  #prevM[data-manage-back-proxy="true"]:hover{
+    color:var(--ink);
+    background:transparent;
+  }
+}

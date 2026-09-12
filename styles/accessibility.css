@@ -126,6 +126,7 @@ select:focus-visible{
 #sheet:focus,
 #sheet:focus-visible{
   outline:none;
+  outline-width:0;
   outline-offset:0;
 }
 
@@ -133,6 +134,7 @@ select:focus-visible{
 nav.tabs button:focus:not(:focus-visible),
 .seg button:focus:not(:focus-visible){
   outline:none;
+  outline-width:0;
   outline-offset:0;
 }
 
@@ -147,6 +149,7 @@ body[data-input-modality="pointer"] .sh:focus,
 body[data-input-modality="pointer"] [role="tab"]:focus,
 body[data-input-modality="pointer"] [role="option"]:focus{
   outline:none !important;
+  outline-width:0 !important;
   outline-offset:0 !important;
 }
 
@@ -158,6 +161,7 @@ body[data-input-modality="pointer"] [role="option"]:focus{
 @media (hover:hover) and (pointer:fine){
   *:focus:not(:focus-visible){
     outline:none;
+    outline-width:0;
   }
 
   .point-option:focus-visible,

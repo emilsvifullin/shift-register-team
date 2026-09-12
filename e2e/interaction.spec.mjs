@@ -48,6 +48,7 @@ async function installGeometryFixture(page){
     const sheet=document.createElement("div");
     sheet.id="fixtureSheet";
     sheet.className="sheet on";
+    sheet.style.display="block";
     sheet.innerHTML=`
       <div class="grab"></div>
       <div class="shead">
@@ -205,12 +206,17 @@ test(
     await page.goto(FIXTURE);
     await installGeometryFixture(page);
 
-    const widths=[];
-    for(let width=280;width<=520;width+=12){
-      widths.push(width);
+    const widths=new Set();
+    for(let width=280;width<=520;width+=8){
+      widths.add(width);
+    }
+    for(const width of [
+      320,360,375,384,390,393,402,412,414,428,430,440,480,512,520
+    ]){
+      widths.add(width);
     }
 
-    for(const width of widths){
+    for(const width of [...widths].sort((a,b)=>a-b)){
       const height=Math.max(568,Math.round(width*2.15));
       await page.setViewportSize({width,height});
 
@@ -244,6 +250,9 @@ test(
         toolbar.locator(".picker-toolbar-title").boundingBox(),
         toolbar.locator(".done").boundingBox()
       ]);
+      expect(titleBox).not.toBeNull();
+      expect(cancelBox).not.toBeNull();
+      expect(doneBox).not.toBeNull();
       expect(titleBox.x,`picker title left at ${width}px`)
         .toBeGreaterThanOrEqual(cancelBox.x+cancelBox.width+2);
       expect(titleBox.x+titleBox.width,`picker title right at ${width}px`)
@@ -256,6 +265,7 @@ test(
 
       const lastDay=page.locator("#fixtureDatePicker .date-day").last();
       const lastDayBox=await lastDay.boundingBox();
+      expect(lastDayBox).not.toBeNull();
       expect(lastDayBox.x+lastDayBox.width,`calendar width at ${width}px`)
         .toBeLessThanOrEqual(width+1);
       await hide(page,"#fixtureDatePicker");
@@ -269,6 +279,9 @@ test(
         sheetToolbar.locator(".ttl").boundingBox(),
         sheetToolbar.locator(".lnk").last().boundingBox()
       ]);
+      expect(sheetCancel).not.toBeNull();
+      expect(sheetTitle).not.toBeNull();
+      expect(sheetDone).not.toBeNull();
       expect(sheetTitle.x,`sheet title left at ${width}px`)
         .toBeGreaterThanOrEqual(sheetCancel.x+sheetCancel.width);
       expect(sheetTitle.x+sheetTitle.width,`sheet title right at ${width}px`)
@@ -278,16 +291,54 @@ test(
 );
 
 test(
+  "common portrait geometries keep controls reachable",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    for(const viewport of [
+      {width:320,height:568},
+      {width:360,height:640},
+      {width:360,height:780},
+      {width:375,height:667},
+      {width:375,height:812},
+      {width:390,height:844},
+      {width:393,height:852},
+      {width:402,height:874},
+      {width:412,height:915},
+      {width:414,height:736},
+      {width:414,height:896},
+      {width:428,height:926},
+      {width:430,height:932},
+      {width:440,height:956},
+      {width:480,height:1040},
+      {width:512,height:1112}
+    ]){
+      await page.setViewportSize(viewport);
+
+      const tabs=await expectInsideViewport(page,"nav.tabs");
+      expect(tabs.bottom).toBeLessThanOrEqual(viewport.height+1);
+
+      await show(page,"#fixturePointPicker");
+      const picker=await expectInsideViewport(page,"#fixturePointPicker");
+      expect(picker.bottom).toBeLessThanOrEqual(viewport.height+1);
+      await hide(page,"#fixturePointPicker");
+    }
+  }
+);
+
+test(
   "wide foldable and tablet widths use space without becoming desktop",
   async({page})=>{
     await page.goto(FIXTURE);
 
-    for(const width of [540,600,720,768,820,884,899]){
+    for(const width of [520,540,600,653,720,768,820,853,884,899]){
       await page.setViewportSize({width,height:1104});
 
       const mainBox=await page.locator("#app").boundingBox();
       expect(mainBox).not.toBeNull();
-      expect(mainBox.width,`main too narrow at ${width}px`).toBeGreaterThan(500);
+      if(width>=521){
+        expect(mainBox.width,`main too narrow at ${width}px`).toBeGreaterThan(500);
+      }
       expect(mainBox.width,`main too wide at ${width}px`).toBeLessThanOrEqual(761);
 
       const tabs=await expectInsideViewport(page,"nav.tabs");
@@ -302,12 +353,18 @@ test(
     await page.goto(FIXTURE);
 
     for(const viewport of [
+      {width:568,height:280},
       {width:568,height:320},
       {width:667,height:375},
+      {width:736,height:414},
       {width:740,height:360},
+      {width:812,height:375},
       {width:844,height:390},
+      {width:852,height:393},
       {width:896,height:414},
-      {width:932,height:430}
+      {width:926,height:428},
+      {width:932,height:430},
+      {width:956,height:440}
     ]){
       await page.setViewportSize(viewport);
 

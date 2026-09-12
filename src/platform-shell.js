@@ -197,6 +197,20 @@ function tabName(
   ).replace(/^tab-/,"");
 }
 
+function primeActiveTab(
+  documentRef,
+  tab
+){
+  const name=tabName(tab);
+
+  if(name){
+    documentRef.body.dataset.activeTab=
+      name;
+  }
+
+  return name || null;
+}
+
 function syncPanelAccessibility(
   documentRef
 ){
@@ -215,14 +229,10 @@ function syncPanelAccessibility(
     active.id
   );
 
-  const name=tabName(active);
-
-  if(name){
-    documentRef.body.dataset.activeTab=
-      name;
-  }
-
-  return name || null;
+  return primeActiveTab(
+    documentRef,
+    active
+  );
 }
 
 function installTabShell({
@@ -324,6 +334,11 @@ function installTabShell({
     routing=true;
     pendingHistoryMode="none";
 
+    primeActiveTab(
+      documentRef,
+      target
+    );
+
     target.click();
 
     windowRef.requestAnimationFrame(()=>{
@@ -404,8 +419,22 @@ function installTabShell({
           '[role="tab"]'
         );
 
-      if(tab && !tab.hidden){
+      if(
+        tab &&
+        !tab.hidden &&
+        !tab.disabled
+      ){
         pendingHistoryMode="push";
+
+        /*
+          The app renders the next panel synchronously in its own
+          click handler. Prime the visual state in capture phase so
+          tab-scoped CSS is already correct for that very first frame.
+        */
+        primeActiveTab(
+          documentRef,
+          tab
+        );
       }
     },
     true
@@ -429,6 +458,37 @@ function installTabShell({
           "ArrowRight"
         ].includes(event.key)
       ){
+        const tabs=
+          visibleTabs(documentRef);
+
+        const currentIndex=
+          tabs.indexOf(current);
+
+        if(
+          tabs.length &&
+          currentIndex>=0
+        ){
+          const direction=
+            event.key==="ArrowRight"
+              ? 1
+              : -1;
+
+          const target=
+            tabs[
+              (
+                currentIndex+
+                direction+
+                tabs.length
+              )%
+              tabs.length
+            ];
+
+          primeActiveTab(
+            documentRef,
+            target
+          );
+        }
+
         pendingHistoryMode="push";
         return;
       }
@@ -456,6 +516,12 @@ function installTabShell({
 
       event.preventDefault();
       pendingHistoryMode="push";
+
+      primeActiveTab(
+        documentRef,
+        target
+      );
+
       target.click();
       target.focus({
         preventScroll:true

@@ -5,7 +5,8 @@ const FIXTURE=
 
 test.use({
   viewport:{width:414,height:896},
-  hasTouch:true
+  hasTouch:true,
+  colorScheme:"dark"
 });
 
 test("management back chevron sits in the page header and employee rows use the intended mobile height",async({page},testInfo)=>{

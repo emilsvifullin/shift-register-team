@@ -164,6 +164,115 @@ function setViewportVariables(
   );
 }
 
+function installInputModality({
+  documentRef
+}){
+  const setModality=value=>{
+    documentRef.body.dataset.inputModality=
+      value;
+  };
+
+  const onPointerDown=()=>{
+    setModality("pointer");
+  };
+
+  const onKeyDown=event=>{
+    if(
+      [
+        "Shift",
+        "Control",
+        "Alt",
+        "Meta"
+      ].includes(event.key)
+    ){
+      return;
+    }
+
+    setModality("keyboard");
+  };
+
+  documentRef.addEventListener(
+    "pointerdown",
+    onPointerDown,
+    true
+  );
+
+  documentRef.addEventListener(
+    "keydown",
+    onKeyDown,
+    true
+  );
+
+  return ()=>{
+    documentRef.removeEventListener(
+      "pointerdown",
+      onPointerDown,
+      true
+    );
+
+    documentRef.removeEventListener(
+      "keydown",
+      onKeyDown,
+      true
+    );
+  };
+}
+
+function installTransientFocusStabilizer({
+  documentRef
+}){
+  const windowRef=
+    documentRef.defaultView;
+
+  const onFocusIn=event=>{
+    if(
+      !windowRef ||
+      !(event.target instanceof windowRef.Element)
+    ){
+      return;
+    }
+
+    const surface=
+      event.target.closest(
+        ".sheet.on,"+
+        ".point-picker.on,"+
+        ".month-picker.on,"+
+        ".date-picker.on"
+      );
+
+    if(!surface){
+      return;
+    }
+
+    const animations=
+      typeof surface.getAnimations==="function"
+        ? surface.getAnimations()
+        : [];
+
+    for(const animation of animations){
+      try{
+        animation.finish();
+      }catch{
+        /* A cancelled transition needs no further work. */
+      }
+    }
+  };
+
+  documentRef.addEventListener(
+    "focusin",
+    onFocusIn,
+    true
+  );
+
+  return ()=>{
+    documentRef.removeEventListener(
+      "focusin",
+      onFocusIn,
+      true
+    );
+  };
+}
+
 function visibleTabs(
   documentRef
 ){
@@ -197,6 +306,20 @@ function tabName(
   ).replace(/^tab-/,"");
 }
 
+function primeActiveTab(
+  documentRef,
+  tab
+){
+  const name=tabName(tab);
+
+  if(name){
+    documentRef.body.dataset.activeTab=
+      name;
+  }
+
+  return name || null;
+}
+
 function syncPanelAccessibility(
   documentRef
 ){
@@ -215,14 +338,10 @@ function syncPanelAccessibility(
     active.id
   );
 
-  const name=tabName(active);
-
-  if(name){
-    documentRef.body.dataset.activeTab=
-      name;
-  }
-
-  return name || null;
+  return primeActiveTab(
+    documentRef,
+    active
+  );
 }
 
 function installTabShell({
@@ -244,6 +363,21 @@ function installTabShell({
   let routing=false;
   let pendingHistoryMode="replace";
   let initialRouteApplied=false;
+  let reconcileFrame=0;
+
+  const queueVisualReconcile=()=>{
+    if(reconcileFrame){
+      return;
+    }
+
+    reconcileFrame=
+      windowRef.requestAnimationFrame(()=>{
+        reconcileFrame=0;
+        syncPanelAccessibility(
+          documentRef
+        );
+      });
+  };
 
   const syncRoute=(
     mode=pendingHistoryMode
@@ -323,6 +457,16 @@ function installTabShell({
 
     routing=true;
     pendingHistoryMode="none";
+
+    /*
+      The application renders synchronously from the tab click.
+      Prime tab-scoped CSS before that render so the first visible
+      frame is already in the destination state.
+    */
+    primeActiveTab(
+      documentRef,
+      target
+    );
 
     target.click();
 
@@ -404,8 +548,24 @@ function installTabShell({
           '[role="tab"]'
         );
 
-      if(tab && !tab.hidden){
+      if(
+        tab &&
+        !tab.hidden &&
+        !tab.disabled
+      ){
         pendingHistoryMode="push";
+
+        primeActiveTab(
+          documentRef,
+          tab
+        );
+
+        /*
+          A rapid second click can be rejected by the app while a
+          transition is running. Reconcile on the next frame so a
+          speculative visual state can never remain stuck.
+        */
+        queueVisualReconcile();
       }
     },
     true
@@ -429,6 +589,39 @@ function installTabShell({
           "ArrowRight"
         ].includes(event.key)
       ){
+        const tabs=
+          visibleTabs(documentRef);
+
+        const currentIndex=
+          tabs.indexOf(current);
+
+        if(
+          tabs.length &&
+          currentIndex>=0
+        ){
+          const direction=
+            event.key==="ArrowRight"
+              ? 1
+              : -1;
+
+          const target=
+            tabs[
+              (
+                currentIndex+
+                direction+
+                tabs.length
+              )%
+              tabs.length
+            ];
+
+          primeActiveTab(
+            documentRef,
+            target
+          );
+
+          queueVisualReconcile();
+        }
+
         pendingHistoryMode="push";
         return;
       }
@@ -456,6 +649,12 @@ function installTabShell({
 
       event.preventDefault();
       pendingHistoryMode="push";
+
+      primeActiveTab(
+        documentRef,
+        target
+      );
+
       target.click();
       target.focus({
         preventScroll:true
@@ -493,6 +692,12 @@ function installTabShell({
   return ()=>{
     observer.disconnect();
     bodyObserver.disconnect();
+
+    if(reconcileFrame){
+      windowRef.cancelAnimationFrame(
+        reconcileFrame
+      );
+    }
 
     windowRef.removeEventListener(
       "popstate",
@@ -559,6 +764,16 @@ export function installPlatformShell({
       {passive:true}
     );
 
+  const cleanupInputModality=
+    installInputModality({
+      documentRef
+    });
+
+  const cleanupTransientFocus=
+    installTransientFocusStabilizer({
+      documentRef
+    });
+
   const cleanupTabs=
     installTabShell({
       windowRef,
@@ -567,6 +782,8 @@ export function installPlatformShell({
 
   return ()=>{
     cleanupTabs();
+    cleanupTransientFocus();
+    cleanupInputModality();
 
     windowRef.removeEventListener(
       "resize",

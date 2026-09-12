@@ -18,10 +18,48 @@
   <script type="module" src="../../src/platform-shell.js"></script>
 </head>
 <body class="app-booting">
-  <main id="app" role="tabpanel">Test panel</main>
+  <main id="app" role="tabpanel"></main>
+
+  <div class="veil" id="fixtureVeil" aria-hidden="true"></div>
+  <div
+    class="sheet"
+    id="fixtureSheet"
+    role="dialog"
+    aria-modal="true"
+    aria-hidden="true"
+    tabindex="-1"
+  >
+    <div class="grab"></div>
+    <div class="shead">
+      <button type="button" class="lnk">Отмена</button>
+      <div class="ttl">Редактирование сотрудника</div>
+      <button type="button" class="lnk b">Готово</button>
+    </div>
+    <div class="sbody">
+      <div class="ml">Сотрудник</div>
+      <div class="card employee-editor">
+        <label class="row">
+          <div class="t">ФИО</div>
+          <input type="text" value="Александр Очень-Длинная-Фамилия">
+        </label>
+        <label class="row">
+          <div class="t">Телефон</div>
+          <input type="tel" value="+7 999 999-99-99">
+        </label>
+      </div>
+      <div style="height:680px" aria-hidden="true"></div>
+    </div>
+  </div>
 
   <div class="point-veil" id="fixturePointVeil" aria-hidden="true"></div>
-  <div class="point-picker app-picker-anchored" id="fixturePointPicker" aria-hidden="true">
+  <div
+    class="point-picker app-picker-anchored"
+    id="fixturePointPicker"
+    role="dialog"
+    aria-modal="true"
+    aria-hidden="true"
+    tabindex="-1"
+  >
     <div class="point-picker-handle"><div class="point-picker-grab"></div></div>
     <div class="picker-toolbar">
       <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
@@ -32,11 +70,42 @@
       <input type="search" value="" placeholder="Поиск" aria-label="Поиск">
     </label>
     <div class="point-list">
-      <button type="button" class="point-option on"><span class="point-check">✓</span><span class="point-name">Сотрудник</span></button>
+      <button type="button" class="point-option on"><span class="point-check">✓</span><span class="point-name">Александр Очень-Длинная-Фамилия</span></button>
+      <button type="button" class="point-option"><span class="point-check"></span><span class="point-name">Большой Овчинниковский Переулок 16</span></button>
+      <button type="button" class="point-option"><span class="point-check"></span><span class="point-name">Нагатинская Набережная 56а</span></button>
     </div>
   </div>
 
-  <div class="date-picker" id="fixtureDatePicker" aria-hidden="true">
+  <div class="month-picker" id="fixtureMonthPicker" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1">
+    <div class="month-picker-handle"><div class="month-picker-grab"></div></div>
+    <div class="picker-toolbar">
+      <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
+      <div class="picker-toolbar-title">Выберите месяц</div>
+      <button type="button" class="picker-toolbar-btn done">Готово</button>
+    </div>
+    <div class="month-picker-head">
+      <button type="button" class="date-calendar-nav" aria-label="Предыдущий год">‹</button>
+      <div class="month-year">2026</div>
+      <button type="button" class="date-calendar-nav" aria-label="Следующий год">›</button>
+    </div>
+    <div class="month-grid">
+      <button type="button" class="month-option">Январь</button>
+      <button type="button" class="month-option">Февраль</button>
+      <button type="button" class="month-option">Март</button>
+      <button type="button" class="month-option">Апрель</button>
+      <button type="button" class="month-option">Май</button>
+      <button type="button" class="month-option">Июнь</button>
+      <button type="button" class="month-option">Июль</button>
+      <button type="button" class="month-option">Август</button>
+      <button type="button" class="month-option on">Сентябрь</button>
+      <button type="button" class="month-option">Октябрь</button>
+      <button type="button" class="month-option">Ноябрь</button>
+      <button type="button" class="month-option">Декабрь</button>
+    </div>
+    <button type="button" class="month-today">Текущий месяц</button>
+  </div>
+
+  <div class="date-picker" id="fixtureDatePicker" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1">
     <div class="date-picker-handle"><div class="date-picker-grab"></div></div>
     <div class="picker-toolbar">
       <button type="button" class="picker-toolbar-btn cancel">Отмена</button>
@@ -50,7 +119,12 @@
     </div>
     <div class="date-weekdays"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
     <div class="date-grid">
-      <button type="button" class="date-day">1</button><button type="button" class="date-day">2</button><button type="button" class="date-day">3</button><button type="button" class="date-day">4</button><button type="button" class="date-day">5</button><button type="button" class="date-day">6</button><button type="button" class="date-day on">7</button>
+      <button type="button" class="date-day outside">31</button><button type="button" class="date-day">1</button><button type="button" class="date-day">2</button><button type="button" class="date-day">3</button><button type="button" class="date-day">4</button><button type="button" class="date-day">5</button><button type="button" class="date-day">6</button>
+      <button type="button" class="date-day">7</button><button type="button" class="date-day">8</button><button type="button" class="date-day">9</button><button type="button" class="date-day">10</button><button type="button" class="date-day">11</button><button type="button" class="date-day on">12</button><button type="button" class="date-day">13</button>
+      <button type="button" class="date-day">14</button><button type="button" class="date-day">15</button><button type="button" class="date-day">16</button><button type="button" class="date-day">17</button><button type="button" class="date-day">18</button><button type="button" class="date-day">19</button><button type="button" class="date-day">20</button>
+      <button type="button" class="date-day">21</button><button type="button" class="date-day">22</button><button type="button" class="date-day">23</button><button type="button" class="date-day">24</button><button type="button" class="date-day">25</button><button type="button" class="date-day">26</button><button type="button" class="date-day">27</button>
+      <button type="button" class="date-day">28</button><button type="button" class="date-day">29</button><button type="button" class="date-day">30</button><button type="button" class="date-day outside">1</button><button type="button" class="date-day outside">2</button><button type="button" class="date-day outside">3</button><button type="button" class="date-day outside">4</button>
+      <button type="button" class="date-day outside">5</button><button type="button" class="date-day outside">6</button><button type="button" class="date-day outside">7</button><button type="button" class="date-day outside">8</button><button type="button" class="date-day outside">9</button><button type="button" class="date-day outside">10</button><button type="button" class="date-day outside">11</button>
     </div>
     <button type="button" class="date-today">Сегодня</button>
   </div>
@@ -59,22 +133,143 @@
     <nav class="tabs" role="tablist" aria-label="Разделы">
       <button type="button" role="tab" id="tab-shifts" aria-controls="app" aria-selected="true" tabindex="0">Смены</button>
       <button type="button" role="tab" id="tab-stats" aria-controls="app" aria-selected="false" tabindex="-1">Итоги</button>
-      <button type="button" role="tab" id="tab-manage" aria-controls="app" aria-selected="false" tabindex="-1">Управление</button>
+      <button type="button" role="tab" id="tab-manage" aria-controls="app" aria-selected="false" tabindex="-1"><span class="tab-label-full">Управление</span><span class="tab-label-short" aria-hidden="true">Упр.</span></button>
       <button type="button" role="tab" id="tab-data" aria-controls="app" aria-selected="false" tabindex="-1">Данные</button>
     </nav>
   </div>
 
   <script>
+    window.__fixtureRenderSnapshots=[];
+
+    const app=document.getElementById("app");
     const tabs=Array.from(document.querySelectorAll('[role="tab"]'));
+
+    function fixtureView(name){
+      if(name==="stats"){
+        return `
+          <div class="ml">Фильтры</div>
+          <div class="card employee-editor">
+            <button type="button" class="row point-row stats-filter-row" id="statsEmployeeOpen">
+              <div class="t">Сотрудник</div>
+              <div class="point-value">Выберите сотрудника</div>
+            </button>
+          </div>
+          <div class="hero">
+            <div class="k">Итоги</div>
+            <div class="sub">Расчёт выплат за выбранный месяц</div>
+          </div>
+          <div class="card payout-card">
+            <button type="button" class="row payout-summary"><span>Первая половина</span><span>15 000 ₽</span></button>
+            <button type="button" class="row payout-summary"><span>Вторая половина</span><span>18 500 ₽</span></button>
+          </div>
+        `;
+      }
+
+      if(name==="manage"){
+        return `
+          <div class="ml">Команда</div>
+          <div class="card manage-menu">
+            <button type="button" class="manage-row">
+              <span class="manage-row-copy">
+                <span class="manage-row-title">Сотрудники</span>
+                <span class="manage-row-detail">Аккаунты, статусы и назначенные ПВЗ с очень длинным пояснением для проверки переноса и переполнения</span>
+              </span>
+              <span class="manage-chevron">›</span>
+            </button>
+          </div>
+          <div class="ml">Пункты и расчёт</div>
+          <div class="card manage-menu">
+            <button type="button" class="manage-row">
+              <span class="manage-row-copy"><span class="manage-row-title">Пункты выдачи и тарифы</span><span class="manage-row-detail">Настройки ставок и истории</span></span>
+              <span class="manage-chevron">›</span>
+            </button>
+          </div>
+        `;
+      }
+
+      if(name==="data"){
+        return `
+          <div class="ml">Данные</div>
+          <div class="data-status card">
+            <div class="data-status-title">Синхронизация</div>
+            <div class="data-status-detail">Сервер подключён. Очень длинная диагностическая строка не должна растягивать интерфейс за границы экрана.</div>
+          </div>
+          <button type="button" class="btn">Экспортировать данные</button>
+        `;
+      }
+
+      return `
+        <div class="ml">Смены</div>
+        <button type="button" class="btn" id="fixtureAddShift">+ Добавить смену</button>
+        <div class="ml">Поиск и фильтр</div>
+        <div class="card">
+          <label class="row"><div class="t">Поиск</div><input type="search" value=""></label>
+          <button type="button" class="row point-row"><div class="t">Фильтр</div><div class="point-value">Все смены</div></button>
+        </div>
+        <div class="ml">Список</div>
+        <div class="card">
+          <button type="button" class="sh">
+            <span class="day"><span class="d">2</span><span class="w">ср</span></span>
+            <span class="mid"><span class="p">Большой Овчинниковский Переулок 16 с очень длинным названием</span><span class="meta">638 ШК · Александр Очень-Длинная-Фамилия</span></span>
+            <span class="amt">5 500 ₽</span>
+          </button>
+        </div>
+      `;
+    }
+
+    function renderFixture(name){
+      app.innerHTML=fixtureView(name);
+
+      const statsRow=app.querySelector(".stats-filter-row");
+      const statsStyle=statsRow
+        ? getComputedStyle(statsRow)
+        : null;
+
+      const snapshot={
+        tab:name,
+        activeTabAtRender:document.body.dataset.activeTab || "",
+        activeElementAtRender:document.activeElement?.id || "",
+        scrollWidth:app.scrollWidth,
+        clientWidth:app.clientWidth,
+        statsBorder:statsStyle?.borderTopWidth || "",
+        statsRadius:statsStyle?.borderTopLeftRadius || "",
+        statsBackground:statsStyle?.backgroundColor || ""
+      };
+
+      app.dataset.activeTabAtRender=snapshot.activeTabAtRender;
+      window.__fixtureRenderSnapshots.push(snapshot);
+    }
+
+    function activate(tab){
+      for(const item of tabs){
+        const selected=item===tab;
+        item.setAttribute("aria-selected",String(selected));
+        item.tabIndex=selected?0:-1;
+      }
+
+      renderFixture(tab.id.replace("tab-",""));
+    }
+
     for(const tab of tabs){
       tab.addEventListener("click",()=>{
-        for(const item of tabs){
-          const selected=item===tab;
-          item.setAttribute("aria-selected",String(selected));
-          item.tabIndex=selected?0:-1;
+        activate(tab);
+      });
+
+      tab.addEventListener("keydown",event=>{
+        if(!["ArrowLeft","ArrowRight"].includes(event.key)){
+          return;
         }
+
+        event.preventDefault();
+        const current=tabs.indexOf(tab);
+        const direction=event.key==="ArrowRight"?1:-1;
+        const next=tabs[(current+direction+tabs.length)%tabs.length];
+        next.click();
+        next.focus({preventScroll:true});
       });
     }
+
+    renderFixture("shifts");
     document.body.classList.remove("app-booting");
   </script>
 </body>

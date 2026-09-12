@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "refactor/**"
+      - "audit/**"
   pull_request:
     branches:
       - main
@@ -48,7 +49,7 @@ jobs:
   browser:
     name: Browser smoke (${{ matrix.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     needs: checks
 
     strategy:
@@ -95,7 +96,7 @@ jobs:
           exit 1
 
       - name: Run browser smoke
-        run: npx playwright test e2e/platform-shell.spec.mjs e2e/interaction.spec.mjs --browser=${{ matrix.browser }} --reporter=line
+        run: npx playwright test e2e/platform-shell.spec.mjs e2e/interaction.spec.mjs e2e/state-transitions.spec.mjs --browser=${{ matrix.browser }} --reporter=line
 
       - name: Upload Playwright report
         if: failure()

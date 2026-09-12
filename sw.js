@@ -262,7 +262,6 @@ async function navigationResponse(
 
     const scope=
       new URL(
-        INDEX_FILE,
         self.registration.scope
       );
 
@@ -303,7 +302,9 @@ self.addEventListener(
       new URL(request.url);
 
     const scope=
-      new URL(self.registration.scope);
+      new URL(
+        self.registration.scope
+      );
 
     if(
       REMOTE_ASSETS.includes(

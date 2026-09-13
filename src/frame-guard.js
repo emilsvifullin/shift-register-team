@@ -12,21 +12,16 @@ if(globalThis.self!==globalThis.top){
     document.currentScript?.src;
 
   if(source){
-    for(const modulePath of [
-      "./management-navigation.js",
-      "./month-motion-tuning.js"
-    ]){
-      const script=
-        document.createElement("script");
+    const script=
+      document.createElement("script");
 
-      script.type="module";
-      script.src=
-        new URL(
-          modulePath,
-          source
-        ).href;
+    script.type="module";
+    script.src=
+      new URL(
+        "./management-navigation.js",
+        source
+      ).href;
 
-      document.head.append(script);
-    }
+    document.head.append(script);
   }
 }

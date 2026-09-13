@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Reference motion fixture</title>
+  <link rel="stylesheet" href="../../styles.css">
+  <link rel="stylesheet" href="../../styles/motion.css">
+  <link rel="stylesheet" href="../../styles/refinement.css">
+  <link rel="stylesheet" href="../../styles/interaction.css">
+  <style>
+    .sheet,.point-picker,.month-picker,.date-picker{display:block}
+    body{min-height:100vh}
+    main{padding-top:96px}
+    .motion-demo-card{padding:18px}
+  </style>
+</head>
+<body data-active-tab="shifts">
+  <header>
+    <div class="nav">
+      <button type="button" aria-label="Назад">‹</button>
+      <button type="button" class="period clickable">Сентябрь 2026</button>
+      <button type="button" aria-label="Вперёд">›</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <div class="ml">Смены</div>
+    <div class="card motion-demo-card">
+      <div class="row">
+        <div class="l">
+          <div class="t">Плавные переходы</div>
+          <div class="s">Эталон shift-register</div>
+        </div>
+      </div>
+      <div class="seg">
+        <button type="button" class="on">Основная</button>
+        <button type="button">Дополнительная</button>
+      </div>
+      <button id="openSheet" type="button" class="btn gold">Открыть форму</button>
+      <button id="openConfirm" type="button" class="btn">Подтверждение</button>
+    </div>
+  </main>
+
+  <div class="bottom-controls">
+    <nav class="tabs">
+      <button type="button" class="on">Смены</button>
+      <button type="button">Итоги</button>
+      <button type="button">Управление</button>
+      <button type="button">Данные</button>
+    </nav>
+  </div>
+
+  <div id="veil" class="veil"></div>
+  <section id="sheet" class="sheet" aria-hidden="true">
+    <div class="grab"></div>
+    <div class="shead">
+      <button id="closeSheet" class="lnk" type="button">Отмена</button>
+      <div class="ttl">Новая смена</div>
+      <button class="lnk b" type="button">Готово</button>
+    </div>
+    <div class="sbody">
+      <div class="ml">Смена</div>
+      <div class="card">
+        <div class="row"><div class="l"><div class="t">Дата</div></div><div class="v">14 сентября 2026</div></div>
+        <div class="row"><div class="l"><div class="t">Пункт</div></div><div class="v">ПВЗ</div></div>
+      </div>
+      <div class="ml">Тип</div>
+      <div class="seg"><button class="on">Основная</button><button>Дополнительная</button></div>
+    </div>
+  </section>
+
+  <div class="point-veil"></div>
+  <section class="point-picker"></section>
+  <div class="month-veil"></div>
+  <section class="month-picker"></section>
+  <div class="date-veil"></div>
+  <section class="date-picker"></section>
+
+  <div id="appConfirm" class="app-confirm" aria-hidden="true">
+    <div class="app-confirm-box">
+      <div class="app-confirm-text">
+        <div class="app-confirm-title">Подтвердить действие?</div>
+      </div>
+      <div class="app-confirm-actions">
+        <button class="app-confirm-btn">Отмена</button>
+        <button class="app-confirm-btn ok">Готово</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Готово</div>
+
+  <script>
+    const sheet=document.getElementById("sheet");
+    const veil=document.getElementById("veil");
+    const confirm=document.getElementById("appConfirm");
+
+    document.getElementById("openSheet").addEventListener("click",()=>{
+      sheet.classList.add("on");
+      veil.classList.add("on");
+      sheet.setAttribute("aria-hidden","false");
+    });
+
+    document.getElementById("closeSheet").addEventListener("click",()=>{
+      sheet.classList.remove("on");
+      veil.classList.remove("on");
+      sheet.setAttribute("aria-hidden","true");
+    });
+
+    document.getElementById("openConfirm").addEventListener("click",()=>{
+      confirm.classList.add("on");
+      confirm.setAttribute("aria-hidden","false");
+    });
+  </script>
+</body>
+</html>

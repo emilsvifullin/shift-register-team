@@ -1,0 +1,291 @@
+/* ===== motion parity with shift-register ===== */
+
+:root{
+  --reference-motion-ease:cubic-bezier(.22,.72,.22,1);
+  --reference-motion-press:cubic-bezier(.32,.72,0,1);
+  --reference-motion-sheet:cubic-bezier(.4,0,.2,1);
+}
+
+/*
+  Keep the same calm iOS-like pacing as the original shift-register.
+  This file is imported last so refinement layers cannot accidentally
+  shorten or replace the production motion contract.
+*/
+.sheet{
+  will-change:transform,opacity;
+  transition:
+    transform .48s var(--reference-motion-sheet),
+    opacity .30s ease,
+    visibility 0s linear .48s;
+}
+
+.sheet.on{
+  transition:
+    transform .48s var(--reference-motion-sheet),
+    opacity .30s ease,
+    visibility 0s;
+}
+
+.point-picker,
+.date-picker{
+  will-change:transform,opacity;
+  transition:
+    transform .42s var(--reference-motion-sheet),
+    opacity .27s ease;
+}
+
+.month-picker{
+  will-change:transform;
+  transition:
+    transform .42s var(--reference-motion-sheet);
+}
+
+.veil{
+  transition:opacity .34s ease;
+}
+
+.point-veil,
+.month-veil,
+.date-veil{
+  transition:opacity .32s ease;
+}
+
+.date-jump{
+  transition:
+    opacity .26s ease,
+    transform .34s var(--reference-motion-sheet),
+    visibility 0s linear .34s;
+}
+
+.date-jump.on{
+  transition:
+    opacity .28s ease,
+    transform .34s var(--reference-motion-sheet),
+    visibility 0s;
+}
+
+.app-confirm{
+  transition:
+    opacity .20s ease,
+    visibility 0s linear .20s;
+}
+
+.app-confirm.on{
+  transition:
+    opacity .20s ease,
+    visibility 0s;
+}
+
+.app-confirm-box{
+  transition:
+    transform .24s var(--reference-motion-press);
+}
+
+.toast{
+  transition:
+    opacity .22s ease,
+    transform .22s var(--reference-motion-ease);
+}
+
+.bottom-controls{
+  transition:
+    gap .36s var(--reference-motion-ease),
+    opacity .30s ease,
+    visibility 0s;
+}
+
+nav.tabs button{
+  transition:
+    background-color .20s ease,
+    color .20s ease,
+    transform .12s var(--reference-motion-press),
+    opacity .12s ease,
+    box-shadow .18s ease;
+}
+
+.seg button{
+  transition:
+    background-color .18s ease,
+    color .18s ease,
+    transform .12s var(--reference-motion-press),
+    opacity .12s ease,
+    box-shadow .18s ease;
+}
+
+/* Text controls fade rather than jump or scale. */
+.period,
+.lnk,
+.picker-toolbar-btn{
+  transition:
+    opacity .12s ease,
+    color .18s ease,
+    background-color .18s ease;
+}
+
+/* Rows keep their geometry stable and respond with a soft tint. */
+.sh,
+.manage-row,
+.point-row,
+.employee-point,
+.point-option,
+.payout-summary,
+.tariff-history-item > summary{
+  transition:
+    background-color .18s ease,
+    color .18s ease,
+    border-color .18s ease,
+    opacity .12s ease,
+    box-shadow .18s ease;
+}
+
+/* Buttons that physically move keep the same short press spring. */
+.nav > button:not(:disabled),
+.manage-add,
+.btn,
+.date-day,
+.month-option,
+.date-jump-month,
+.date-calendar-nav,
+.date-calendar-title,
+.date-today,
+.month-today,
+.payout-record > button,
+.tariff-history-actions button,
+.tariff-inline-close,
+.app-confirm-btn{
+  transition:
+    transform .12s var(--reference-motion-press),
+    background-color .18s ease,
+    border-color .18s ease,
+    color .18s ease,
+    opacity .12s ease,
+    box-shadow .18s ease;
+}
+
+/* Match the original touch feedback instead of scaling every surface. */
+nav.tabs button.touch-active,
+.seg button.touch-active,
+.seg button.on.touch-active{
+  transform:scale(.97);
+  opacity:.72;
+  box-shadow:none !important;
+}
+
+.period.touch-active,
+.lnk.touch-active,
+.picker-toolbar-btn.touch-active{
+  transform:none !important;
+  opacity:.55;
+  box-shadow:none !important;
+}
+
+.sh.touch-active,
+.manage-row.touch-active,
+.point-row.touch-active,
+.employee-point.touch-active,
+.point-option.touch-active,
+.payout-summary.touch-active{
+  transform:none !important;
+  box-shadow:
+    inset 0 0 0 999px var(--tint) !important;
+}
+
+.manage-add.touch-active,
+.btn.touch-active,
+.nav > button.touch-active,
+.date-day.touch-active,
+.month-option.touch-active,
+.date-jump-month.touch-active,
+.date-calendar-nav.touch-active,
+.date-calendar-title.touch-active,
+.date-today.touch-active,
+.month-today.touch-active,
+.payout-record > button.touch-active,
+.tariff-history-actions button.touch-active,
+.tariff-inline-close.touch-active,
+.app-confirm-btn.touch-active{
+  transform:scale(.985);
+}
+
+/* Dynamic details should reveal without a hard pop. */
+.payout-expanded,
+.tariff-inline-editor,
+.manage-placeholder,
+.employee-help{
+  animation-duration:.22s;
+  animation-timing-function:var(--reference-motion-ease);
+}
+
+@media (hover:hover) and (pointer:fine){
+  nav.tabs button:active,
+  .seg button:active,
+  .seg button.on:active{
+    transform:scale(.97);
+    opacity:.72;
+    box-shadow:none !important;
+  }
+
+  .period:active,
+  .lnk:active,
+  .picker-toolbar-btn:active{
+    transform:none !important;
+    opacity:.55;
+    box-shadow:none !important;
+  }
+
+  .sh:active,
+  .manage-row:active,
+  .point-row:active,
+  .employee-point:active,
+  .point-option:active,
+  .payout-summary:active{
+    transform:none !important;
+    box-shadow:
+      inset 0 0 0 999px var(--tint) !important;
+  }
+}
+
+@media (prefers-reduced-motion:reduce){
+  .sheet,
+  .point-picker,
+  .month-picker,
+  .date-picker,
+  .veil,
+  .point-veil,
+  .month-veil,
+  .date-veil,
+  .date-jump,
+  .app-confirm,
+  .app-confirm-box,
+  .toast,
+  .bottom-controls,
+  nav.tabs button,
+  .seg button,
+  .period,
+  .lnk,
+  .picker-toolbar-btn,
+  .sh,
+  .manage-row,
+  .point-row,
+  .employee-point,
+  .point-option,
+  .payout-summary,
+  .tariff-history-item > summary,
+  .nav > button,
+  .manage-add,
+  .btn,
+  .date-day,
+  .month-option,
+  .date-jump-month,
+  .date-calendar-nav,
+  .date-calendar-title,
+  .date-today,
+  .month-today,
+  .payout-record > button,
+  .tariff-history-actions button,
+  .tariff-inline-close,
+  .app-confirm-btn{
+    transition-duration:.001ms !important;
+    animation-duration:.001ms !important;
+  }
+}

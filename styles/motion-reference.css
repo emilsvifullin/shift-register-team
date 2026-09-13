@@ -87,11 +87,10 @@
     transform .22s var(--reference-motion-ease);
 }
 
+/* Keep modal dock hiding immediate; only its layout spacing animates. */
 .bottom-controls{
   transition:
-    gap .36s var(--reference-motion-ease),
-    opacity .30s ease,
-    visibility 0s;
+    gap .36s var(--reference-motion-ease);
 }
 
 nav.tabs button{

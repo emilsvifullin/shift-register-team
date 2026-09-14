@@ -1,5 +1,6 @@
 const STYLE_ID="shift-register-modal-motion-style";
 const MOTION_PREFIX="shift-register-modal-";
+const closingVisibilityTimers=new WeakMap();
 
 const reducedMotion=()=>Boolean(
   globalThis.matchMedia?.(
@@ -139,18 +140,64 @@ function cancelReferenceAnimations(element){
     });
 }
 
+function clearClosingVisibilityGuard(element){
+  const timer=
+    closingVisibilityTimers.get(element);
+
+  if(timer){
+    clearTimeout(timer);
+  }
+
+  closingVisibilityTimers.delete(element);
+  element.removeAttribute(
+    "data-reference-closing"
+  );
+}
+
+function guardClosingVisibility(
+  element,
+  duration
+){
+  clearClosingVisibilityGuard(element);
+
+  element.setAttribute(
+    "data-reference-closing",
+    "true"
+  );
+
+  const timer=
+    setTimeout(()=>{
+      closingVisibilityTimers.delete(
+        element
+      );
+
+      element.removeAttribute(
+        "data-reference-closing"
+      );
+    },duration+32);
+
+  closingVisibilityTimers.set(
+    element,
+    timer
+  );
+}
+
 function playReferenceModalMotion(
   element,
   opening
 ){
   if(reducedMotion()){
-    return;
+    return false;
   }
 
   const spec=modalSpec(element);
 
   if(!spec){
-    return;
+    return false;
+  }
+
+  if(opening){
+    clearClosingVisibilityGuard(element);
   }
 
   if(
@@ -159,7 +206,7 @@ function playReferenceModalMotion(
       .getAnimations()
       .some(isSwipeCloseAnimation)
   ){
-    return;
+    return false;
   }
 
   cancelReferenceAnimations(element);
@@ -202,6 +249,13 @@ function playReferenceModalMotion(
   transformAnimation.id=
     `${MOTION_PREFIX}transform`;
 
+  if(!opening){
+    guardClosingVisibility(
+      element,
+      spec.transformDuration
+    );
+  }
+
   transformAnimation.finished
     .catch(()=>{})
     .finally(()=>{
@@ -209,7 +263,7 @@ function playReferenceModalMotion(
     });
 
   if(!spec.opacityDuration){
-    return;
+    return true;
   }
 
   const opacityFrames=
@@ -252,6 +306,8 @@ function playReferenceModalMotion(
     .finally(()=>{
       opacityAnimation.cancel();
     });
+
+  return true;
 }
 
 const pendingOpenFrames=new WeakMap();
@@ -289,6 +345,8 @@ function clearPendingOpen(
 }
 
 function stageReferenceOpen(element){
+  clearClosingVisibilityGuard(element);
+
   if(reducedMotion()){
     clearPendingOpen(element);
     return;
@@ -408,6 +466,7 @@ const observer=
 
         if(reducedMotion()){
           clearPendingOpen(element);
+          clearClosingVisibilityGuard(element);
           cancelReferenceAnimations(element);
           continue;
         }

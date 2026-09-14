@@ -41,13 +41,17 @@
 }
 
 /*
-  iOS/WebKit can coalesce display:block + .on into one paint when a sheet
-  is opened from a tap. Preserve the exact shift-register entry pose so
-  every production modal visibly travels from its original off-screen
-  position instead of appearing already settled.
+  iOS/WebKit can coalesce display:block + .on into one paint when a modal
+  opens directly from a tap. Give only the real production windows the
+  exact hidden pose from shift-register so they always travel into place
+  instead of appearing already settled.
 */
 @starting-style{
-  .sheet.on{
+  #sheet.on,
+  #employeeSheet.on,
+  #employeeFilterSheet.on,
+  #shiftFilterSheet.on,
+  #manageEditorSheet.on{
     transform:translate3d(
       0,
       calc(100% + 24px),
@@ -56,7 +60,7 @@
     opacity:.96;
   }
 
-  .point-picker.on:not(.app-picker-anchored){
+  #pointPicker.on:not(.app-picker-anchored){
     transform:translate3d(
       0,
       calc(100% + 24px),
@@ -65,8 +69,8 @@
     opacity:.96;
   }
 
-  .date-picker.on,
-  .month-picker.on{
+  #datePicker.on,
+  #monthPicker.on{
     transform:translate3d(
       0,
       calc(
@@ -78,22 +82,22 @@
     );
   }
 
-  .date-picker.on{
+  #datePicker.on{
     opacity:.96;
   }
 
-  .date-jump.on{
+  #dateJump.on{
     opacity:0;
     transform:
       translate3d(0,-7px,0)
       scale(.985);
   }
 
-  .app-confirm.on{
+  #appConfirm.on{
     opacity:0;
   }
 
-  .app-confirm.on .app-confirm-box{
+  #appConfirm.on .app-confirm-box{
     transform:
       translateY(10px)
       scale(.97);

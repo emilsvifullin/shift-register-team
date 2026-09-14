@@ -12,11 +12,7 @@ if(globalThis.self!==globalThis.top){
     document.currentScript?.src;
 
   if(source){
-    for(const modulePath of [
-      "./management-navigation.js",
-      "./reference-swipes.js",
-      "./team-motion.js"
-    ]){
+    const loadModule=modulePath=>{
       const script=
         document.createElement("script");
 
@@ -28,6 +24,30 @@ if(globalThis.self!==globalThis.top){
         ).href;
 
       document.head.append(script);
+    };
+
+    loadModule(
+      "./management-navigation.js"
+    );
+
+    loadModule(
+      "./team-motion.js"
+    );
+
+    const loadReferenceSwipes=()=>{
+      loadModule(
+        "./reference-swipes.js"
+      );
+    };
+
+    if(document.readyState==="loading"){
+      document.addEventListener(
+        "DOMContentLoaded",
+        loadReferenceSwipes,
+        {once:true}
+      );
+    }else{
+      loadReferenceSwipes();
     }
   }
 }

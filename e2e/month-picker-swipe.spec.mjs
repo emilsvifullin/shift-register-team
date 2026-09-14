@@ -132,7 +132,8 @@ async function openPicker(page){
     return {
       top:element.getBoundingClientRect().top,
       viewportHeight:window.innerHeight,
-      transform:getComputedStyle(element).transform
+      transform:getComputedStyle(element).transform,
+      visibility:getComputedStyle(element).visibility
     };
   });
 }
@@ -232,11 +233,6 @@ test("month picker release continues immediately downward and never re-enters",a
     }
   }
 
-  /*
-    The close continuation must make visible downward progress promptly. An
-    already-hidden picker is also a valid terminal state and must not be
-    interpreted as top=0 moving upward.
-  */
   expect(
     samples
       .slice(1)
@@ -312,6 +308,7 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
       .evaluate(element=>({
         transform:element.style.transform,
         transition:element.style.transition,
+        visibility:getComputedStyle(element).visibility,
         drag:element.style.getPropertyValue(
           "--month-drag"
         ),
@@ -322,16 +319,19 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
 
   expect(closedState.transform).toBe("");
   expect(closedState.transition).toBe("");
+  expect(closedState.visibility).toBe("hidden");
   expect(closedState.drag).toBe("");
   expect(closedState.swipeClosing).toBeNull();
 
   const immediate=await openPicker(page);
 
   /*
-    The reopen must still be staged below the viewport. The previous bug
-    cleared modal-motion's hidden transform here, painting the fully-open
-    picker for one frame before the real entrance started.
+    The picker must remain compositor-hidden during the display:none -> block
+    boundary. This is the exact interval where iOS PWA/WebKit can otherwise
+    flash the previous fully-open layer for one frame.
   */
+  expect(immediate.visibility).toBe("hidden");
+
   expect(
     immediate.top,
     `month picker was fully visible before reopen animation: ${JSON.stringify(immediate)}`
@@ -350,7 +350,8 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
             samples.push({
               top:element.getBoundingClientRect().top,
               display:getComputedStyle(element).display,
-              transform:getComputedStyle(element).transform
+              transform:getComputedStyle(element).transform,
+              visibility:getComputedStyle(element).visibility
             });
 
             remaining-=1;
@@ -367,17 +368,39 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
         })
       );
 
+  expect(reopenSamples[0].visibility)
+    .toBe("hidden");
+
   expect(reopenSamples[0].top)
     .toBeGreaterThanOrEqual(
       immediate.viewportHeight-2
     );
 
+  expect(
+    reopenSamples
+      .slice(1)
+      .some(sample=>
+        sample.visibility==="visible"
+      ),
+    `month picker never became visible during staged reopen: ${JSON.stringify(reopenSamples)}`
+  ).toBe(true);
+
   for(let index=1;index<reopenSamples.length;index++){
+    const previous=reopenSamples[index-1];
+    const current=reopenSamples[index];
+
+    if(
+      current.visibility!=="visible" ||
+      previous.visibility!=="visible"
+    ){
+      continue;
+    }
+
     expect(
-      reopenSamples[index].top,
+      current.top,
       `month picker ghosted during reopen: ${JSON.stringify(reopenSamples)}`
     ).toBeLessThanOrEqual(
-      reopenSamples[index-1].top+1.5
+      previous.top+1.5
     );
   }
 
@@ -388,4 +411,7 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
 
   await expect(page.locator(PICKER))
     .toHaveCSS("display","block");
+
+  await expect(page.locator(PICKER))
+    .toHaveCSS("visibility","visible");
 });

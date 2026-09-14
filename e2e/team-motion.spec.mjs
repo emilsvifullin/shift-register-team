@@ -143,11 +143,18 @@ test("stats month ghost keeps the exact live vertical geometry after clone ids a
       <div class="card hero"><div class="n">0</div></div>
     `;
 
+    const rect=app.getBoundingClientRect();
     const ghost=app.cloneNode(true);
     ghost.removeAttribute("id");
     ghost.querySelectorAll("[id]").forEach(node=>node.removeAttribute("id"));
     ghost.setAttribute("aria-hidden","true");
     ghost.setAttribute("inert","");
+    ghost.style.position="fixed";
+    ghost.style.left=`${rect.left}px`;
+    ghost.style.top=`${rect.top}px`;
+    ghost.style.width=`${rect.width}px`;
+    ghost.style.height=`${rect.height}px`;
+    ghost.style.margin="0";
     document.body.append(ghost);
 
     const liveLabel=app.children[0];

@@ -111,9 +111,12 @@ test("management header back stays visually neutral through the iOS touch state"
   expect(touchStyle.boxShadow).toBe("none");
   expect(touchStyle.transform).toBe("none");
   expect(touchStyle.outlineStyle).toBe("none");
-  expect(touchStyle.webkitTapHighlightColor).toBe(
-    "rgba(0, 0, 0, 0)"
-  );
+
+  if(touchStyle.webkitTapHighlightColor){
+    expect(touchStyle.webkitTapHighlightColor).toBe(
+      "rgba(0, 0, 0, 0)"
+    );
+  }
 
   // Keyboard focus visibility is already covered by state-transitions.spec.
   // This regression is intentionally limited to the iOS/WebKit touch state

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Reference swipes fixture</title>
+  <style>
+    body{margin:0;font-family:system-ui;background:#111;color:#fff}
+    #app,#monthPicker,#dateJump{padding:24px;margin:16px;border:1px solid #555}
+    #monthGrid,#dateJumpMonths{height:180px;background:#222}
+    .head{height:64px;background:#181818}
+  </style>
+</head>
+<body>
+  <nav role="tablist">
+    <button id="tab-shifts" role="tab" aria-selected="true">Смены</button>
+    <button id="tab-stats" role="tab" aria-selected="false">Итоги</button>
+  </nav>
+
+  <button id="prevM" type="button">Назад</button>
+  <button id="nextM" type="button">Вперёд</button>
+  <main id="app">Основной экран</main>
+
+  <section id="monthPicker">
+    <div id="monthHead" class="head">Заголовок выбора месяца</div>
+    <button id="monthYearPrev" type="button">Предыдущий год</button>
+    <button id="monthYearNext" type="button">Следующий год</button>
+    <div id="monthGrid">Сетка месяцев</div>
+  </section>
+
+  <section id="dateJump">
+    <div id="dateJumpHead" class="head">Заголовок выбора года</div>
+    <button id="dateJumpPrevYear" type="button">Предыдущий год</button>
+    <button id="dateJumpNextYear" type="button">Следующий год</button>
+    <div id="dateJumpMonths">Сетка месяцев даты</div>
+  </section>
+
+  <script>
+    window.swipeCounters={
+      prevMonth:0,
+      nextMonth:0,
+      monthPrevYear:0,
+      monthNextYear:0,
+      datePrevYear:0,
+      dateNextYear:0,
+      legacyMainPointerMove:0,
+      legacyMainPointerUp:0,
+      legacyMonthYear:0,
+      legacyDateYear:0,
+      legacyWheel:0
+    };
+
+    prevM.onclick=()=>swipeCounters.prevMonth++;
+    nextM.onclick=()=>swipeCounters.nextMonth++;
+    monthYearPrev.onclick=()=>swipeCounters.monthPrevYear++;
+    monthYearNext.onclick=()=>swipeCounters.monthNextYear++;
+    dateJumpPrevYear.onclick=()=>swipeCounters.datePrevYear++;
+    dateJumpNextYear.onclick=()=>swipeCounters.dateNextYear++;
+
+    let mainPointer=false;
+    document.addEventListener("pointerdown",event=>{
+      if(event.pointerType!=="touch") mainPointer=true;
+    });
+    document.addEventListener("pointermove",()=>{
+      if(mainPointer) swipeCounters.legacyMainPointerMove++;
+    });
+    document.addEventListener("pointerup",()=>{
+      if(mainPointer) swipeCounters.legacyMainPointerUp++;
+      mainPointer=false;
+    });
+    document.addEventListener("wheel",()=>swipeCounters.legacyWheel++);
+
+    function legacyYear(container,key){
+      let start=null;
+      container.addEventListener("pointerdown",event=>{
+        start={id:event.pointerId,x:event.clientX,y:event.clientY};
+      });
+      container.addEventListener("pointerup",event=>{
+        if(!start || event.pointerId!==start.id) return;
+        const dx=event.clientX-start.x;
+        const dy=event.clientY-start.y;
+        if(Math.abs(dx)>=35 && Math.abs(dx)>Math.abs(dy)*1.08){
+          swipeCounters[key]++;
+        }
+        start=null;
+      });
+    }
+
+    legacyYear(monthPicker,"legacyMonthYear");
+    legacyYear(dateJump,"legacyDateYear");
+  </script>
+
+  <script type="module" src="../../src/reference-swipes.js"></script>
+</body>
+</html>

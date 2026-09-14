@@ -264,14 +264,20 @@ async function navigationResponse(
 
     const scope=
       new URL(
-        INDEX_FILE,
         self.registration.scope
       );
 
+    const indexUrl=
+      new URL(
+        INDEX_FILE,
+        scope
+      );
+
     if(
-      requestUrl.pathname===scope.pathname ||
       requestUrl.pathname===
-        new URL("./",self.registration.scope).pathname
+        scope.pathname ||
+      requestUrl.pathname===
+        indexUrl.pathname
     ){
       return (
         await cache.match(

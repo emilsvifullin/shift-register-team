@@ -287,9 +287,22 @@ body[data-management-navigation="ready"][data-active-tab="manage"] main:has(> .m
   pointer-events:auto !important;
   border:0;
   border-radius:0;
-  background:transparent;
+  background:transparent !important;
   color:var(--ink2);
-  box-shadow:none;
+  box-shadow:none !important;
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+
+  /*
+    Не композить прозрачную кнопку отдельным transform-слоем внутри header
+    с backdrop-filter. WebKit иначе рисует на 1–2 кадра тёмный квадрат 44×44
+    вокруг стрелки во время touch-active.
+  */
+  transform:none !important;
+  transition:
+    color var(--ui-base) ease,
+    opacity var(--ui-base) ease !important;
 }
 
 #prevM[data-manage-back-proxy="true"] svg{
@@ -298,17 +311,35 @@ body[data-management-navigation="ready"][data-active-tab="manage"] main:has(> .m
   stroke-width:1.8;
 }
 
-/* Touch/pointer-переходы не должны кратко подсвечивать стрелку фокусом. */
-body[data-input-modality="pointer"] #prevM[data-manage-back-proxy="true"]:focus,
-body[data-input-modality="pointer"] #prevM[data-manage-back-proxy="true"]:focus-visible{
+/*
+  Touch-state не должен создавать отдельный compositing layer или фон.
+  Клавиатурный focus-visible остаётся доступным через общий accessibility.css.
+*/
+#prevM[data-manage-back-proxy="true"].touch-active,
+#prevM[data-manage-back-proxy="true"]:active{
+  transform:none !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+
+/*
+  На touch/pointer WebKit может кратко сфокусировать кнопку до обновления
+  input-modality. Любой не-клавиатурный фокус визуально полностью нейтрален.
+*/
+body:not([data-input-modality="keyboard"]) #prevM[data-manage-back-proxy="true"]:focus,
+body:not([data-input-modality="keyboard"]) #prevM[data-manage-back-proxy="true"]:focus-visible{
   outline:none !important;
+  outline-width:0 !important;
+  outline-offset:0 !important;
   box-shadow:none !important;
   background:transparent !important;
+  transform:none !important;
 }
 
 @media (hover:hover) and (pointer:fine){
   #prevM[data-manage-back-proxy="true"]:hover{
     color:var(--ink);
-    background:transparent;
+    background:transparent !important;
+    transform:none !important;
   }
 }

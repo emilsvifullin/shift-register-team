@@ -283,6 +283,30 @@ function decorateList(
           advance_enabled:false
         };
 
+      const employeeText=
+        pointEmployeeSummary(
+          pointId,
+          data.employees,
+          data.employeePoints
+        );
+
+      const tariffText=
+        pointTariffSummary(
+          point,
+          data.tariffs
+        );
+
+      const signature=
+        `${employeeText}\n${tariffText}`;
+
+      if(
+        row.dataset
+          .pointCardSummarySignature===
+        signature
+      ){
+        return;
+      }
+
       const copy=
         row.querySelector(
           ".manage-row-copy"
@@ -308,11 +332,7 @@ function decorateList(
       employeeLine.dataset
         .pointCardSummary="employees";
       employeeLine.textContent=
-        pointEmployeeSummary(
-          pointId,
-          data.employees,
-          data.employeePoints
-        );
+        employeeText;
 
       const tariffLine=
         document.createElement("span");
@@ -322,15 +342,16 @@ function decorateList(
       tariffLine.dataset
         .pointCardSummary="tariff";
       tariffLine.textContent=
-        pointTariffSummary(
-          point,
-          data.tariffs
-        );
+        tariffText;
 
       copy.append(
         employeeLine,
         tariffLine
       );
+
+      row.dataset
+        .pointCardSummarySignature=
+          signature;
     });
 }
 

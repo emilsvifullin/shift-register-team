@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.34-swipe-reset";
+  "sr-team-runtime-v6.22.35";
 
 const INDEX_FILE=
   "./index.html";

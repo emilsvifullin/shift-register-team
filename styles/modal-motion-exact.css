@@ -1,0 +1,240 @@
+/*
+  Exact modal entry/exit motion from shift-register.
+  This stylesheet is loaded after the team-specific refinement layers.
+*/
+
+/* Main and team bottom sheets */
+.sheet{
+  transform:translate3d(
+    0,
+    calc(100% + 24px),
+    0
+  );
+
+  opacity:.96;
+  visibility:hidden;
+  pointer-events:none;
+  will-change:transform,opacity;
+
+  transition:
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease,
+    visibility 0s linear .48s;
+}
+
+.sheet.on{
+  transform:translate3d(
+    0,
+    var(--sheet-drag, 0px),
+    0
+  );
+
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+
+  transition:
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease,
+    visibility 0s;
+}
+
+/* Mobile choice picker */
+.point-picker:not(.app-picker-anchored){
+  transform:translate3d(
+    0,
+    calc(100% + 24px),
+    0
+  );
+
+  opacity:.96;
+  pointer-events:none;
+  will-change:transform,opacity;
+
+  transition:
+    transform .42s cubic-bezier(.4,0,.2,1),
+    opacity .27s ease;
+}
+
+.point-picker.on:not(.app-picker-anchored){
+  transform:translate3d(
+    0,
+    var(--point-drag, 0px),
+    0
+  );
+
+  opacity:1;
+  pointer-events:auto;
+}
+
+/* Date picker */
+.date-picker{
+  transform:translate3d(
+    0,
+    calc(
+      100% +
+      24px +
+      env(safe-area-inset-bottom)
+    ),
+    0
+  );
+
+  opacity:.96;
+  pointer-events:none;
+  will-change:transform,opacity;
+
+  transition:
+    transform .42s cubic-bezier(.4,0,.2,1),
+    opacity .27s ease;
+}
+
+.date-picker.on{
+  transform:translate3d(
+    0,
+    var(--date-drag, 0px),
+    0
+  );
+
+  opacity:1;
+  pointer-events:auto;
+}
+
+/* Month/year picker */
+.month-picker{
+  transform:translate3d(
+    0,
+    calc(
+      100% +
+      24px +
+      env(safe-area-inset-bottom)
+    ),
+    0
+  );
+
+  will-change:transform;
+
+  transition:
+    transform .42s cubic-bezier(.4,0,.2,1);
+}
+
+.month-picker.on{
+  transform:translate3d(
+    0,
+    var(--month-drag, 0px),
+    0
+  );
+}
+
+/* Veils */
+.veil{
+  transition:opacity .34s ease;
+}
+
+.point-veil,
+.month-veil,
+.date-veil{
+  transition:opacity .32s ease;
+}
+
+/* Month/year window inside the date picker */
+.date-jump{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+
+  transform:
+    translate3d(0,-7px,0)
+    scale(.985);
+
+  transition:
+    opacity .26s ease,
+    transform .34s cubic-bezier(.4,0,.2,1),
+    visibility 0s linear .34s;
+}
+
+.date-jump.on{
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+
+  transform:
+    translate3d(0,0,0)
+    scale(1);
+
+  transition:
+    opacity .28s ease,
+    transform .34s cubic-bezier(.4,0,.2,1),
+    visibility 0s;
+}
+
+/* Confirmation dialog */
+.app-confirm{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+
+  transition:
+    opacity .20s ease,
+    visibility 0s linear .20s;
+}
+
+.app-confirm.on{
+  opacity:1;
+  visibility:visible;
+  pointer-events:auto;
+
+  transition:
+    opacity .20s ease,
+    visibility 0s;
+}
+
+.app-confirm-box{
+  transform:
+    translateY(10px)
+    scale(.97);
+
+  transition:
+    transform .24s cubic-bezier(.32,.72,0,1);
+}
+
+.app-confirm.on .app-confirm-box{
+  transform:
+    translateY(0)
+    scale(1);
+}
+
+/* Toast */
+.toast{
+  transform:
+    translateX(-50%)
+    translateY(10px);
+
+  opacity:0;
+  transition:.22s;
+}
+
+.toast.on{
+  opacity:1;
+
+  transform:
+    translateX(-50%)
+    translateY(0);
+}
+
+@media (prefers-reduced-motion:reduce){
+  .sheet,
+  .point-picker,
+  .date-picker,
+  .month-picker,
+  .veil,
+  .point-veil,
+  .date-veil,
+  .month-veil,
+  .date-jump,
+  .app-confirm,
+  .app-confirm-box,
+  .toast{
+    transition-duration:.001ms !important;
+    animation-duration:.001ms !important;
+  }
+}

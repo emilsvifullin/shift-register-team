@@ -4,6 +4,7 @@ let cache=null;
 let cacheAt=0;
 let loadPromise=null;
 let clientPromise=null;
+let preloadStarted=false;
 
 function currentDate(){
   const value=new Date();
@@ -255,9 +256,124 @@ async function loadSummaryData(){
   return loadPromise;
 }
 
+function warmSummaryData(){
+  if(preloadStarted){
+    return;
+  }
+
+  preloadStarted=true;
+
+  void loadSummaryData()
+    .catch(()=>{
+      preloadStarted=false;
+    });
+}
+
+function addSummaryPlaceholder(
+  copy,
+  kind,
+  documentRef
+){
+  if(
+    copy.querySelector(
+      `[data-point-card-summary="${kind}"]`
+    )
+  ){
+    return;
+  }
+
+  const line=
+    documentRef.createElement("span");
+
+  line.className="manage-row-detail";
+  line.dataset.pointCardSummary=kind;
+  line.dataset.pointCardSummaryPlaceholder=
+    "true";
+  line.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+  line.textContent="\u00A0";
+
+  copy.append(line);
+}
+
+function prepareList(
+  list,
+  documentRef
+){
+  if(!list){
+    return;
+  }
+
+  list.dataset.pointCardSummariesPending=
+    "true";
+  list.setAttribute(
+    "aria-busy",
+    "true"
+  );
+  list.style.visibility="hidden";
+  list.style.pointerEvents="none";
+
+  list
+    .querySelectorAll(
+      ".point-manage-row[data-point-id]"
+    )
+    .forEach(row=>{
+      const copy=
+        row.querySelector(
+          ".manage-row-copy"
+        );
+
+      if(!copy){
+        return;
+      }
+
+      addSummaryPlaceholder(
+        copy,
+        "employees",
+        documentRef
+      );
+      addSummaryPlaceholder(
+        copy,
+        "tariff",
+        documentRef
+      );
+    });
+}
+
+function revealList(list){
+  if(!list){
+    return;
+  }
+
+  delete list.dataset
+    .pointCardSummariesPending;
+  list.removeAttribute(
+    "aria-busy"
+  );
+  list.style.removeProperty(
+    "visibility"
+  );
+  list.style.removeProperty(
+    "pointer-events"
+  );
+}
+
+function clearSummaryPlaceholders(list){
+  list
+    ?.querySelectorAll(
+      "[data-point-card-summary-placeholder]"
+    )
+    .forEach(element=>
+      element.remove()
+    );
+}
+
 function decorateList(
   list,
-  data
+  data,
+  documentRef=document
 ){
   const pointById=
     new Map(
@@ -325,7 +441,7 @@ function decorateList(
         );
 
       const employeeLine=
-        document.createElement("span");
+        documentRef.createElement("span");
 
       employeeLine.className=
         "manage-row-detail";
@@ -335,7 +451,7 @@ function decorateList(
         employeeText;
 
       const tariffLine=
-        document.createElement("span");
+        documentRef.createElement("span");
 
       tariffLine.className=
         "manage-row-detail";
@@ -373,6 +489,23 @@ export function installPointCardSummaries({
   let activeList=null;
   let token=0;
 
+  const primeCurrentList=()=>{
+    const list=
+      documentRef.getElementById(
+        "pointManageList"
+      );
+
+    if(
+      list &&
+      list!==activeList
+    ){
+      prepareList(
+        list,
+        documentRef
+      );
+    }
+  };
+
   const sync=async()=>{
     const list=
       documentRef.getElementById(
@@ -389,13 +522,17 @@ export function installPointCardSummaries({
 
     if(listChanged){
       activeList=list;
-      cache=null;
-      cacheAt=0;
+      prepareList(
+        list,
+        documentRef
+      );
     }else if(cache){
       decorateList(
         list,
-        cache
+        cache,
+        documentRef
       );
+      revealList(list);
       return;
     }
 
@@ -416,10 +553,19 @@ export function installPointCardSummaries({
 
       decorateList(
         list,
-        data
+        data,
+        documentRef
       );
+      revealList(list);
     }catch{
-      /* Keep the existing list usable if summary data cannot be loaded. */
+      if(
+        list===documentRef.getElementById(
+          "pointManageList"
+        )
+      ){
+        clearSummaryPlaceholders(list);
+        revealList(list);
+      }
     }
   };
 
@@ -443,9 +589,15 @@ export function installPointCardSummaries({
   }
 
   const observer=
-    new windowRef.MutationObserver(
-      queueSync
-    );
+    new windowRef.MutationObserver(()=>{
+      /*
+        MutationObserver runs before the next paint. Prime the newly
+        rendered point list immediately so the one-line intermediate
+        cards can never become a visible frame.
+      */
+      primeCurrentList();
+      queueSync();
+    });
 
   observer.observe(
     app,
@@ -455,6 +607,8 @@ export function installPointCardSummaries({
     }
   );
 
+  warmSummaryData();
+  primeCurrentList();
   queueSync();
 
   return ()=>{

@@ -38,6 +38,10 @@ if(globalThis.self!==globalThis.top){
       "./modal-motion.js"
     );
 
+    loadModule(
+      "./swipe-close-guard.js"
+    );
+
     const loadReferenceSwipes=()=>{
       loadModule(
         "./reference-swipes.js"

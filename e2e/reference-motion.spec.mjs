@@ -3,6 +3,17 @@ import { expect, test } from "@playwright/test";
 const FIXTURE=
   "http://127.0.0.1:4173/tests/fixtures/reference-motion.html";
 
+const SLIDING_SURFACES=Object.freeze([
+  {selector:"#sheet", transformDuration:480, opacityDuration:300},
+  {selector:"#employeeSheet", transformDuration:480, opacityDuration:300},
+  {selector:"#employeeFilterSheet", transformDuration:480, opacityDuration:300},
+  {selector:"#shiftFilterSheet", transformDuration:480, opacityDuration:300},
+  {selector:"#manageEditorSheet", transformDuration:480, opacityDuration:300},
+  {selector:"#pointPicker", transformDuration:420, opacityDuration:270},
+  {selector:"#monthPicker", transformDuration:420, opacityDuration:0},
+  {selector:"#datePicker", transformDuration:420, opacityDuration:270}
+]);
+
 test.use({
   viewport:{width:390,height:844},
   hasTouch:true,
@@ -14,6 +25,68 @@ function includesDuration(value,seconds){
     .split(",")
     .map(item=>item.trim())
     .includes(`${seconds}s`);
+}
+
+async function referenceAnimations(locator){
+  return locator.evaluate(element=>
+    element
+      .getAnimations()
+      .filter(animation=>
+        String(animation.id || "")
+          .startsWith(
+            "shift-register-modal-"
+          )
+      )
+      .map(animation=>({
+        id:String(animation.id || ""),
+        duration:Number(
+          animation.effect
+            .getTiming()
+            .duration
+        )
+      }))
+  );
+}
+
+async function openSurface(page,selector){
+  await page.evaluate(selector=>{
+    const element=
+      document.querySelector(selector);
+
+    element.classList.remove("on");
+    element.style.display="block";
+    element.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+
+    void element.offsetHeight;
+
+    element.dispatchEvent(
+      new CustomEvent(
+        "bottomsheetopen"
+      )
+    );
+
+    element.classList.add("on");
+    element.setAttribute(
+      "aria-hidden",
+      "false"
+    );
+  },selector);
+}
+
+async function closeSurface(page,selector){
+  await page.evaluate(selector=>{
+    const element=
+      document.querySelector(selector);
+
+    element.classList.remove("on");
+    element.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+  },selector);
 }
 
 test("reference motion timings match shift-register and animate visibly",async({page},testInfo)=>{
@@ -55,31 +128,22 @@ test("reference motion timings match shift-register and animate visibly",async({
   expect(timings.monthVariable).toBe("320ms");
 
   await page.locator("#openSheet").click();
-  await page.waitForTimeout(40);
+  await page.waitForTimeout(90);
 
-  const referenceAnimations=
-    await page.locator("#sheet").evaluate(element=>
-      element
-        .getAnimations()
-        .filter(animation=>
-          String(animation.id || "")
-            .startsWith(
-              "shift-register-modal-"
-            )
-        )
-        .map(animation=>
-          Number(
-            animation.effect
-              .getTiming()
-              .duration
-          )
-        )
+  const openingAnimations=
+    await referenceAnimations(
+      page.locator("#sheet")
     );
 
-  expect(referenceAnimations).toContain(480);
-  expect(referenceAnimations).toContain(300);
+  expect(openingAnimations).toContainEqual({
+    id:"shift-register-modal-transform",
+    duration:480
+  });
 
-  await page.waitForTimeout(120);
+  expect(openingAnimations).toContainEqual({
+    id:"shift-register-modal-opacity",
+    duration:300
+  });
 
   const middle=await page.locator("#sheet").evaluate(element=>({
     transform:getComputedStyle(element).transform,
@@ -90,15 +154,8 @@ test("reference motion timings match shift-register and animate visibly",async({
   expect(middle.transform).not.toBe("matrix(1, 0, 0, 1, 0, 0)");
   expect(middle.opacity).toBeGreaterThan(.95);
 
-  await page.waitForTimeout(380);
+  await page.waitForTimeout(500);
   await expect(page.locator("#sheet")).toHaveClass(/\bon\b/);
-
-  const settledTransform=
-    await page.locator("#sheet").evaluate(element=>
-      getComputedStyle(element).transform
-    );
-
-  expect(settledTransform).toMatch(/matrix/);
 
   await page.screenshot({
     path:testInfo.outputPath("reference-motion-sheet.png"),
@@ -106,32 +163,22 @@ test("reference motion timings match shift-register and animate visibly",async({
   });
 
   await page.locator("#closeSheet").click();
-  await page.waitForTimeout(40);
+  await page.waitForTimeout(60);
 
   const closingAnimations=
-    await page.locator("#sheet").evaluate(element=>
-      element
-        .getAnimations()
-        .filter(animation=>
-          String(animation.id || "")
-            .startsWith(
-              "shift-register-modal-"
-            )
-        )
-        .map(animation=>
-          Number(
-            animation.effect
-              .getTiming()
-              .duration
-          )
-        )
+    await referenceAnimations(
+      page.locator("#sheet")
     );
 
-  expect(closingAnimations).toContain(480);
-  expect(closingAnimations).toContain(300);
+  expect(closingAnimations).toContainEqual({
+    id:"shift-register-modal-transform",
+    duration:480
+  });
 
-  await page.waitForTimeout(480);
-  await expect(page.locator("#sheet")).not.toHaveClass(/\bon\b/);
+  expect(closingAnimations).toContainEqual({
+    id:"shift-register-modal-opacity",
+    duration:300
+  });
 
   const firstTab=page.locator("nav.tabs button").first();
   await firstTab.evaluate(element=>element.classList.add("touch-active"));
@@ -154,79 +201,196 @@ test("reference motion timings match shift-register and animate visibly",async({
   });
 });
 
-test("hidden sheets and pickers enter from the exact shift-register off-screen pose",async({page})=>{
+test("every sliding window opens and closes with the same reference speed",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
-  for(const selector of [
-    "#sheet",
-    ".point-picker",
-    ".month-picker",
-    ".date-picker"
-  ]){
+  for(const surface of SLIDING_SURFACES){
+    const locator=
+      page.locator(surface.selector);
+
+    await openSurface(
+      page,
+      surface.selector
+    );
+
+    await page.waitForTimeout(90);
+
+    const openingAnimations=
+      await referenceAnimations(locator);
+
+    const openingTransform=
+      openingAnimations.find(animation=>
+        animation.id===
+          "shift-register-modal-transform"
+      );
+
+    expect(
+      openingTransform,
+      `${surface.selector} must animate while opening`
+    ).toBeTruthy();
+
+    expect(openingTransform.duration)
+      .toBe(surface.transformDuration);
+
+    if(surface.opacityDuration){
+      expect(openingAnimations)
+        .toContainEqual({
+          id:"shift-register-modal-opacity",
+          duration:surface.opacityDuration
+        });
+    }
+
+    const openingState=
+      await locator.evaluate(element=>({
+        transform:
+          getComputedStyle(element)
+            .transform,
+        top:
+          element.getBoundingClientRect()
+            .top
+      }));
+
+    expect(openingState.transform)
+      .not.toBe("none");
+
+    expect(openingState.transform)
+      .not.toBe(
+        "matrix(1, 0, 0, 1, 0, 0)"
+      );
+
+    await page.waitForTimeout(
+      surface.transformDuration+80
+    );
+
+    await closeSurface(
+      page,
+      surface.selector
+    );
+
+    await page.waitForTimeout(60);
+
+    const closingAnimations=
+      await referenceAnimations(locator);
+
+    const closingTransform=
+      closingAnimations.find(animation=>
+        animation.id===
+          "shift-register-modal-transform"
+      );
+
+    expect(
+      closingTransform,
+      `${surface.selector} must animate while closing`
+    ).toBeTruthy();
+
+    expect(closingTransform.duration)
+      .toBe(openingTransform.duration);
+
+    if(surface.opacityDuration){
+      expect(closingAnimations)
+        .toContainEqual({
+          id:"shift-register-modal-opacity",
+          duration:surface.opacityDuration
+        });
+    }
+
+    const closingState=
+      await locator.evaluate(element=>
+        getComputedStyle(element)
+          .transform
+      );
+
+    expect(closingState)
+      .not.toBe("none");
+
+    expect(closingState)
+      .not.toBe(
+        "matrix(1, 0, 0, 1, 0, 0)"
+      );
+
+    await page.waitForTimeout(
+      surface.transformDuration+80
+    );
+
     await page.evaluate(selector=>{
-      const element=document.querySelector(selector);
-      element.classList.remove("on");
+      const element=
+        document.querySelector(selector);
+
       element.style.display="none";
-      void element.offsetHeight;
-      element.style.display="block";
-      element.classList.add("on");
-    },selector);
-
-    await page.waitForTimeout(80);
-
-    const state=await page.locator(selector).evaluate(element=>({
-      transform:getComputedStyle(element).transform,
-      animationCount:element.getAnimations().length
-    }));
-
-    expect(state.transform).not.toBe("none");
-    expect(state.transform).not.toBe("matrix(1, 0, 0, 1, 0, 0)");
-    expect(state.animationCount).toBeGreaterThan(0);
-
-    await page.waitForTimeout(460);
-
-    await page.evaluate(selector=>{
-      const element=document.querySelector(selector);
-      element.classList.remove("on");
-      element.style.display="none";
-    },selector);
+    },surface.selector);
   }
 });
 
-test("bottom sheets keep shift-register motion when system reduced motion is enabled",async({page})=>{
-  await page.emulateMedia({reducedMotion:"reduce"});
+test("reduced motion leaves every sliding window immediately usable",async({page})=>{
+  await page.emulateMedia({
+    reducedMotion:"reduce"
+  });
+
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
-  const duration=await page.locator("#sheet").evaluate(element=>
-    getComputedStyle(element).transitionDuration
-  );
+  for(const surface of SLIDING_SURFACES){
+    const locator=
+      page.locator(surface.selector);
 
-  expect(includesDuration(duration,.48)).toBe(true);
-
-  await page.locator("#openSheet").click();
-  await page.waitForTimeout(40);
-
-  const referenceAnimations=
-    await page.locator("#sheet").evaluate(element=>
-      element
-        .getAnimations()
-        .filter(animation=>
-          String(animation.id || "")
-            .startsWith(
-              "shift-register-modal-"
-            )
-        )
-        .map(animation=>
-          Number(
-            animation.effect
-              .getTiming()
-              .duration
+    const durations=
+      await locator.evaluate(element=>
+        getComputedStyle(element)
+          .transitionDuration
+          .split(",")
+          .map(value=>
+            Number.parseFloat(value)
           )
-        )
+      );
+
+    expect(Math.max(...durations))
+      .toBeLessThan(.01);
+
+    await openSurface(
+      page,
+      surface.selector
     );
 
-  expect(referenceAnimations).toContain(480);
-  expect(referenceAnimations).toContain(300);
+    await page.waitForTimeout(30);
+
+    const state=
+      await locator.evaluate(element=>({
+        animations:
+          element
+            .getAnimations()
+            .filter(animation=>
+              String(animation.id || "")
+                .startsWith(
+                  "shift-register-modal-"
+                )
+            ).length,
+        rect:
+          element.getBoundingClientRect(),
+        viewportHeight:
+          window.innerHeight
+      }));
+
+    expect(state.animations).toBe(0);
+    expect(state.rect.top)
+      .toBeLessThan(state.viewportHeight);
+    expect(state.rect.bottom)
+      .toBeLessThanOrEqual(
+        state.viewportHeight+1
+      );
+
+    await closeSurface(
+      page,
+      surface.selector
+    );
+
+    await page.waitForTimeout(10);
+
+    await page.evaluate(selector=>{
+      const element=
+        document.querySelector(selector);
+
+      element.style.display="none";
+    },surface.selector);
+  }
 });

@@ -1,3 +1,12 @@
 @import url("./interaction-core.css");
 @import url("./management.css");
 @import url("./motion-reference.css");
+
+/*
+  The swipe ghost is the old #app cloned without its id. Keep its first section
+  on the exact same vertical baseline as the live app so the animation remains
+  purely horizontal instead of dropping the old screen before it slides away.
+*/
+body > main[aria-hidden="true"][inert] > .ml:first-child{
+  margin-top:2px !important;
+}

@@ -143,10 +143,6 @@ function playReferenceModalMotion(
     return;
   }
 
-  /*
-    bindBottomSheetDismiss already owns the gesture-close animation.
-    Do not replace that animation when the user physically drags a sheet.
-  */
   if(
     !opening &&
     element
@@ -248,13 +244,121 @@ function playReferenceModalMotion(
     });
 }
 
-const pendingOpen=new WeakSet();
+const pendingOpenFrames=new WeakMap();
+
+function clearPendingOpen(
+  element,
+  {restoreStyles=true}={}
+){
+  const pending=
+    pendingOpenFrames.get(element);
+
+  if(pending?.first){
+    cancelAnimationFrame(
+      pending.first
+    );
+  }
+
+  if(pending?.second){
+    cancelAnimationFrame(
+      pending.second
+    );
+  }
+
+  pendingOpenFrames.delete(element);
+
+  if(restoreStyles){
+    element.style.removeProperty(
+      "transform"
+    );
+
+    element.style.removeProperty(
+      "opacity"
+    );
+  }
+}
+
+function stageReferenceOpen(element){
+  const spec=modalSpec(element);
+
+  if(!spec){
+    return;
+  }
+
+  clearPendingOpen(element);
+  cancelReferenceAnimations(element);
+
+  /*
+    Keep the modal fully below the viewport for a real painted frame before
+    starting the entrance. WebKit/PWA can otherwise coalesce display:block
+    and .on and make a 480ms transition look almost instantaneous.
+  */
+  element.style.transform=
+    spec.hiddenTransform;
+
+  if(spec.opacityDuration){
+    element.style.opacity=
+      String(spec.hiddenOpacity);
+  }
+
+  void element.offsetHeight;
+
+  const pending={
+    first:0,
+    second:0
+  };
+
+  pending.first=
+    requestAnimationFrame(()=>{
+      pending.first=0;
+
+      pending.second=
+        requestAnimationFrame(()=>{
+          pending.second=0;
+
+          if(
+            !element.classList.contains(
+              "on"
+            )
+          ){
+            clearPendingOpen(element);
+            return;
+          }
+
+          playReferenceModalMotion(
+            element,
+            true
+          );
+
+          /*
+            The WAAPI animation now owns the visible frame. Remove the staging
+            styles so the underlying .on state is already correct when the
+            animation finishes and is cancelled.
+          */
+          element.style.removeProperty(
+            "transform"
+          );
+
+          element.style.removeProperty(
+            "opacity"
+          );
+
+          pendingOpenFrames.delete(
+            element
+          );
+        });
+    });
+
+  pendingOpenFrames.set(
+    element,
+    pending
+  );
+}
 
 /*
-  The production app dispatches bottomsheetopen immediately before it exposes
-  a sheet. Listen in the capture phase and start the reference animation on
-  the next frame. This avoids WebKit collapsing display:block + .on into a
-  single paint and makes the sheet visibly travel from below the viewport.
+  The production app dispatches bottomsheetopen while preparing a sheet.
+  Stage the hidden pose immediately, then start the full reference-duration
+  entrance only after WebKit has had a frame to commit that pose.
 */
 document.addEventListener(
   "bottomsheetopen",
@@ -265,22 +369,7 @@ document.addEventListener(
       return;
     }
 
-    pendingOpen.add(element);
-
-    requestAnimationFrame(()=>{
-      if(!pendingOpen.has(element)){
-        return;
-      }
-
-      pendingOpen.delete(element);
-
-      if(element.classList.contains("on")){
-        playReferenceModalMotion(
-          element,
-          true
-        );
-      }
-    });
+    stageReferenceOpen(element);
   },
   true
 );
@@ -312,16 +401,25 @@ const observer=
           continue;
         }
 
-        if(
-          isOpen &&
-          pendingOpen.has(element)
-        ){
+        if(isOpen){
+          if(
+            !pendingOpenFrames.has(
+              element
+            )
+          ){
+            stageReferenceOpen(
+              element
+            );
+          }
+
           continue;
         }
 
+        clearPendingOpen(element);
+
         playReferenceModalMotion(
           element,
-          isOpen
+          false
         );
       }
     }

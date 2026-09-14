@@ -9,7 +9,7 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management back chevron stays aligned and long employee lists remain scrollable above the dock",async({page},testInfo)=>{
+test("management back chevron stays aligned and long employee lists use the space above the dock",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -65,6 +65,10 @@ test("management back chevron stays aligned and long employee lists remain scrol
   expect(firstRowBox.height).toBeGreaterThanOrEqual(76);
 
   const menuBottom=menuBox.y+menuBox.height;
+  const gap=dockBox.y-menuBottom;
+
+  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(gap).toBeLessThanOrEqual(32);
 
   const menuMetrics=await menu.evaluate(element=>({
     clientHeight:element.clientHeight,
@@ -74,10 +78,6 @@ test("management back chevron stays aligned and long employee lists remain scrol
 
   expect(menuMetrics.scrollHeight).toBeGreaterThan(menuMetrics.clientHeight);
   expect(menuMetrics.radius).toBeGreaterThanOrEqual(14);
-  expect(menuBox.height).toBeLessThanOrEqual(414);
-
-  const gap=dockBox.y-menuBottom;
-  expect(gap).toBeGreaterThanOrEqual(8);
 
   const tabsRadius=await tabs.evaluate(element=>
     parseFloat(getComputedStyle(element).borderTopLeftRadius)
@@ -91,7 +91,7 @@ test("management back chevron stays aligned and long employee lists remain scrol
   });
 });
 
-test("the seventh point closes the rounded point list window",async({page},testInfo)=>{
+test("long point cards fill the available window and the last card scrolls fully into view",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -113,7 +113,11 @@ test("the seventh point closes the rounded point list window",async({page},testI
           "Новоясеневский Проспект 22к1"
         ].map(name=>`
           <button type="button" class="manage-row point-manage-row">
-            <span class="manage-row-copy"><span class="manage-row-title">${name}</span></span>
+            <span class="manage-row-copy">
+              <span class="manage-row-title">${name}</span>
+              <span class="manage-row-detail">Сотрудники не назначены</span>
+              <span class="manage-row-detail">Фиксированный · 3 000 ₽</span>
+            </span>
             <span class="manage-chevron">›</span>
           </button>
         `).join("")}
@@ -124,25 +128,25 @@ test("the seventh point closes the rounded point list window",async({page},testI
 
   const menu=page.locator("#pointManageList > .manage-menu");
   const rows=page.locator("#pointManageList .point-manage-row");
+  const dock=page.locator(".bottom-controls");
+
   await expect(menu).toBeVisible();
 
-  const [menuBox,firstRowBox,seventhRowBox,eighthRowBox]=await Promise.all([
+  const [menuBox,firstRowBox,dockBox]=await Promise.all([
     menu.boundingBox(),
     rows.nth(0).boundingBox(),
-    rows.nth(6).boundingBox(),
-    rows.nth(7).boundingBox()
+    dock.boundingBox()
   ]);
 
-  for(const box of [menuBox,firstRowBox,seventhRowBox,eighthRowBox]){
+  for(const box of [menuBox,firstRowBox,dockBox]){
     expect(box).not.toBeNull();
   }
 
-  expect(firstRowBox.height).toBeGreaterThanOrEqual(54);
+  expect(firstRowBox.height).toBeGreaterThanOrEqual(72);
 
-  const menuBottom=menuBox.y+menuBox.height;
-  const seventhBottom=seventhRowBox.y+seventhRowBox.height;
-  expect(Math.abs(menuBottom-seventhBottom)).toBeLessThanOrEqual(3);
-  expect(eighthRowBox.y).toBeGreaterThanOrEqual(menuBottom-3);
+  const gap=dockBox.y-(menuBox.y+menuBox.height);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(gap).toBeLessThanOrEqual(32);
 
   const metrics=await menu.evaluate(element=>({
     clientHeight:element.clientHeight,
@@ -152,6 +156,27 @@ test("the seventh point closes the rounded point list window",async({page},testI
 
   expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
   expect(metrics.radius).toBeGreaterThanOrEqual(14);
+
+  await menu.evaluate(element=>{
+    element.scrollTop=element.scrollHeight;
+  });
+
+  await page.waitForTimeout(50);
+
+  const [scrolledMenuBox,lastRowBox]=await Promise.all([
+    menu.boundingBox(),
+    rows.last().boundingBox()
+  ]);
+
+  expect(scrolledMenuBox).not.toBeNull();
+  expect(lastRowBox).not.toBeNull();
+
+  const menuBottom=scrolledMenuBox.y+scrolledMenuBox.height;
+  const lastBottom=lastRowBox.y+lastRowBox.height;
+
+  expect(lastRowBox.y).toBeGreaterThanOrEqual(scrolledMenuBox.y-1);
+  expect(lastBottom).toBeLessThanOrEqual(menuBottom+1);
+  expect(Math.abs(menuBottom-lastBottom)).toBeLessThanOrEqual(3);
 
   await page.screenshot({
     path:testInfo.outputPath("management-points.png"),

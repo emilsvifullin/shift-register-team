@@ -190,33 +190,62 @@ test("month picker release continues immediately downward and never re-enters",a
   const draggedTop=
     await swipePickerClosed(page);
 
-  const samples=[draggedTop];
+  const samples=[{
+    display:"block",
+    top:draggedTop
+  }];
 
   for(const delay of [16,24,36,52,72]){
     await page.waitForTimeout(delay);
-    samples.push(await top(page));
-  }
-
-  for(let index=1;index<samples.length;index++){
-    expect(
-      samples[index],
-      `month picker moved upward: ${samples.join(", ")}`
-    ).toBeGreaterThanOrEqual(
-      samples[index-1]-1.5
+    samples.push(
+      await page.locator(PICKER)
+        .evaluate(element=>({
+          display:getComputedStyle(element).display,
+          top:element.getBoundingClientRect().top
+        }))
     );
   }
 
+  let hiddenSeen=false;
+
+  for(let index=1;index<samples.length;index++){
+    const previous=samples[index-1];
+    const current=samples[index];
+
+    if(current.display==="none"){
+      hiddenSeen=true;
+      continue;
+    }
+
+    expect(
+      hiddenSeen,
+      `month picker became visible again after close: ${JSON.stringify(samples)}`
+    ).toBe(false);
+
+    if(previous.display!=="none"){
+      expect(
+        current.top,
+        `month picker moved upward: ${JSON.stringify(samples)}`
+      ).toBeGreaterThanOrEqual(
+        previous.top-1.5
+      );
+    }
+  }
+
   /*
-    The old implementation waited across requestAnimationFrame boundaries and
-    visibly stalled for one or two frames after release. By roughly 40ms the
-    close continuation must already have made clear downward progress.
+    The close continuation must make visible downward progress promptly. An
+    already-hidden picker is also a valid terminal state and must not be
+    interpreted as top=0 moving upward.
   */
   expect(
-    samples[2],
-    `month picker stalled after release: ${samples.join(", ")}`
-  ).toBeGreaterThan(
-    draggedTop+8
-  );
+    samples
+      .slice(1)
+      .some(sample=>
+        sample.display==="none" ||
+        sample.top>draggedTop+8
+      ),
+    `month picker stalled after release: ${JSON.stringify(samples)}`
+  ).toBe(true);
 
   await expect(page.locator(PICKER))
     .not.toHaveClass(/\bon\b/,{

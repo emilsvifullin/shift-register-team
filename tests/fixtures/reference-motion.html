@@ -53,6 +53,7 @@
   </div>
 
   <div id="veil" class="veil"></div>
+
   <section id="sheet" class="sheet" aria-hidden="true">
     <div class="grab"></div>
     <div class="shead">
@@ -70,6 +71,11 @@
       <div class="seg"><button class="on">Основная</button><button>Дополнительная</button></div>
     </div>
   </section>
+
+  <section id="employeeSheet" class="sheet" aria-hidden="true"></section>
+  <section id="employeeFilterSheet" class="sheet" aria-hidden="true"></section>
+  <section id="shiftFilterSheet" class="sheet" aria-hidden="true"></section>
+  <section id="manageEditorSheet" class="sheet" aria-hidden="true"></section>
 
   <div class="point-veil"></div>
   <section class="point-picker" id="pointPicker"></section>
@@ -98,6 +104,7 @@
     const confirm=document.getElementById("appConfirm");
 
     document.getElementById("openSheet").addEventListener("click",()=>{
+      sheet.dispatchEvent(new CustomEvent("bottomsheetopen"));
       sheet.classList.add("on");
       veil.classList.add("on");
       sheet.setAttribute("aria-hidden","false");

@@ -40,6 +40,66 @@
     transform .42s var(--reference-motion-sheet);
 }
 
+/*
+  iOS/WebKit can coalesce display:block + .on into one paint when a sheet
+  is opened from a tap. Preserve the exact shift-register entry pose so
+  every production modal visibly travels from its original off-screen
+  position instead of appearing already settled.
+*/
+@starting-style{
+  .sheet.on{
+    transform:translate3d(
+      0,
+      calc(100% + 24px),
+      0
+    );
+    opacity:.96;
+  }
+
+  .point-picker.on:not(.app-picker-anchored){
+    transform:translate3d(
+      0,
+      calc(100% + 24px),
+      0
+    );
+    opacity:.96;
+  }
+
+  .date-picker.on,
+  .month-picker.on{
+    transform:translate3d(
+      0,
+      calc(
+        100% +
+        24px +
+        env(safe-area-inset-bottom)
+      ),
+      0
+    );
+  }
+
+  .date-picker.on{
+    opacity:.96;
+  }
+
+  .date-jump.on{
+    opacity:0;
+    transform:
+      translate3d(0,-7px,0)
+      scale(.985);
+  }
+
+  .app-confirm.on{
+    opacity:0;
+  }
+
+  .app-confirm.on .app-confirm-box{
+    transform:
+      translateY(10px)
+      scale(.97);
+  }
+}
+
 .veil{
   transition:opacity .34s ease;
 }

@@ -21,6 +21,22 @@ nav.tabs button{
   }
 }
 
+/*
+  При смене месяца старый экран клонируется как inert-слепок и его id удаляются.
+  Поэтому геометрию списка нельзя завязывать только на #shiftListArea: иначе
+  слепок на один кадр меняет flex-раскладку и выглядит как вертикальный ghost.
+*/
+main.shifts-layout > :is(#shiftListArea,div:has(> .shift-window)){
+  min-height:0;
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+}
+
+main.shifts-layout > :is(#shiftListArea,div:has(> .shift-window)) > .ml{
+  flex:none;
+}
+
 /* Детальные экраны управления используют оставшуюся высоту как рабочую область. */
 body[data-active-tab="manage"] main:has(> .manage-back){
   padding-top:calc(68px + env(safe-area-inset-top));

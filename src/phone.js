@@ -8,9 +8,7 @@ export function normalizePhone(
   ).trim();
 
   if(!source){
-    throw new Error(
-      "Укажите номер телефона"
-    );
+    return null;
   }
 
   const digits=source.replace(

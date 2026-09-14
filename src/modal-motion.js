@@ -1,6 +1,12 @@
 const STYLE_ID="shift-register-modal-motion-style";
 const MOTION_PREFIX="shift-register-modal-";
 
+const reducedMotion=()=>Boolean(
+  globalThis.matchMedia?.(
+    "(prefers-reduced-motion: reduce)"
+  ).matches
+);
+
 function ensureReferenceStyles(){
   if(document.getElementById(STYLE_ID)){
     return;
@@ -137,6 +143,10 @@ function playReferenceModalMotion(
   element,
   opening
 ){
+  if(reducedMotion()){
+    return;
+  }
+
   const spec=modalSpec(element);
 
   if(!spec){
@@ -279,6 +289,11 @@ function clearPendingOpen(
 }
 
 function stageReferenceOpen(element){
+  if(reducedMotion()){
+    clearPendingOpen(element);
+    return;
+  }
+
   const spec=modalSpec(element);
 
   if(!spec){
@@ -330,11 +345,6 @@ function stageReferenceOpen(element){
             true
           );
 
-          /*
-            The WAAPI animation now owns the visible frame. Remove the staging
-            styles so the underlying .on state is already correct when the
-            animation finishes and is cancelled.
-          */
           element.style.removeProperty(
             "transform"
           );
@@ -355,11 +365,6 @@ function stageReferenceOpen(element){
   );
 }
 
-/*
-  The production app dispatches bottomsheetopen while preparing a sheet.
-  Stage the hidden pose immediately, then start the full reference-duration
-  entrance only after WebKit has had a frame to commit that pose.
-*/
 document.addEventListener(
   "bottomsheetopen",
   event=>{
@@ -398,6 +403,12 @@ const observer=
           );
 
         if(wasOpen===isOpen){
+          continue;
+        }
+
+        if(reducedMotion()){
+          clearPendingOpen(element);
+          cancelReferenceAnimations(element);
           continue;
         }
 

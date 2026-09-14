@@ -99,6 +99,46 @@ test("reference motion timings match shift-register and animate visibly",async({
   });
 });
 
+test("hidden sheets and pickers enter from the exact shift-register off-screen pose",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  for(const selector of [
+    "#sheet",
+    ".point-picker",
+    ".month-picker",
+    ".date-picker"
+  ]){
+    await page.evaluate(selector=>{
+      const element=document.querySelector(selector);
+      element.classList.remove("on");
+      element.style.display="none";
+      void element.offsetHeight;
+      element.style.display="block";
+      element.classList.add("on");
+    },selector);
+
+    await page.waitForTimeout(80);
+
+    const state=await page.locator(selector).evaluate(element=>({
+      transform:getComputedStyle(element).transform,
+      animationCount:element.getAnimations().length
+    }));
+
+    expect(state.transform).not.toBe("none");
+    expect(state.transform).not.toBe("matrix(1, 0, 0, 1, 0, 0)");
+    expect(state.animationCount).toBeGreaterThan(0);
+
+    await page.waitForTimeout(460);
+
+    await page.evaluate(selector=>{
+      const element=document.querySelector(selector);
+      element.classList.remove("on");
+      element.style.display="none";
+    },selector);
+  }
+});
+
 test("reduced motion remains respected",async({page})=>{
   await page.emulateMedia({reducedMotion:"reduce"});
   await page.goto(FIXTURE);

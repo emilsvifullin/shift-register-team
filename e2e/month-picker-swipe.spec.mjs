@@ -67,7 +67,7 @@ async function top(page){
     );
 }
 
-test("month picker continues from the last painted drag position and never re-enters after close",async({page})=>{
+test("month picker release continues immediately downward and never re-enters",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -150,12 +150,7 @@ test("month picker continues from the last painted drag position and never re-en
   await page.waitForTimeout(24);
   const draggedTop=await top(page);
 
-  /*
-    Simulate the Safari case that caused the first bug: changedTouches on
-    touchend reports a smaller Y than the last painted touchmove. Closing must
-    ignore that corrected release coordinate and continue from the visible
-    position.
-  */
+  /* Safari can report a smaller release Y than the last painted move. */
   await dispatchTouch(
     page,
     HANDLE,
@@ -176,29 +171,29 @@ test("month picker continues from the last painted drag position and never re-en
   for(let index=1;index<samples.length;index++){
     expect(
       samples[index],
-      `month picker jumped upward: ${samples.join(", ")}`
+      `month picker moved upward: ${samples.join(", ")}`
     ).toBeGreaterThanOrEqual(
       samples[index-1]-1.5
     );
   }
 
-  expect(samples[1])
-    .toBeGreaterThanOrEqual(
-      draggedTop-1.5
-    );
+  /*
+    The old implementation waited across requestAnimationFrame boundaries and
+    visibly stalled for one or two frames after release. By roughly 40ms the
+    close continuation must already have made clear downward progress.
+  */
+  expect(
+    samples[2],
+    `month picker stalled after release: ${samples.join(", ")}`
+  ).toBeGreaterThan(
+    draggedTop+8
+  );
 
   await expect(page.locator(PICKER))
     .not.toHaveClass(/\bon\b/,{
-      timeout:1200
+      timeout:800
     });
 
-  /*
-    Reproduce the second bug from the iPhone recording: after the swipe had
-    already carried the picker below the viewport, the generic modal close
-    animation used to start again from y=0 and make the picker visibly jump
-    back into view. Once the swipe owns the close, it must stay offscreen for
-    every frame until display:none takes over.
-  */
   for(const delay of [0,24,40,60,90,130,180]){
     await page.waitForTimeout(delay);
 

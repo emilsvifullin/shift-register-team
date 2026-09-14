@@ -8,13 +8,14 @@ const read=path=>
     "utf8"
   );
 
-test("reference horizontal swipes are loaded and precached",()=>{
+test("reference horizontal swipes are bootstrapped and precached",()=>{
+  const frameGuard=read("src/frame-guard.js");
   const config=read("src/config.js");
   const serviceWorker=read("sw.js");
 
   assert.match(
-    config,
-    /import "\.\/reference-swipes\.js";/
+    frameGuard,
+    /\.\/reference-swipes\.js/
   );
 
   assert.match(

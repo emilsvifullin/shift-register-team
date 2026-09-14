@@ -25,12 +25,12 @@ test("reference horizontal swipes are bootstrapped and precached",()=>{
 
   assert.match(
     config,
-    /APP_VERSION = "6\.22\.21"/
+    /APP_VERSION = "6\.22\.22"/
   );
 
   assert.match(
     serviceWorker,
-    /sr-team-runtime-v6\.22\.21/
+    /sr-team-runtime-v6\.22\.22/
   );
 });
 
@@ -61,4 +61,23 @@ test("year swipe parity removes team-only horizontal input paths",()=>{
   assert.match(swipes,/pointerType==="touch"/);
   assert.match(swipes,/event\.stopPropagation\(\)/);
   assert.doesNotMatch(swipes,/"touchstart"/);
+});
+
+test("month transition ghost keeps shift list flex geometry after ids are stripped",()=>{
+  const styles=read("styles/management.css");
+
+  assert.match(
+    styles,
+    /main\.shifts-layout > :is\(#shiftListArea,div:has\(> \.shift-window\)\)/
+  );
+
+  assert.match(
+    styles,
+    /flex:1 1 auto/
+  );
+
+  assert.match(
+    styles,
+    /main\.shifts-layout > :is\(#shiftListArea,div:has\(> \.shift-window\)\) > \.ml/
+  );
 });

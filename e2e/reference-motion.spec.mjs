@@ -20,6 +20,12 @@ test("reference motion timings match shift-register and animate visibly",async({
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
+  await expect(page.locator("html"))
+    .toHaveAttribute(
+      "data-modal-motion",
+      "shift-register"
+    );
+
   const timings=await page.evaluate(()=>{
     const read=selector=>
       getComputedStyle(
@@ -49,7 +55,31 @@ test("reference motion timings match shift-register and animate visibly",async({
   expect(timings.monthVariable).toBe("320ms");
 
   await page.locator("#openSheet").click();
-  await page.waitForTimeout(160);
+  await page.waitForTimeout(40);
+
+  const referenceAnimations=
+    await page.locator("#sheet").evaluate(element=>
+      element
+        .getAnimations()
+        .filter(animation=>
+          String(animation.id || "")
+            .startsWith(
+              "shift-register-modal-"
+            )
+        )
+        .map(animation=>
+          Number(
+            animation.effect
+              .getTiming()
+              .duration
+          )
+        )
+    );
+
+  expect(referenceAnimations).toContain(480);
+  expect(referenceAnimations).toContain(300);
+
+  await page.waitForTimeout(120);
 
   const middle=await page.locator("#sheet").evaluate(element=>({
     transform:getComputedStyle(element).transform,
@@ -57,6 +87,7 @@ test("reference motion timings match shift-register and animate visibly",async({
   }));
 
   expect(middle.transform).not.toBe("none");
+  expect(middle.transform).not.toBe("matrix(1, 0, 0, 1, 0, 0)");
   expect(middle.opacity).toBeGreaterThan(.95);
 
   await page.waitForTimeout(380);
@@ -75,7 +106,31 @@ test("reference motion timings match shift-register and animate visibly",async({
   });
 
   await page.locator("#closeSheet").click();
-  await page.waitForTimeout(520);
+  await page.waitForTimeout(40);
+
+  const closingAnimations=
+    await page.locator("#sheet").evaluate(element=>
+      element
+        .getAnimations()
+        .filter(animation=>
+          String(animation.id || "")
+            .startsWith(
+              "shift-register-modal-"
+            )
+        )
+        .map(animation=>
+          Number(
+            animation.effect
+              .getTiming()
+              .duration
+          )
+        )
+    );
+
+  expect(closingAnimations).toContain(480);
+  expect(closingAnimations).toContain(300);
+
+  await page.waitForTimeout(480);
   await expect(page.locator("#sheet")).not.toHaveClass(/\bon\b/);
 
   const firstTab=page.locator("nav.tabs button").first();
@@ -153,4 +208,21 @@ test("reduced motion remains respected",async({page})=>{
     .map(value=>Number.parseFloat(value));
 
   expect(Math.max(...values)).toBeLessThan(.01);
+
+  await page.locator("#openSheet").click();
+  await page.waitForTimeout(30);
+
+  const referenceAnimations=
+    await page.locator("#sheet").evaluate(element=>
+      element
+        .getAnimations()
+        .filter(animation=>
+          String(animation.id || "")
+            .startsWith(
+              "shift-register-modal-"
+            )
+        ).length
+    );
+
+  expect(referenceAnimations).toBe(0);
 });

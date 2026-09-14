@@ -67,7 +67,7 @@ async function top(page){
     );
 }
 
-test("month picker continues from the last painted drag position on release",async({page})=>{
+test("month picker continues from the last painted drag position and never re-enters after close",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -151,9 +151,10 @@ test("month picker continues from the last painted drag position on release",asy
   const draggedTop=await top(page);
 
   /*
-    Simulate the Safari case that caused the bug: changedTouches on touchend
-    reports a smaller Y than the last painted touchmove. Closing must ignore
-    that corrected release coordinate and continue from the visible position.
+    Simulate the Safari case that caused the first bug: changedTouches on
+    touchend reports a smaller Y than the last painted touchmove. Closing must
+    ignore that corrected release coordinate and continue from the visible
+    position.
   */
   await dispatchTouch(
     page,
@@ -186,8 +187,55 @@ test("month picker continues from the last painted drag position on release",asy
       draggedTop-1.5
     );
 
-  await page.waitForTimeout(420);
-
   await expect(page.locator(PICKER))
-    .not.toHaveClass(/\bon\b/);
+    .not.toHaveClass(/\bon\b/,{
+      timeout:1200
+    });
+
+  /*
+    Reproduce the second bug from the iPhone recording: after the swipe had
+    already carried the picker below the viewport, the generic modal close
+    animation used to start again from y=0 and make the picker visibly jump
+    back into view. Once the swipe owns the close, it must stay offscreen for
+    every frame until display:none takes over.
+  */
+  for(const delay of [0,24,40,60,90,130,180]){
+    await page.waitForTimeout(delay);
+
+    const state=
+      await page.locator(PICKER)
+        .evaluate(element=>({
+          display:
+            getComputedStyle(element).display,
+          top:
+            element.getBoundingClientRect().top,
+          viewportHeight:
+            window.innerHeight,
+          referenceClosing:
+            element.getAttribute(
+              "data-reference-closing"
+            ),
+          referenceAnimations:
+            element
+              .getAnimations()
+              .filter(animation=>
+                String(animation.id || "")
+                  .startsWith(
+                    "shift-register-modal-"
+                  )
+              ).length
+        }));
+
+    expect(
+      state.display==="none" ||
+      state.top>=state.viewportHeight-2,
+      `month picker re-entered viewport after swipe close: ${JSON.stringify(state)}`
+    ).toBe(true);
+
+    expect(state.referenceClosing)
+      .not.toBe("true");
+
+    expect(state.referenceAnimations)
+      .toBe(0);
+  }
 });

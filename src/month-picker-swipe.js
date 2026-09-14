@@ -6,7 +6,6 @@ const SNAP_EASING="cubic-bezier(.4,0,.2,1)";
 const CLOSE_EASING="cubic-bezier(0,0,.2,1)";
 
 let gesture=null;
-let cleanupTimer=0;
 let suppressClickUntil=0;
 
 const picker=()=>
@@ -63,27 +62,24 @@ function cancelReferenceMotion(element){
 }
 
 function clearGestureStyles(element){
-  window.clearTimeout(cleanupTimer);
-  cleanupTimer=0;
-
   element.style.removeProperty("transition");
   element.style.removeProperty("transform");
   element.style.removeProperty("--month-drag");
 }
 
 function resetForOpen(element){
-  window.clearTimeout(cleanupTimer);
-  cleanupTimer=0;
   gesture=null;
   suppressClickUntil=0;
 
-  cancelReferenceMotion(element);
-  element.removeAttribute("data-reference-closing");
-  element.removeAttribute("data-month-swipe-closing");
-  element.style.removeProperty("display");
-  element.style.removeProperty("transition");
-  element.style.removeProperty("transform");
-  element.style.removeProperty("--month-drag");
+  /*
+    modal-motion handles bottomsheetopen in capture phase and places the
+    picker below the viewport before the app adds .on. Do not clear that
+    staged transform here. Clearing it was the source of the one-frame fully
+    visible "ghost" before the real opening animation on iPhone/WebKit.
+  */
+  element.removeAttribute(
+    "data-month-swipe-closing"
+  );
 }
 
 function startGesture(kind,id,target,x,y){
@@ -210,12 +206,6 @@ function runTransformTransition(
     handleTransitionEnd
   );
 
-  /*
-    The drag position is already painted. Flush that exact position, then
-    start the continuation immediately in the same task. Waiting one or two
-    requestAnimationFrame callbacks here creates the visible release hitch on
-    iPhone because the sheet almost stops before it continues downward.
-  */
   element.style.transition="none";
   element.style.transform=
     `translate3d(0,${state.distance}px,0)`;
@@ -232,13 +222,34 @@ function runTransformTransition(
   );
 }
 
+function normalizeClosedPicker(element){
+  cancelReferenceMotion(element);
+  element.removeAttribute(
+    "data-reference-closing"
+  );
+  element.removeAttribute(
+    "data-month-swipe-closing"
+  );
+
+  /*
+    Normalize while display:none is still active, so WebKit cannot retain a
+    transformed compositor snapshot that flashes on the next open.
+  */
+  element.style.setProperty(
+    "display",
+    "none"
+  );
+  element.style.removeProperty("transition");
+  element.style.removeProperty("transform");
+  element.style.removeProperty("--month-drag");
+}
+
 function finishSwipeClose(state,endDistance){
   const {element}=state;
 
   element.style.transition="none";
   element.style.transform=
     `translate3d(0,${endDistance}px,0)`;
-
   element.setAttribute(
     "data-month-swipe-closing",
     "true"
@@ -250,33 +261,29 @@ function finishSwipeClose(state,endDistance){
   );
 
   suppressClickUntil=0;
-  document.getElementById("monthCancel")?.click();
 
-  const suppressSecondaryClose=()=>{
-    cancelReferenceMotion(element);
-    element.removeAttribute(
-      "data-reference-closing"
-    );
-  };
+  const cancel=
+    document.getElementById("monthCancel");
 
-  queueMicrotask(suppressSecondaryClose);
-  requestAnimationFrame(suppressSecondaryClose);
-  window.setTimeout(suppressSecondaryClose,0);
+  if(cancel instanceof HTMLElement){
+    cancel.click();
+  }else{
+    element.classList.remove("on");
+    element.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+  }
 
-  cleanupTimer=window.setTimeout(()=>{
-    suppressSecondaryClose();
-    element.style.setProperty(
-      "display",
-      "none"
-    );
-    element.removeAttribute(
-      "data-month-swipe-closing"
-    );
-    element.style.removeProperty("transition");
-    element.style.removeProperty("transform");
-    element.style.removeProperty("--month-drag");
-    cleanupTimer=0;
-  },560);
+  /*
+    The class mutation queues modal-motion's observer before this microtask.
+    It therefore sees the offscreen transform and suppresses its second close
+    pass. Immediately afterwards we clear every swipe-owned style while the
+    picker is hidden, leaving the next open completely clean.
+  */
+  queueMicrotask(()=>{
+    normalizeClosedPicker(element);
+  });
 }
 
 function closeDuration(state,endDistance){
@@ -599,22 +606,28 @@ window.addEventListener(
   true
 );
 
-document.addEventListener(
-  "DOMContentLoaded",
-  ()=>{
-    const element=picker();
+function bindOpenReset(){
+  const element=picker();
 
-    if(!(element instanceof HTMLElement)){
-      return;
-    }
+  if(!(element instanceof HTMLElement)){
+    return;
+  }
 
-    element.addEventListener(
-      "bottomsheetopen",
-      ()=>resetForOpen(element)
-    );
-  },
-  {once:true}
-);
+  element.addEventListener(
+    "bottomsheetopen",
+    ()=>resetForOpen(element)
+  );
+}
+
+if(document.readyState==="loading"){
+  document.addEventListener(
+    "DOMContentLoaded",
+    bindOpenReset,
+    {once:true}
+  );
+}else{
+  bindOpenReset();
+}
 
 document.documentElement.dataset.monthPickerSwipe=
   "ready";

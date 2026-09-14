@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import test from "node:test";
 
 import {
@@ -151,6 +152,39 @@ test(
         ]
       ),
       "По ШК · 3 000 ₽–6 500 ₽"
+    );
+  }
+);
+
+test(
+  "point summary hydration never hides or locks the management list",
+  ()=>{
+    const source=readFileSync(
+      new URL(
+        "../src/point-card-summaries.js",
+        import.meta.url
+      ),
+      "utf8"
+    );
+
+    assert.doesNotMatch(
+      source,
+      /style\.visibility\s*=\s*["']hidden["']/
+    );
+
+    assert.doesNotMatch(
+      source,
+      /style\.pointerEvents\s*=\s*["']none["']/
+    );
+
+    assert.match(
+      source,
+      /LOAD_TIMEOUT_MS=4500/
+    );
+
+    assert.match(
+      source,
+      /Summaries are supplemental/
     );
   }
 );

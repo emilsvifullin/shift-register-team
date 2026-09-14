@@ -14,6 +14,7 @@ if(globalThis.self!==globalThis.top){
   if(source){
     for(const modulePath of [
       "./management-navigation.js",
+      "./reference-swipes.js",
       "./team-motion.js"
     ]){
       const script=

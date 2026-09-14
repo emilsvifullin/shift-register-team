@@ -21,3 +21,26 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
   height:93vh;
   max-height:93vh;
 }
+
+/*
+  Employee cards use the same vertical geometry as point cards. Keep the
+  typography, padding and row rhythm identical so switching between the two
+  management lists does not change density.
+*/
+#employeeList .employee-row{
+  min-height:54px;
+  padding-top:10px;
+  padding-bottom:10px;
+}
+
+#employeeList .employee-row .manage-row-copy{
+  gap:3px;
+}
+
+#employeeList .employee-row .manage-row-title{
+  line-height:1.25;
+}
+
+#employeeList .employee-row .manage-row-detail{
+  line-height:1.45;
+}

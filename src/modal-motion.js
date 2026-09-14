@@ -1,12 +1,6 @@
 const STYLE_ID="shift-register-modal-motion-style";
 const MOTION_PREFIX="shift-register-modal-";
 
-const reducedMotion=()=>Boolean(
-  globalThis.matchMedia?.(
-    "(prefers-reduced-motion: reduce)"
-  ).matches
-);
-
 function ensureReferenceStyles(){
   if(document.getElementById(STYLE_ID)){
     return;
@@ -143,10 +137,6 @@ function playReferenceModalMotion(
   element,
   opening
 ){
-  if(reducedMotion()){
-    return;
-  }
-
   const spec=modalSpec(element);
 
   if(!spec){
@@ -258,6 +248,43 @@ function playReferenceModalMotion(
     });
 }
 
+const pendingOpen=new WeakSet();
+
+/*
+  The production app dispatches bottomsheetopen immediately before it exposes
+  a sheet. Listen in the capture phase and start the reference animation on
+  the next frame. This avoids WebKit collapsing display:block + .on into a
+  single paint and makes the sheet visibly travel from below the viewport.
+*/
+document.addEventListener(
+  "bottomsheetopen",
+  event=>{
+    const element=event.target;
+
+    if(!isTrackedModal(element)){
+      return;
+    }
+
+    pendingOpen.add(element);
+
+    requestAnimationFrame(()=>{
+      if(!pendingOpen.has(element)){
+        return;
+      }
+
+      pendingOpen.delete(element);
+
+      if(element.classList.contains("on")){
+        playReferenceModalMotion(
+          element,
+          true
+        );
+      }
+    });
+  },
+  true
+);
+
 const observer=
   new MutationObserver(
     mutations=>{
@@ -282,6 +309,13 @@ const observer=
           );
 
         if(wasOpen===isOpen){
+          continue;
+        }
+
+        if(
+          isOpen &&
+          pendingOpen.has(element)
+        ){
           continue;
         }
 

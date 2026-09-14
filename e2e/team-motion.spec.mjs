@@ -123,6 +123,64 @@ test("employee view to edit and back visibly animate instead of replacing conten
   await expect(page.locator("#employeeSheetTitle")).toHaveText("Сотрудник");
 });
 
+test("stats month ghost keeps the exact live vertical geometry after clone ids are stripped",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  const result=await page.evaluate(()=>{
+    document.body.dataset.activeTab="stats";
+
+    const app=document.getElementById("app");
+    app.innerHTML=`
+      <div class="ml">Фильтры</div>
+      <div class="card">
+        <button class="row stats-filter-row" type="button">
+          <span class="t">Сотрудник</span>
+          <span class="point-value">Все сотрудники</span>
+        </button>
+      </div>
+      <div class="ml">Начислено</div>
+      <div class="card hero"><div class="n">0</div></div>
+    `;
+
+    const ghost=app.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.querySelectorAll("[id]").forEach(node=>node.removeAttribute("id"));
+    ghost.setAttribute("aria-hidden","true");
+    ghost.setAttribute("inert","");
+    document.body.append(ghost);
+
+    const liveLabel=app.children[0];
+    const ghostLabel=ghost.children[0];
+    const liveFilter=app.children[1];
+    const ghostFilter=ghost.children[1];
+    const liveNextLabel=app.children[2];
+    const ghostNextLabel=ghost.children[2];
+
+    const liveRect=liveNextLabel.getBoundingClientRect();
+    const ghostRect=ghostNextLabel.getBoundingClientRect();
+
+    const values={
+      liveLabelDisplay:getComputedStyle(liveLabel).display,
+      ghostLabelDisplay:getComputedStyle(ghostLabel).display,
+      liveFilterBorder:getComputedStyle(liveFilter).borderTopWidth,
+      ghostFilterBorder:getComputedStyle(ghostFilter).borderTopWidth,
+      liveFilterBackground:getComputedStyle(liveFilter).backgroundColor,
+      ghostFilterBackground:getComputedStyle(ghostFilter).backgroundColor,
+      verticalDelta:Math.abs(liveRect.top-ghostRect.top)
+    };
+
+    ghost.remove();
+    return values;
+  });
+
+  expect(result.liveLabelDisplay).toBe("none");
+  expect(result.ghostLabelDisplay).toBe("none");
+  expect(result.ghostFilterBorder).toBe(result.liveFilterBorder);
+  expect(result.ghostFilterBackground).toBe(result.liveFilterBackground);
+  expect(result.verticalDelta).toBeLessThanOrEqual(0.5);
+});
+
 test("reduced motion disables the added editor transition",async({page})=>{
   await page.emulateMedia({reducedMotion:"reduce"});
   await page.goto(FIXTURE);

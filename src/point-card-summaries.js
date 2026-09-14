@@ -1,10 +1,11 @@
 const CACHE_MS=15000;
+const LOAD_TIMEOUT_MS=4500;
+const PRELOAD_DELAY_MS=900;
 
 let cache=null;
 let cacheAt=0;
 let loadPromise=null;
 let clientPromise=null;
-let preloadStarted=false;
 
 function currentDate(){
   const value=new Date();
@@ -178,6 +179,28 @@ async function client(){
   return clientPromise;
 }
 
+function withTimeout(
+  promise,
+  timeoutMs=LOAD_TIMEOUT_MS
+){
+  let timer=0;
+
+  const timeout=new Promise((_,reject)=>{
+    timer=setTimeout(()=>{
+      reject(
+        new Error("point_summary_timeout")
+      );
+    },timeoutMs);
+  });
+
+  return Promise.race([
+    Promise.resolve(promise),
+    timeout
+  ]).finally(()=>{
+    clearTimeout(timer);
+  });
+}
+
 async function loadSummaryData(){
   const now=Date.now();
 
@@ -201,28 +224,30 @@ async function loadSummaryData(){
       employeePointsResult,
       pointsResult,
       tariffsResult
-    ]=await Promise.all([
-      supabase
-        .from("employees")
-        .select(
-          "id, full_name, status, is_system_substitute"
-        ),
-      supabase
-        .from("employee_points")
-        .select(
-          "employee_id, point_id, active"
-        ),
-      supabase
-        .from("points")
-        .select(
-          "id, advance_enabled"
-        ),
-      supabase
-        .from("point_tariffs")
-        .select(
-          "point_id, effective_from, pricing_type, fixed_rate, shk_tiers"
-        )
-    ]);
+    ]=await withTimeout(
+      Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id, full_name, status, is_system_substitute"
+          ),
+        supabase
+          .from("employee_points")
+          .select(
+            "employee_id, point_id, active"
+          ),
+        supabase
+          .from("points")
+          .select(
+            "id, advance_enabled"
+          ),
+        supabase
+          .from("point_tariffs")
+          .select(
+            "point_id, effective_from, pricing_type, fixed_rate, shk_tiers"
+          )
+      ])
+    );
 
     for(const result of [
       employeesResult,
@@ -256,49 +281,31 @@ async function loadSummaryData(){
   return loadPromise;
 }
 
-function warmSummaryData(){
-  if(preloadStarted){
-    return;
-  }
-
-  preloadStarted=true;
-
-  void loadSummaryData()
-    .catch(()=>{
-      preloadStarted=false;
-    });
-}
-
-function addSummaryPlaceholder(
+function ensureSummaryLine(
   copy,
   kind,
   documentRef
 ){
-  if(
-    copy.querySelector(
-      `[data-point-card-summary="${kind}"]`
-    )
-  ){
-    return;
+  let line=copy.querySelector(
+    `[data-point-card-summary="${kind}"]`
+  );
+
+  if(line){
+    return line;
   }
 
-  const line=
-    documentRef.createElement("span");
-
+  line=documentRef.createElement("span");
   line.className="manage-row-detail";
   line.dataset.pointCardSummary=kind;
-  line.dataset.pointCardSummaryPlaceholder=
-    "true";
-  line.setAttribute(
-    "aria-hidden",
-    "true"
-  );
+  line.dataset.pointCardSummaryPlaceholder="true";
+  line.setAttribute("aria-hidden","true");
   line.textContent="\u00A0";
-
   copy.append(line);
+
+  return line;
 }
 
-function prepareList(
+function reserveListGeometry(
   list,
   documentRef
 ){
@@ -306,35 +313,26 @@ function prepareList(
     return;
   }
 
-  list.dataset.pointCardSummariesPending=
-    "true";
-  list.setAttribute(
-    "aria-busy",
-    "true"
-  );
-  list.style.visibility="hidden";
-  list.style.pointerEvents="none";
-
   list
     .querySelectorAll(
       ".point-manage-row[data-point-id]"
     )
     .forEach(row=>{
-      const copy=
-        row.querySelector(
-          ".manage-row-copy"
-        );
+      const copy=row.querySelector(
+        ".manage-row-copy"
+      );
 
       if(!copy){
         return;
       }
 
-      addSummaryPlaceholder(
+      ensureSummaryLine(
         copy,
         "employees",
         documentRef
       );
-      addSummaryPlaceholder(
+
+      ensureSummaryLine(
         copy,
         "tariff",
         documentRef
@@ -342,32 +340,21 @@ function prepareList(
     });
 }
 
-function revealList(list){
-  if(!list){
+function setSummaryText(
+  line,
+  value
+){
+  if(!line){
     return;
   }
 
-  delete list.dataset
-    .pointCardSummariesPending;
-  list.removeAttribute(
-    "aria-busy"
-  );
-  list.style.removeProperty(
-    "visibility"
-  );
-  list.style.removeProperty(
-    "pointer-events"
-  );
-}
+  if(line.textContent!==value){
+    line.textContent=value;
+  }
 
-function clearSummaryPlaceholders(list){
-  list
-    ?.querySelectorAll(
-      "[data-point-card-summary-placeholder]"
-    )
-    .forEach(element=>
-      element.remove()
-    );
+  delete line.dataset
+    .pointCardSummaryPlaceholder;
+  line.removeAttribute("aria-hidden");
 }
 
 function decorateList(
@@ -388,10 +375,9 @@ function decorateList(
       ".point-manage-row[data-point-id]"
     )
     .forEach(row=>{
-      const pointId=
-        String(
-          row.dataset.pointId || ""
-        );
+      const pointId=String(
+        row.dataset.pointId || ""
+      );
 
       const point=
         pointById.get(pointId) || {
@@ -423,46 +409,30 @@ function decorateList(
         return;
       }
 
-      const copy=
-        row.querySelector(
-          ".manage-row-copy"
-        );
+      const copy=row.querySelector(
+        ".manage-row-copy"
+      );
 
       if(!copy){
         return;
       }
 
-      copy
-        .querySelectorAll(
-          "[data-point-card-summary]"
-        )
-        .forEach(element=>
-          element.remove()
-        );
+      setSummaryText(
+        ensureSummaryLine(
+          copy,
+          "employees",
+          documentRef
+        ),
+        employeeText
+      );
 
-      const employeeLine=
-        documentRef.createElement("span");
-
-      employeeLine.className=
-        "manage-row-detail";
-      employeeLine.dataset
-        .pointCardSummary="employees";
-      employeeLine.textContent=
-        employeeText;
-
-      const tariffLine=
-        documentRef.createElement("span");
-
-      tariffLine.className=
-        "manage-row-detail";
-      tariffLine.dataset
-        .pointCardSummary="tariff";
-      tariffLine.textContent=
-        tariffText;
-
-      copy.append(
-        employeeLine,
-        tariffLine
+      setSummaryText(
+        ensureSummaryLine(
+          copy,
+          "tariff",
+          documentRef
+        ),
+        tariffText
       );
 
       row.dataset
@@ -488,59 +458,42 @@ export function installPointCardSummaries({
   let frame=0;
   let activeList=null;
   let token=0;
-
-  const primeCurrentList=()=>{
-    const list=
-      documentRef.getElementById(
-        "pointManageList"
-      );
-
-    if(
-      list &&
-      list!==activeList
-    ){
-      prepareList(
-        list,
-        documentRef
-      );
-    }
-  };
+  let preloadTimer=0;
 
   const sync=async()=>{
-    const list=
-      documentRef.getElementById(
-        "pointManageList"
-      );
+    const list=documentRef.getElementById(
+      "pointManageList"
+    );
 
     if(!list){
       activeList=null;
+      token++;
       return;
     }
 
-    const listChanged=
-      list!==activeList;
+    reserveListGeometry(
+      list,
+      documentRef
+    );
 
-    if(listChanged){
+    if(cache){
       activeList=list;
-      prepareList(
-        list,
-        documentRef
-      );
-    }else if(cache){
       decorateList(
         list,
         cache,
         documentRef
       );
-      revealList(list);
       return;
+    }
+
+    if(list!==activeList){
+      activeList=list;
     }
 
     const syncToken=++token;
 
     try{
-      const data=
-        await loadSummaryData();
+      const data=await loadSummaryData();
 
       if(
         syncToken!==token ||
@@ -556,16 +509,11 @@ export function installPointCardSummaries({
         data,
         documentRef
       );
-      revealList(list);
     }catch{
-      if(
-        list===documentRef.getElementById(
-          "pointManageList"
-        )
-      ){
-        clearSummaryPlaceholders(list);
-        revealList(list);
-      }
+      /*
+        Summaries are supplemental. A slow or failed request must never
+        hide, lock or delay the management UI.
+      */
     }
   };
 
@@ -574,30 +522,34 @@ export function installPointCardSummaries({
       return;
     }
 
-    frame=
-      windowRef.requestAnimationFrame(()=>{
-        frame=0;
-        void sync();
-      });
+    frame=windowRef.requestAnimationFrame(()=>{
+      frame=0;
+      void sync();
+    });
   };
 
-  const app=
-    documentRef.getElementById("app");
+  const app=documentRef.getElementById("app");
 
   if(!app){
+    delete documentRef.documentElement.dataset
+      .pointCardSummaries;
     return ()=>{};
   }
 
-  const observer=
-    new windowRef.MutationObserver(()=>{
-      /*
-        MutationObserver runs before the next paint. Prime the newly
-        rendered point list immediately so the one-line intermediate
-        cards can never become a visible frame.
-      */
-      primeCurrentList();
-      queueSync();
-    });
+  const observer=new windowRef.MutationObserver(()=>{
+    const list=documentRef.getElementById(
+      "pointManageList"
+    );
+
+    if(list){
+      reserveListGeometry(
+        list,
+        documentRef
+      );
+    }
+
+    queueSync();
+  });
 
   observer.observe(
     app,
@@ -607,13 +559,18 @@ export function installPointCardSummaries({
     }
   );
 
-  warmSummaryData();
-  primeCurrentList();
+  preloadTimer=windowRef.setTimeout(()=>{
+    void loadSummaryData().catch(()=>{});
+  },PRELOAD_DELAY_MS);
+
   queueSync();
 
   return ()=>{
     observer.disconnect();
     token++;
+    windowRef.clearTimeout(
+      preloadTimer
+    );
 
     if(frame){
       windowRef.cancelAnimationFrame(

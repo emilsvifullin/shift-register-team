@@ -25,12 +25,12 @@ test("reference horizontal swipes are bootstrapped and precached",()=>{
 
   assert.match(
     config,
-    /APP_VERSION = "6\.22\.22"/
+    /APP_VERSION = "6\.22\.23"/
   );
 
   assert.match(
     serviceWorker,
-    /sr-team-runtime-v6\.22\.22/
+    /sr-team-runtime-v6\.22\.23/
   );
 });
 
@@ -79,5 +79,24 @@ test("month transition ghost keeps shift list flex geometry after ids are stripp
   assert.match(
     styles,
     /main\.shifts-layout > :is\(#shiftListArea,div:has\(> \.shift-window\)\) > \.ml/
+  );
+});
+
+test("stats month transition ghost keeps the same app-only refinement geometry",()=>{
+  const styles=read("styles/management.css");
+
+  assert.match(
+    styles,
+    /body\[data-active-tab\] > main > \.ml:first-child/
+  );
+
+  assert.match(
+    styles,
+    /body\[data-active-tab="stats"\] > main > \.ml:has\(\+ \.card \.stats-filter-row\)/
+  );
+
+  assert.match(
+    styles,
+    /body\[data-active-tab="stats"\] > main > \.card:has\(\.stats-filter-row\)/
   );
 });

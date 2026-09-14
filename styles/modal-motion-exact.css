@@ -3,6 +3,18 @@
   This stylesheet is loaded after the team-specific refinement layers.
 */
 
+/*
+  Some team editors still request display:none before the reference exit
+  duration has finished. Keep a closing surface rendered until the motion
+  controller releases this guard.
+*/
+.sheet[data-reference-closing="true"],
+.point-picker[data-reference-closing="true"]:not(.app-picker-anchored),
+.date-picker[data-reference-closing="true"],
+.month-picker[data-reference-closing="true"]{
+  display:block !important;
+}
+
 /* Main and team bottom sheets */
 .sheet{
   transform:translate3d(

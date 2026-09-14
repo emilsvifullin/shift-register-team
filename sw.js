@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.56";
+  "sr-team-runtime-v6.22.57";
 
 const INDEX_FILE=
   "./index.html";
@@ -45,6 +45,7 @@ const ASSETS=[
   "./src/management-employee-points.js",
   "./src/management-tap-intent.js",
   "./src/management-navigation.js",
+  "./src/management-point-editor.js",
   "./src/point-card-summaries.js",
   "./src/reference-swipes.js",
   "./src/team-motion.js",
@@ -269,20 +270,17 @@ async function navigationResponse(
 
     const scope=
       new URL(
-        self.registration.scope
-      );
-
-    const indexUrl=
-      new URL(
         INDEX_FILE,
-        scope
+        self.registration.scope
       );
 
     if(
       requestUrl.pathname===
-        scope.pathname ||
+        new URL(
+          self.registration.scope
+        ).pathname ||
       requestUrl.pathname===
-        indexUrl.pathname
+        scope.pathname
     ){
       return (
         await cache.match(

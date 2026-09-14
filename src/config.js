@@ -2,7 +2,7 @@ import "./management-employee-points.js";
 import "./management-tap-intent.js";
 import "./management-navigation.js";
 
-export const APP_VERSION = "6.22.25";
+export const APP_VERSION = "6.22.26";
 export const SCHEMA_VERSION = 3;
 export const RULES_VERSION = "2026-08-12-v3";
 
@@ -41,64 +41,22 @@ export const ADVANCE_POINT_IDS = new Set([
   "yartsevskaya-6",
   "yartsevskaya-25a",
   "pyatnitskiy-2",
-  "bolshoy-ovchinnikovskiy-16",
   "prokatnaya-2"
 ]);
 
-export const TIERS = Object.freeze([
-  {lim:350, rate:3000},
-  {lim:450, rate:3500},
-  {lim:550, rate:4500},
-  {lim:650, rate:5500},
-  {lim:Number.POSITIVE_INFINITY, rate:6500}
-]);
-
-export const FIXED_RATE = 3000;
-export const FULL_HOURS = 12;
-export const ADVANCE_CAP = 20000;
-
-export const MIN_YEAR = 2000;
-export const MAX_YEAR = 2100;
-export const MAX_SHK = 1_000_000;
-export const MAX_MONEY = 10_000_000;
-export const MAX_IMPORT_RECORDS = 20_000;
-export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
-
-export const MONTHS = Object.freeze([
+export const MONTHS = [
   "Январь","Февраль","Март","Апрель","Май","Июнь",
   "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"
-]);
-
-export const MONTHS_G = Object.freeze([
+];
+export const MONTHS_G = [
   "января","февраля","марта","апреля","мая","июня",
   "июля","августа","сентября","октября","ноября","декабря"
-]);
+];
+export const WD = ["вс","пн","вт","ср","чт","пт","сб"];
 
-export const WD = Object.freeze(["вс","пн","вт","ср","чт","пт","сб"]);
-
-export function pointIdForName(name){
-  return POINT_BY_NAME.get(name)?.id || null;
-}
-
-export function pointNameForId(id){
-  return POINT_BY_ID.get(id)?.name || null;
-}
-
-export function isFixedPoint(pointOrId){
-  const id=POINT_IDS.has(pointOrId)
-    ? pointOrId
-    : pointIdForName(pointOrId);
-
-  return Boolean(id && FIXED_POINT_IDS.has(id));
-}
-
-export function isAdvancePoint(pointOrId){
-  const id=POINT_IDS.has(pointOrId)
-    ? pointOrId
-    : pointIdForName(pointOrId);
-
-  return Boolean(
-    id &&
-    ADVANCE_POINT_IDS.has(id)
-  );
-}
+export const FULL_HOURS = 12;
+export const ADVANCE_CAP = 10000;
+export const MIN_YEAR = 2024;
+export const MAX_YEAR = 2035;
+export const MAX_SHK = 1000000;
+export const MAX_MONEY = 10000000;

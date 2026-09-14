@@ -27,13 +27,16 @@ test(
 );
 
 test(
-  "international employee phones stay valid",
+  "employee phone may be omitted",
   ()=>{
     assert.equal(
-      normalizePhone(
-        "+44 7700 900123"
-      ),
-      "+447700900123"
+      normalizePhone(""),
+      null
+    );
+
+    assert.equal(
+      normalizePhone("   "),
+      null
     );
 
     assert.equal(
@@ -44,7 +47,19 @@ test(
 );
 
 test(
-  "invalid phone is rejected and Russian phone is formatted",
+  "international employee phones stay valid",
+  ()=>{
+    assert.equal(
+      normalizePhone(
+        "+44 7700 900123"
+      ),
+      "+447700900123"
+    );
+  }
+);
+
+test(
+  "invalid non-empty phone is rejected and Russian phone is formatted",
   ()=>{
     assert.throws(
       ()=>normalizePhone("123"),

@@ -384,10 +384,14 @@ export function installPointCardSummaries({
       return;
     }
 
-    if(
-      list===activeList &&
-      cache
-    ){
+    const listChanged=
+      list!==activeList;
+
+    if(listChanged){
+      activeList=list;
+      cache=null;
+      cacheAt=0;
+    }else if(cache){
       decorateList(
         list,
         cache
@@ -395,7 +399,6 @@ export function installPointCardSummaries({
       return;
     }
 
-    activeList=list;
     const syncToken=++token;
 
     try{

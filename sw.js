@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.44";
+  "sr-team-runtime-v6.22.45";
 
 const INDEX_FILE=
   "./index.html";
@@ -269,6 +269,7 @@ async function navigationResponse(
 
     const scope=
       new URL(
+        INDEX_FILE,
         self.registration.scope
       );
 

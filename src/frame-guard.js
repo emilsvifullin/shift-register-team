@@ -34,6 +34,10 @@ if(globalThis.self!==globalThis.top){
       "./team-motion.js"
     );
 
+    loadModule(
+      "./modal-motion.js"
+    );
+
     const loadReferenceSwipes=()=>{
       loadModule(
         "./reference-swipes.js"

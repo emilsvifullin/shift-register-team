@@ -39,6 +39,10 @@ if(globalThis.self!==globalThis.top){
     );
 
     loadModule(
+      "./month-picker-swipe.js"
+    );
+
+    loadModule(
       "./swipe-close-guard.js"
     );
 

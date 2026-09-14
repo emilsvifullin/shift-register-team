@@ -4,81 +4,76 @@ const FIXTURE=
   "http://127.0.0.1:4173/tests/fixtures/management-layout.html";
 
 test.use({
-  viewport:{width:414,height:896},
+  viewport:{width:440,height:956},
   hasTouch:true,
   colorScheme:"dark"
 });
 
-test("employee card three-line rhythm matches point card rhythm",async({page})=>{
+test("the employee list window shows exactly five complete tiles",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
-  const metrics=await page.evaluate(()=>{
+  await page.evaluate(()=>{
     const list=document.getElementById("employeeList");
+    const employee=(index)=>`
+      <button type="button" class="manage-row employee-row">
+        <span class="manage-row-copy">
+          <span class="manage-row-title">Сотрудник ${index}</span>
+          <span class="manage-row-detail">ПВЗ не назначены</span>
+          <span class="employee-account-label">Без аккаунта</span>
+        </span>
+        <span class="manage-chevron">›</span>
+      </button>
+    `;
+
     list.innerHTML=`
       <div class="card manage-menu">
         <button type="button" class="manage-row employee-row">
           <span class="manage-row-copy">
-            <span class="manage-row-title">Сотрудник 1</span>
-            <span class="manage-row-detail">ПВЗ не назначены</span>
-            <span class="employee-account-label">Без аккаунта</span>
+            <span class="manage-row-title">Подмена</span>
+            <span class="manage-row-detail">Для смен на всех ПВЗ</span>
+            <span class="manage-row-detail">Без итогов и аккаунта</span>
           </span>
           <span class="manage-chevron">›</span>
         </button>
+        ${[1,2,3,4,5].map(employee).join("")}
       </div>
     `;
-
-    const benchmark=document.createElement("div");
-    benchmark.id="pointManageList";
-    benchmark.style.cssText="position:fixed;left:-2000px;top:0;width:382px;";
-    benchmark.innerHTML=`
-      <div class="card manage-menu point-manage-menu">
-        <button type="button" class="manage-row point-manage-row">
-          <span class="manage-row-copy">
-            <span class="manage-row-title">Адрес 1</span>
-            <span class="manage-row-detail">Сотрудники не назначены</span>
-            <span class="manage-row-detail">Фиксированный · 3 000 ₽</span>
-          </span>
-          <span class="manage-chevron">›</span>
-        </button>
-      </div>
-    `;
-    document.body.append(benchmark);
-
-    const employee=list.querySelector(".employee-row");
-    const point=benchmark.querySelector(".point-manage-row");
-    const employeeCopy=employee.querySelector(".manage-row-copy");
-    const pointCopy=point.querySelector(".manage-row-copy");
-    const employeeAccount=employee.querySelector(".employee-account-label");
-    const pointLast=point.querySelectorAll(".manage-row-detail")[1];
-    const employeeStyle=getComputedStyle(employee);
-    const pointStyle=getComputedStyle(point);
-    const employeeAccountStyle=getComputedStyle(employeeAccount);
-    const pointLastStyle=getComputedStyle(pointLast);
-
-    const result={
-      employeeHeight:employee.getBoundingClientRect().height,
-      pointHeight:point.getBoundingClientRect().height,
-      employeePaddingTop:employeeStyle.paddingTop,
-      pointPaddingTop:pointStyle.paddingTop,
-      employeePaddingBottom:employeeStyle.paddingBottom,
-      pointPaddingBottom:pointStyle.paddingBottom,
-      employeeGap:getComputedStyle(employeeCopy).gap,
-      pointGap:getComputedStyle(pointCopy).gap,
-      employeeAccountFontSize:employeeAccountStyle.fontSize,
-      pointLastFontSize:pointLastStyle.fontSize,
-      employeeAccountLineHeight:employeeAccountStyle.lineHeight,
-      pointLastLineHeight:pointLastStyle.lineHeight
-    };
-
-    benchmark.remove();
-    return result;
   });
 
-  expect(Math.abs(metrics.employeeHeight-metrics.pointHeight)).toBeLessThanOrEqual(1);
-  expect(metrics.employeePaddingTop).toBe(metrics.pointPaddingTop);
-  expect(metrics.employeePaddingBottom).toBe(metrics.pointPaddingBottom);
-  expect(metrics.employeeGap).toBe(metrics.pointGap);
-  expect(metrics.employeeAccountFontSize).toBe(metrics.pointLastFontSize);
-  expect(metrics.employeeAccountLineHeight).toBe(metrics.pointLastLineHeight);
+  const menu=page.locator("#employeeList > .manage-menu");
+  const rows=page.locator("#employeeList .employee-row");
+
+  await expect(menu).toBeVisible();
+  await expect(rows).toHaveCount(6);
+
+  const metrics=await page.evaluate(()=>{
+    const menu=document.querySelector("#employeeList > .manage-menu");
+    const rows=[...document.querySelectorAll("#employeeList .employee-row")];
+    const menuRect=menu.getBoundingClientRect();
+    const rowRects=rows.map(row=>row.getBoundingClientRect());
+    const firstFiveHeight=rowRects
+      .slice(0,5)
+      .reduce((sum,rect)=>sum+rect.height,0);
+
+    return {
+      menuHeight:menuRect.height,
+      firstFiveHeight,
+      fifthBottom:rowRects[4].bottom,
+      sixthTop:rowRects[5].top,
+      menuBottom:menuRect.bottom,
+      rowHeights:rowRects.map(rect=>rect.height),
+      rowGap:getComputedStyle(
+        rows[1].querySelector(".manage-row-copy")
+      ).gap
+    };
+  });
+
+  expect(metrics.rowGap).toBe("5.5px");
+  expect(Math.max(...metrics.rowHeights)-Math.min(...metrics.rowHeights))
+    .toBeLessThanOrEqual(1);
+  expect(Math.abs(metrics.menuHeight-metrics.firstFiveHeight))
+    .toBeLessThanOrEqual(3);
+  expect(metrics.fifthBottom).toBeLessThanOrEqual(metrics.menuBottom+2);
+  expect(metrics.sixthTop).toBeGreaterThanOrEqual(metrics.menuBottom-2);
 });

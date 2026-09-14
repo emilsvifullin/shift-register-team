@@ -72,6 +72,80 @@ test("management tiles and header back work from the first user tap without poin
   await expect(headerBack).toBeDisabled();
 });
 
+test("management header back stays transparent and untransformed through the iOS touch state",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  await page.locator(
+    '[data-manage-section="points"]'
+  ).click();
+
+  const headerBack=page.locator("#prevM");
+
+  await expect(headerBack).toHaveAttribute(
+    "data-manage-back-proxy",
+    "true"
+  );
+
+  await headerBack.evaluate(element=>{
+    element.classList.add("touch-active");
+    element.focus();
+  });
+
+  const touchStyle=await headerBack.evaluate(element=>{
+    const style=getComputedStyle(element);
+
+    return {
+      backgroundColor:style.backgroundColor,
+      boxShadow:style.boxShadow,
+      transform:style.transform,
+      outlineStyle:style.outlineStyle,
+      outlineWidth:style.outlineWidth
+    };
+  });
+
+  expect(touchStyle.backgroundColor).toBe(
+    "rgba(0, 0, 0, 0)"
+  );
+  expect(touchStyle.boxShadow).toBe("none");
+  expect(touchStyle.transform).toBe("none");
+  expect(touchStyle.outlineStyle).toBe("none");
+  expect(touchStyle.outlineWidth).toBe("0px");
+
+  await headerBack.evaluate(element=>
+    element.classList.remove("touch-active")
+  );
+
+  await page.evaluate(()=>{
+    document.body.dataset.inputModality="keyboard";
+  });
+
+  await headerBack.focus();
+
+  await expect.poll(
+    ()=>page.evaluate(()=>
+      document.activeElement?.id || ""
+    )
+  ).toBe("prevM");
+
+  const keyboardFocus=await headerBack.evaluate(element=>{
+    const style=getComputedStyle(element);
+
+    return {
+      backgroundColor:style.backgroundColor,
+      transform:style.transform,
+      outlineWidth:style.outlineWidth
+    };
+  });
+
+  expect(keyboardFocus.backgroundColor).toBe(
+    "rgba(0, 0, 0, 0)"
+  );
+  expect(keyboardFocus.transform).toBe("none");
+  expect(Number.parseFloat(keyboardFocus.outlineWidth))
+    .toBeGreaterThan(0);
+});
+
 test("point deletion is exposed only after entering point edit mode",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");

@@ -1,12 +1,12 @@
 const CACHE_TTL=30000;
-const LOAD_TIMEOUT=1800;
 
 let tariffCache=null;
 let tariffCacheAt=0;
 let tariffLoadPromise=null;
 let activePointId="";
 let lastInputModality="pointer";
-let toastTimer=0;
+let tariffCreatePass=false;
+let helpSyncFrame=0;
 
 export const MANAGEMENT_RUNTIME_STYLE=`
 #pointManageList[data-point-card-summaries-pending="true"]{
@@ -16,6 +16,16 @@ export const MANAGEMENT_RUNTIME_STYLE=`
 
 #pointManageList[data-point-card-summaries-pending="true"] [data-point-card-summary-placeholder="true"]{
   visibility:hidden !important;
+}
+
+#prevM[data-pointer-focus-suppressed="true"]:focus,
+#prevM[data-pointer-focus-suppressed="true"]:focus-visible,
+#prevM[data-pointer-focus-suppressed="true"]:active{
+  outline:none !important;
+  outline-width:0 !important;
+  outline-offset:0 !important;
+  box-shadow:none !important;
+  background:transparent !important;
 }
 `;
 
@@ -54,19 +64,18 @@ export function shouldClearManagementBackFocus({
   );
 }
 
-function notify(message,duration=3200){
-  const toast=document.getElementById("toast");
-
-  if(!toast){
-    return;
-  }
-
-  window.clearTimeout(toastTimer);
-  toast.textContent=message;
-  toast.classList.add("on");
-  toastTimer=window.setTimeout(
-    ()=>toast.classList.remove("on"),
-    duration
+export function shouldPrimeCurrentTariff({
+  createPass,
+  text,
+  hasCurrent
+}){
+  return Boolean(
+    !createPass &&
+    hasCurrent &&
+    [
+      "Изменить тариф",
+      "Изменить текущий тариф"
+    ].includes(text)
   );
 }
 
@@ -125,47 +134,134 @@ async function loadTariffCache({force=false}={}){
   return tariffLoadPromise;
 }
 
-function warmTariffCache(){
-  void loadTariffCache().catch(()=>{});
-}
+function currentTariff(){
+  if(!activePointId || !tariffCache){
+    return null;
+  }
 
-function withTimeout(promise,timeoutMs){
-  return new Promise((resolve,reject)=>{
-    const timer=window.setTimeout(
-      ()=>reject(
-        new Error("Не удалось быстро загрузить тариф. Повторите попытку.")
-      ),
-      timeoutMs
-    );
-
-    promise.then(
-      value=>{
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      error=>{
-        window.clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
-}
-
-function prepareTariffButton(
-  button,
-  pointId
-){
-  const current=currentTariffForPoint(
+  return currentTariffForPoint(
     tariffCache,
-    pointId
+    activePointId
   );
+}
 
-  if(!current){
+function armCurrentTariffButton(
+  documentRef=document
+){
+  if(tariffCreatePass || !activePointId){
+    return false;
+  }
+
+  const button=
+    documentRef.getElementById(
+      "manageTariffAdd"
+    );
+
+  if(!button){
+    return false;
+  }
+
+  const current=currentTariff();
+  const text=button.textContent.trim();
+
+  if(
+    !shouldPrimeCurrentTariff({
+      createPass:tariffCreatePass,
+      text,
+      hasCurrent:Boolean(current)
+    })
+  ){
     return false;
   }
 
   button.dataset.tariffEdit=current.id;
   return true;
+}
+
+function warmTariffCache(
+  documentRef=document
+){
+  void loadTariffCache()
+    .then(()=>{
+      armCurrentTariffButton(documentRef);
+    })
+    .catch(()=>{});
+}
+
+function clearPointerBackFocus({
+  previous,
+  documentRef,
+  force=false
+}){
+  if(!previous){
+    return;
+  }
+
+  if(
+    force ||
+    lastInputModality!=="keyboard"
+  ){
+    previous.dataset.pointerFocusSuppressed=
+      "true";
+    previous.classList.remove("touch-active");
+
+    if(
+      documentRef.activeElement===previous
+    ){
+      previous.blur();
+    }
+  }
+}
+
+function restoreKeyboardBackFocusStyle(previous){
+  if(!previous){
+    return;
+  }
+
+  delete previous.dataset.pointerFocusSuppressed;
+}
+
+function syncTariffHelp(
+  documentRef=document
+){
+  helpSyncFrame=0;
+
+  const sheet=
+    documentRef.getElementById(
+      "manageEditorSheet"
+    );
+
+  const help=sheet?.querySelector(
+    ".tariff-current-editor .employee-help"
+  );
+
+  if(!sheet || !help){
+    return;
+  }
+
+  if(sheet.dataset.tariffIntent==="edit-current"){
+    help.textContent=
+      "Редактируется текущий тариф. Новая запись в истории не создаётся.";
+    return;
+  }
+
+  if(sheet.dataset.tariffIntent==="create"){
+    help.textContent=
+      "Создаётся новая версия тарифа с выбранной даты. Предыдущий тариф останется в истории.";
+  }
+}
+
+function queueTariffHelpSync({
+  windowRef=window,
+  documentRef=document
+}={}){
+  if(helpSyncFrame){
+    return;
+  }
+
+  helpSyncFrame=windowRef.requestAnimationFrame(
+    ()=>syncTariffHelp(documentRef)
+  );
 }
 
 function install({
@@ -183,41 +279,34 @@ function install({
     .managementRuntimeFixes="ready";
 
   installRuntimeStyle(documentRef);
-  warmTariffCache();
 
   const previous=
     documentRef.getElementById("prevM");
 
-  const clearBackFocus=()=>{
+  const sheet=
+    documentRef.getElementById(
+      "manageEditorSheet"
+    );
+
+  warmTariffCache(documentRef);
+
+  const syncBackFocus=()=>{
     if(
-      !previous ||
-      documentRef.activeElement!==previous ||
-      !shouldClearManagementBackFocus({
-        isProxy:
-          previous.dataset
-            .manageBackProxy==="true",
-        modality:lastInputModality
-      })
+      lastInputModality!=="keyboard" &&
+      previous?.dataset.manageBackProxy===
+        "true"
     ){
-      return;
+      clearPointerBackFocus({
+        previous,
+        documentRef
+      });
     }
-
-    previous.classList.remove(
-      "touch-active"
-    );
-    previous.blur();
-  };
-
-  const queueBackFocusCleanup=()=>{
-    windowRef.requestAnimationFrame(
-      clearBackFocus
-    );
   };
 
   const backObserver=previous
-    ? new windowRef.MutationObserver(
-        queueBackFocusCleanup
-      )
+    ? new windowRef.MutationObserver(()=>{
+        syncBackFocus();
+      })
     : null;
 
   backObserver?.observe(
@@ -232,10 +321,39 @@ function install({
     }
   );
 
+  const sheetObserver=sheet
+    ? new windowRef.MutationObserver(()=>{
+        armCurrentTariffButton(documentRef);
+        queueTariffHelpSync({
+          windowRef,
+          documentRef
+        });
+      })
+    : null;
+
+  sheetObserver?.observe(
+    sheet,
+    {
+      childList:true,
+      subtree:true,
+      attributes:true,
+      attributeFilter:[
+        "class",
+        "aria-hidden"
+      ]
+    }
+  );
+
   documentRef.addEventListener(
     "pointerdown",
     event=>{
       lastInputModality="pointer";
+
+      clearPointerBackFocus({
+        previous,
+        documentRef,
+        force:true
+      });
 
       const row=event.target.closest?.(
         ".point-manage-row[data-point-id]"
@@ -244,7 +362,7 @@ function install({
       if(row){
         activePointId=
           row.dataset.pointId || "";
-        warmTariffCache();
+        warmTariffCache(documentRef);
       }
 
       if(
@@ -266,6 +384,9 @@ function install({
         event.key.startsWith("Arrow")
       ){
         lastInputModality="keyboard";
+        restoreKeyboardBackFocusStyle(
+          previous
+        );
       }
     },
     true
@@ -274,9 +395,26 @@ function install({
   documentRef.addEventListener(
     "focusin",
     event=>{
-      if(event.target===previous){
-        queueBackFocusCleanup();
+      if(
+        event.target!==previous ||
+        lastInputModality==="keyboard"
+      ){
+        return;
       }
+
+      clearPointerBackFocus({
+        previous,
+        documentRef,
+        force:true
+      });
+
+      windowRef.requestAnimationFrame(()=>{
+        clearPointerBackFocus({
+          previous,
+          documentRef,
+          force:true
+        });
+      });
     },
     true
   );
@@ -291,103 +429,94 @@ function install({
       if(row){
         activePointId=
           row.dataset.pointId || "";
-      }
-
-      const button=event.target.closest?.(
-        "#manageTariffAdd"
-      );
-
-      if(!button || !activePointId){
-        return;
-      }
-
-      const text=button.textContent.trim();
-
-      if(
-        button.dataset.tariffEdit ||
-        text==="Отменить" ||
-        text==="Загрузка…" ||
-        ![
-          "Изменить тариф",
-          "Изменить текущий тариф"
-        ].includes(text)
-      ){
-        return;
+        warmTariffCache(documentRef);
       }
 
       if(
-        prepareTariffButton(
-          button,
-          activePointId
-        )
+        event.target.closest?.("#pointAdd")
       ){
+        activePointId="";
+      }
+
+      const create=
+        event.target.closest?.(
+          "#manageTariffCreate"
+        );
+
+      if(create){
+        tariffCreatePass=true;
+
+        if(sheet){
+          sheet.dataset.tariffIntent="create";
+        }
+
+        const changeButton=
+          documentRef.getElementById(
+            "manageTariffAdd"
+          );
+
+        if(changeButton){
+          delete changeButton.dataset.tariffEdit;
+        }
+
+        queueMicrotask(()=>{
+          tariffCreatePass=false;
+          armCurrentTariffButton(
+            documentRef
+          );
+          queueTariffHelpSync({
+            windowRef,
+            documentRef
+          });
+        });
+
         return;
       }
 
-      if(tariffCache){
-        return;
+      const tariffButton=
+        event.target.closest?.(
+          "#manageTariffAdd"
+        );
+
+      if(
+        tariffButton &&
+        !tariffCreatePass &&
+        tariffButton.dataset.tariffEdit
+      ){
+        if(sheet){
+          sheet.dataset.tariffIntent=
+            "edit-current";
+        }
+
+        queueTariffHelpSync({
+          windowRef,
+          documentRef
+        });
       }
 
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      const previousText=text;
-      button.disabled=true;
-      button.textContent="Загрузка…";
-
-      void withTimeout(
-        loadTariffCache(),
-        LOAD_TIMEOUT
-      ).then(()=>{
-        if(!button.isConnected){
-          return;
-        }
-
-        button.disabled=false;
-        button.textContent=previousText;
-
-        prepareTariffButton(
-          button,
-          activePointId
-        );
-
-        button.click();
-      }).catch(error=>{
-        if(button.isConnected){
-          button.disabled=false;
-          button.textContent=previousText;
-        }
-
-        notify(
-          error instanceof Error
-            ? error.message
-            : "Не удалось загрузить тариф"
-        );
-      });
-    },
-    true
-  );
-
-  documentRef.addEventListener(
-    "click",
-    event=>{
       if(
         event.target.closest?.(
           "#manageEditorSave"
         )
       ){
-        windowRef.setTimeout(
-          ()=>{
-            void loadTariffCache({
-              force:true
-            }).catch(()=>{});
-          },
-          700
-        );
+        windowRef.setTimeout(()=>{
+          void loadTariffCache({
+            force:true
+          })
+            .then(()=>{
+              armCurrentTariffButton(
+                documentRef
+              );
+            })
+            .catch(()=>{});
+        },700);
       }
     },
-    false
+    true
   );
+
+  armCurrentTariffButton(documentRef);
+  syncBackFocus();
 }
 
 if(

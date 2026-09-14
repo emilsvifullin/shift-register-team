@@ -1,7 +1,6 @@
 const HORIZONTAL_DEAD_ZONE=8;
 const HORIZONTAL_LOCK=10;
 const VERTICAL_LOCK=14;
-const MONTH_DISTANCE=38;
 const YEAR_DISTANCE=35;
 const FLICK_DISTANCE=22;
 const FLICK_VELOCITY=.30;
@@ -44,270 +43,87 @@ function modalBlocksMonthSwipe(){
   );
 }
 
-function findTouch(list,id){
-  for(let index=0;index<list.length;index++){
-    const touch=list[index];
-
-    if(touch.identifier===id){
-      return touch;
-    }
-  }
-
-  return null;
-}
-
-let monthSwipe=null;
-let suppressMonthClickUntil=0;
-
-function resetMonthSwipe(){
-  monthSwipe=null;
-  document.body.classList.remove(
-    "month-swiping"
-  );
-}
-
-function beginMonthSwipe(event){
-  if(
-    !activeMainMonthTab() ||
-    event.touches.length!==1 ||
-    modalBlocksMonthSwipe() ||
-    monthSwipeStartBlocked(event.target)
-  ){
-    resetMonthSwipe();
-    return;
-  }
-
-  const touch=event.touches[0];
-
-  monthSwipe={
-    id:touch.identifier,
-    x:touch.clientX,
-    y:touch.clientY,
-    lastX:touch.clientX,
-    lastY:touch.clientY,
-    time:performance.now(),
-    axis:null
-  };
-
-  event.stopPropagation();
-}
-
-function moveMonthSwipe(event){
-  if(!monthSwipe){
-    return;
-  }
-
-  event.stopPropagation();
-
-  const touch=
-    findTouch(
-      event.touches,
-      monthSwipe.id
-    );
-
-  if(!touch){
-    return;
-  }
-
-  monthSwipe.lastX=touch.clientX;
-  monthSwipe.lastY=touch.clientY;
-
-  const dx=touch.clientX-monthSwipe.x;
-  const dy=touch.clientY-monthSwipe.y;
-  const absX=Math.abs(dx);
-  const absY=Math.abs(dy);
-
-  if(monthSwipe.axis===null){
-    if(
-      absX<HORIZONTAL_DEAD_ZONE &&
-      absY<HORIZONTAL_DEAD_ZONE
-    ){
-      return;
-    }
-
-    if(
-      absX>=HORIZONTAL_LOCK &&
-      absX>absY*1.10
-    ){
-      monthSwipe.axis="x";
-    }else if(
-      absY>=VERTICAL_LOCK &&
-      absY>absX*1.25
-    ){
-      monthSwipe.axis="y";
-    }else{
-      return;
-    }
-  }
-
-  if(monthSwipe.axis!=="x"){
-    return;
-  }
-
-  document.body.classList.add(
-    "month-swiping"
-  );
-
-  if(event.cancelable){
-    event.preventDefault();
-  }
-}
-
-function finishMonthSwipe(event){
-  if(!monthSwipe){
-    return;
-  }
-
-  event.stopPropagation();
-
-  const swipe=monthSwipe;
-  const touch=
-    findTouch(
-      event.changedTouches,
-      swipe.id
-    );
-
-  const endX=touch
-    ? touch.clientX
-    : swipe.lastX;
-
-  const endY=touch
-    ? touch.clientY
-    : swipe.lastY;
-
-  const dx=endX-swipe.x;
-  const dy=endY-swipe.y;
-  const absX=Math.abs(dx);
-  const absY=Math.abs(dy);
-  const duration=Math.max(
-    1,
-    performance.now()-swipe.time
-  );
-  const velocity=absX/duration;
-
-  resetMonthSwipe();
-
-  const horizontal=
-    absX>absY*1.08;
-
-  const enoughDistance=
-    absX>=MONTH_DISTANCE;
-
-  const fastSwipe=
-    absX>=FLICK_DISTANCE &&
-    velocity>=FLICK_VELOCITY;
-
-  if(
-    swipe.axis==="y" ||
-    !horizontal ||
-    (
-      !enoughDistance &&
-      !fastSwipe
-    )
-  ){
-    return;
-  }
-
-  if(event.cancelable){
-    event.preventDefault();
-  }
-
-  const button=
-    document.getElementById(
-      dx<0
-        ? "nextM"
-        : "prevM"
-    );
-
-  button?.click();
-
-  suppressMonthClickUntil=
-    performance.now()+400;
-}
+/*
+  shift-register меняет месяц пальцем только
+  через touch-события. В team уже есть этот
+  же touch-алгоритм в app.js. Здесь гасим
+  только дополнительные pointer/wheel пути,
+  которых в эталоне нет.
+*/
+let pointerMonthGuard=null;
 
 document.addEventListener(
-  "touchstart",
-  beginMonthSwipe,
-  {
-    passive:true,
-    capture:true
-  }
-);
-
-document.addEventListener(
-  "touchmove",
-  moveMonthSwipe,
-  {
-    passive:false,
-    capture:true
-  }
-);
-
-document.addEventListener(
-  "touchend",
-  finishMonthSwipe,
-  {
-    passive:false,
-    capture:true
-  }
-);
-
-document.addEventListener(
-  "touchcancel",
-  event=>{
-    if(!monthSwipe){
-      return;
-    }
-
-    event.stopPropagation();
-    resetMonthSwipe();
-  },
-  {
-    passive:true,
-    capture:true
-  }
-);
-
-document.addEventListener(
-  "click",
+  "pointerdown",
   event=>{
     if(
-      performance.now()>
-      suppressMonthClickUntil
+      event.pointerType==="touch" ||
+      !event.isPrimary ||
+      !activeMainMonthTab() ||
+      modalBlocksMonthSwipe() ||
+      monthSwipeStartBlocked(event.target)
     ){
+      pointerMonthGuard=null;
       return;
     }
 
-    suppressMonthClickUntil=0;
-    event.preventDefault();
-    event.stopImmediatePropagation();
+    pointerMonthGuard={
+      id:event.pointerId,
+      x:event.clientX,
+      y:event.clientY,
+      axis:null
+    };
   },
   true
 );
 
-let pointerMonthGuard=null;
+document.addEventListener(
+  "pointermove",
+  event=>{
+    if(
+      !pointerMonthGuard ||
+      event.pointerId!==pointerMonthGuard.id
+    ){
+      return;
+    }
 
-function beginPointerMonthGuard(event){
-  if(
-    event.pointerType==="touch" ||
-    !event.isPrimary ||
-    !activeMainMonthTab() ||
-    modalBlocksMonthSwipe() ||
-    monthSwipeStartBlocked(event.target)
-  ){
-    pointerMonthGuard=null;
-    return;
-  }
+    const dx=
+      event.clientX-pointerMonthGuard.x;
+    const dy=
+      event.clientY-pointerMonthGuard.y;
+    const absX=Math.abs(dx);
+    const absY=Math.abs(dy);
 
-  pointerMonthGuard={
-    id:event.pointerId,
-    x:event.clientX,
-    y:event.clientY,
-    axis:null
-  };
-}
+    if(pointerMonthGuard.axis===null){
+      if(
+        absX<HORIZONTAL_DEAD_ZONE &&
+        absY<HORIZONTAL_DEAD_ZONE
+      ){
+        return;
+      }
 
-function movePointerMonthGuard(event){
+      if(
+        absX>=HORIZONTAL_LOCK &&
+        absX>absY*1.10
+      ){
+        pointerMonthGuard.axis="x";
+      }else if(
+        absY>=VERTICAL_LOCK &&
+        absY>absX*1.25
+      ){
+        pointerMonthGuard.axis="y";
+      }else{
+        return;
+      }
+    }
+
+    if(pointerMonthGuard.axis==="x"){
+      event.stopPropagation();
+    }
+  },
+  true
+);
+
+function finishPointerMonthGuard(event){
   if(
     !pointerMonthGuard ||
     event.pointerId!==pointerMonthGuard.id
@@ -315,76 +131,25 @@ function movePointerMonthGuard(event){
     return;
   }
 
-  const dx=
-    event.clientX-pointerMonthGuard.x;
-  const dy=
-    event.clientY-pointerMonthGuard.y;
-  const absX=Math.abs(dx);
-  const absY=Math.abs(dy);
+  const horizontal=
+    pointerMonthGuard.axis==="x";
 
-  if(pointerMonthGuard.axis===null){
-    if(
-      absX<HORIZONTAL_DEAD_ZONE &&
-      absY<HORIZONTAL_DEAD_ZONE
-    ){
-      return;
-    }
+  pointerMonthGuard=null;
 
-    if(
-      absX>=HORIZONTAL_LOCK &&
-      absX>absY*1.10
-    ){
-      pointerMonthGuard.axis="x";
-    }else if(
-      absY>=VERTICAL_LOCK &&
-      absY>absX*1.25
-    ){
-      pointerMonthGuard.axis="y";
-    }else{
-      return;
-    }
-  }
-
-  if(pointerMonthGuard.axis==="x"){
+  if(horizontal){
     event.stopPropagation();
   }
 }
 
 document.addEventListener(
-  "pointerdown",
-  beginPointerMonthGuard,
-  true
-);
-
-document.addEventListener(
-  "pointermove",
-  movePointerMonthGuard,
-  true
-);
-
-document.addEventListener(
   "pointerup",
-  event=>{
-    if(
-      pointerMonthGuard &&
-      event.pointerId===pointerMonthGuard.id
-    ){
-      pointerMonthGuard=null;
-    }
-  },
+  finishPointerMonthGuard,
   true
 );
 
 document.addEventListener(
   "pointercancel",
-  event=>{
-    if(
-      pointerMonthGuard &&
-      event.pointerId===pointerMonthGuard.id
-    ){
-      pointerMonthGuard=null;
-    }
-  },
+  finishPointerMonthGuard,
   true
 );
 
@@ -408,6 +173,13 @@ document.addEventListener(
   }
 );
 
+/*
+  В shift-register выбор года свайпается
+  только непосредственно по сетке месяцев,
+  только touch/pen и с этими порогами.
+  Дополнительные mouse/wheel/whole-sheet
+  жесты team блокируются ниже.
+*/
 function installYearSwipe({
   containerId,
   gridId,
@@ -502,24 +274,34 @@ function installYearSwipe({
     true
   );
 
-  const clearGuard=event=>{
+  const finishGuard=event=>{
     if(
-      guard &&
-      event.pointerId===guard.id
+      !guard ||
+      event.pointerId!==guard.id
     ){
-      guard=null;
+      return;
+    }
+
+    const shouldBlock=
+      guard.axis==="x" &&
+      !guard.exact;
+
+    guard=null;
+
+    if(shouldBlock){
+      event.stopPropagation();
     }
   };
 
   container.addEventListener(
     "pointerup",
-    clearGuard,
+    finishGuard,
     true
   );
 
   container.addEventListener(
     "pointercancel",
-    clearGuard,
+    finishGuard,
     true
   );
 
@@ -562,6 +344,8 @@ function installYearSwipe({
         time:performance.now(),
         axis:null
       };
+
+      event.stopPropagation();
 
       try{
         grid.setPointerCapture(
@@ -637,6 +421,8 @@ function installYearSwipe({
       const current=swipe;
       swipe=null;
 
+      event.stopPropagation();
+
       try{
         if(
           grid.hasPointerCapture(
@@ -692,11 +478,14 @@ function installYearSwipe({
     "pointercancel",
     event=>{
       if(
-        swipe &&
-        event.pointerId===swipe.id
+        !swipe ||
+        event.pointerId!==swipe.id
       ){
-        swipe=null;
+        return;
       }
+
+      swipe=null;
+      event.stopPropagation();
     },
     true
   );

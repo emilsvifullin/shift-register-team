@@ -8,10 +8,16 @@ const read=path=>
     "utf8"
   );
 
+function escapeRegExp(value){
+  return value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+}
+
 test("reference horizontal swipes are bootstrapped and precached",()=>{
   const frameGuard=read("src/frame-guard.js");
   const config=read("src/config.js");
   const serviceWorker=read("sw.js");
+  const packageJson=JSON.parse(read("package.json"));
+  const version=escapeRegExp(packageJson.version);
 
   assert.match(
     frameGuard,
@@ -25,12 +31,12 @@ test("reference horizontal swipes are bootstrapped and precached",()=>{
 
   assert.match(
     config,
-    /APP_VERSION = "6\.22\.25"/
+    new RegExp(`APP_VERSION = "${version}"`)
   );
 
   assert.match(
     serviceWorker,
-    /sr-team-runtime-v6\.22\.25/
+    new RegExp(`sr-team-runtime-v${version}`)
   );
 });
 

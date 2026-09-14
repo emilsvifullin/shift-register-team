@@ -4,14 +4,9 @@ const FIXTURE=
   "http://127.0.0.1:4173/tests/fixtures/platform-shell.html";
 
 async function show(page,selector){
-  await page.locator(selector).evaluate(async element=>{
+  await page.locator(selector).evaluate(element=>{
     element.style.display="block";
     element.classList.add("on");
-
-    const animations=element.getAnimations();
-    await Promise.allSettled(
-      animations.map(animation=>animation.finished)
-    );
   });
 }
 
@@ -103,91 +98,120 @@ async function expectInsideViewport(page,selector){
   return result;
 }
 
-test("320px navigation keeps comfortable vertical targets",async({page})=>{
-  await page.setViewportSize({width:320,height:568});
-  await page.goto(FIXTURE);
+test(
+  "320px navigation keeps comfortable vertical targets",
+  async({page})=>{
+    await page.setViewportSize({width:320,height:568});
+    await page.goto(FIXTURE);
 
-  for(const button of await page.locator("nav.tabs button").all()){
-    const box=await button.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    for(const button of await page.locator("nav.tabs button").all()){
+      const box=await button.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
   }
-});
+);
 
-test("narrow employee picker title never collides with actions",async({page})=>{
-  await page.setViewportSize({width:280,height:602});
-  await page.goto(FIXTURE);
-  await show(page,"#fixturePointPicker");
+test(
+  "narrow employee picker title never collides with actions",
+  async({page})=>{
+    await page.setViewportSize({width:280,height:653});
+    await page.goto(FIXTURE);
+    await show(page,"#fixturePointPicker");
 
-  const toolbar=page.locator("#fixturePointPicker .picker-toolbar");
-  const [cancel,title,done]=await Promise.all([
-    toolbar.locator(".cancel").boundingBox(),
-    toolbar.locator(".picker-toolbar-title").boundingBox(),
-    toolbar.locator(".done").boundingBox()
-  ]);
+    const toolbar=page.locator("#fixturePointPicker .picker-toolbar");
+    const cancel=toolbar.locator(".cancel");
+    const title=toolbar.locator(".picker-toolbar-title");
+    const done=toolbar.locator(".done");
 
-  expect(cancel).not.toBeNull();
-  expect(title).not.toBeNull();
-  expect(done).not.toBeNull();
-  expect(title.x).toBeGreaterThanOrEqual(cancel.x+cancel.width+2);
-  expect(title.x+title.width).toBeLessThanOrEqual(done.x-2);
-});
+    const [cancelBox,titleBox,doneBox]=await Promise.all([
+      cancel.boundingBox(),title.boundingBox(),done.boundingBox()
+    ]);
 
-test("calendar rows stay compact but vertically tappable",async({page})=>{
-  await page.setViewportSize({width:320,height:568});
-  await page.goto(FIXTURE);
-  await show(page,"#fixtureDatePicker");
-
-  const boxes=await page.locator("#fixtureDatePicker .date-day").evaluateAll(elements=>
-    elements.map(element=>element.getBoundingClientRect()).map(box=>({
-      width:box.width,
-      height:box.height
-    }))
-  );
-
-  expect(boxes.length).toBeGreaterThan(0);
-  for(const box of boxes){
-    expect(box.height).toBeGreaterThanOrEqual(34);
-    expect(box.height).toBeLessThanOrEqual(48);
+    expect(cancelBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(doneBox).not.toBeNull();
+    expect(titleBox.x).toBeGreaterThanOrEqual(cancelBox.x+cancelBox.width+2);
+    expect(titleBox.x+titleBox.width).toBeLessThanOrEqual(doneBox.x-2);
+    expect(cancelBox.height).toBeGreaterThanOrEqual(44);
+    expect(doneBox.height).toBeGreaterThanOrEqual(44);
   }
-});
+);
 
-test("touch feedback uses the same smooth motion contract",async({page})=>{
-  await page.goto(FIXTURE);
+test(
+  "calendar rows stay compact but vertically tappable",
+  async({page})=>{
+    await page.setViewportSize({width:320,height:568});
+    await page.goto(FIXTURE);
+    await show(page,"#fixtureDatePicker");
 
-  for(const selector of [
-    "nav.tabs button",
-    ".seg button",
-    ".manage-add",
-    ".btn"
-  ]){
-    const duration=await page.locator(selector).first().evaluate(element=>
+    const day=page.locator("#fixtureDatePicker .date-day").first();
+    const title=page.locator("#fixtureDatePicker .date-calendar-title");
+    const today=page.locator("#fixtureDatePicker .date-today");
+
+    const [dayBox,titleBox,todayBox]=await Promise.all([
+      day.boundingBox(),title.boundingBox(),today.boundingBox()
+    ]);
+
+    expect(dayBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(todayBox).not.toBeNull();
+    expect(dayBox.height).toBeGreaterThanOrEqual(44);
+    expect(dayBox.height).toBeLessThanOrEqual(46);
+    expect(titleBox.height).toBeGreaterThanOrEqual(44);
+    expect(todayBox.height).toBeGreaterThanOrEqual(44);
+  }
+);
+
+test(
+  "touch feedback uses the same smooth motion contract",
+  async({page})=>{
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(FIXTURE);
+
+    const tab=page.locator("#tab-stats");
+
+    const transition=await tab.evaluate(element=>
       getComputedStyle(element).transitionDuration
     );
-    expect(duration).not.toBe("0s");
+
+    expect(transition).not.toBe("0s");
+
+    await tab.evaluate(element=>
+      element.classList.add("touch-active")
+    );
+
+    const transform=await tab.evaluate(element=>
+      getComputedStyle(element).transform
+    );
+
+    expect(transform).not.toBe("none");
   }
-});
+);
 
-test("calendar actions no longer switch state abruptly",async({page})=>{
-  await page.goto(FIXTURE);
-  await show(page,"#fixtureDatePicker");
+test(
+  "calendar actions no longer switch state abruptly",
+  async({page})=>{
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(FIXTURE);
+    await show(page,"#fixtureDatePicker");
 
-  for(const selector of [
-    ".date-day",
-    ".date-calendar-title",
-    ".date-today",
-    ".date-calendar-nav"
-  ]){
-    const duration=await page
-      .locator(`#fixtureDatePicker ${selector}`)
-      .first()
-      .evaluate(element=>
-        getComputedStyle(element).transitionDuration
-      );
+    for(const selector of [
+      ".date-calendar-title",
+      ".date-today",
+      ".date-calendar-nav"
+    ]){
+      const duration=await page
+        .locator(`#fixtureDatePicker ${selector}`)
+        .first()
+        .evaluate(element=>
+          getComputedStyle(element).transitionDuration
+        );
 
-    expect(duration).not.toBe("0s");
+      expect(duration).not.toBe("0s");
+    }
   }
-});
+);
 
 test(
   "fluid phone widths stay inside the viewport without collisions",

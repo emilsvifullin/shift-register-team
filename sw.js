@@ -268,7 +268,6 @@ async function navigationResponse(
 
     const scope=
       new URL(
-        INDEX_FILE,
         self.registration.scope
       );
 

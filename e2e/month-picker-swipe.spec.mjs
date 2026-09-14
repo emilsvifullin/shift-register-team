@@ -67,7 +67,7 @@ async function top(page){
     );
 }
 
-test("month picker release continues immediately downward and never re-enters",async({page})=>{
+async function installPicker(page){
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -106,19 +106,38 @@ test("month picker release continues immediately downward and never re-enters",a
       "data-month-picker-swipe",
       "ready"
     );
+}
 
-  await page.evaluate(()=>{
+async function openPicker(page){
+  return page.evaluate(()=>{
     const element=
       document.getElementById("monthPicker");
 
-    element.style.display="block";
-    element.dispatchEvent(
-      new CustomEvent("bottomsheetopen")
-    );
-    element.classList.add("on");
-    element.setAttribute("aria-hidden","false");
-  });
+    element
+      .getAnimations?.()
+      .forEach(animation=>animation.cancel());
 
+    /* Match the production prepare/open ordering. */
+    element.dispatchEvent(
+      new Event("bottomsheetopen")
+    );
+    element.style.removeProperty("transition");
+    element.style.removeProperty("--month-drag");
+    element.style.display="block";
+    element.classList.remove("on");
+    element.setAttribute("aria-hidden","false");
+    void element.offsetHeight;
+    element.classList.add("on");
+
+    return {
+      top:element.getBoundingClientRect().top,
+      viewportHeight:window.innerHeight,
+      transform:getComputedStyle(element).transform
+    };
+  });
+}
+
+async function swipePickerClosed(page){
   await page.waitForTimeout(520);
 
   const box=
@@ -160,6 +179,16 @@ test("month picker release continues immediately downward and never re-enters",a
       y:point.y+78
     }
   );
+
+  return draggedTop;
+}
+
+test("month picker release continues immediately downward and never re-enters",async({page})=>{
+  await installPicker(page);
+
+  await openPicker(page);
+  const draggedTop=
+    await swipePickerClosed(page);
 
   const samples=[draggedTop];
 
@@ -233,4 +262,101 @@ test("month picker release continues immediately downward and never re-enters",a
     expect(state.referenceAnimations)
       .toBe(0);
   }
+});
+
+test("month picker swipe close then reopen has no fully visible ghost frame",async({page})=>{
+  await installPicker(page);
+
+  await openPicker(page);
+  await swipePickerClosed(page);
+
+  await expect(page.locator(PICKER))
+    .not.toHaveClass(/\bon\b/,{
+      timeout:800
+    });
+
+  await expect(page.locator(PICKER))
+    .toHaveCSS("display","none");
+
+  const closedState=
+    await page.locator(PICKER)
+      .evaluate(element=>({
+        transform:element.style.transform,
+        transition:element.style.transition,
+        drag:element.style.getPropertyValue(
+          "--month-drag"
+        ),
+        swipeClosing:element.getAttribute(
+          "data-month-swipe-closing"
+        )
+      }));
+
+  expect(closedState.transform).toBe("");
+  expect(closedState.transition).toBe("");
+  expect(closedState.drag).toBe("");
+  expect(closedState.swipeClosing).toBeNull();
+
+  const immediate=await openPicker(page);
+
+  /*
+    The reopen must still be staged below the viewport. The previous bug
+    cleared modal-motion's hidden transform here, painting the fully-open
+    picker for one frame before the real entrance started.
+  */
+  expect(
+    immediate.top,
+    `month picker was fully visible before reopen animation: ${JSON.stringify(immediate)}`
+  ).toBeGreaterThanOrEqual(
+    immediate.viewportHeight-2
+  );
+
+  const reopenSamples=
+    await page.locator(PICKER)
+      .evaluate(element=>
+        new Promise(resolve=>{
+          const samples=[];
+          let remaining=10;
+
+          const sample=()=>{
+            samples.push({
+              top:element.getBoundingClientRect().top,
+              display:getComputedStyle(element).display,
+              transform:getComputedStyle(element).transform
+            });
+
+            remaining-=1;
+
+            if(remaining<=0){
+              resolve(samples);
+              return;
+            }
+
+            requestAnimationFrame(sample);
+          };
+
+          requestAnimationFrame(sample);
+        })
+      );
+
+  expect(reopenSamples[0].top)
+    .toBeGreaterThanOrEqual(
+      immediate.viewportHeight-2
+    );
+
+  for(let index=1;index<reopenSamples.length;index++){
+    expect(
+      reopenSamples[index].top,
+      `month picker ghosted during reopen: ${JSON.stringify(reopenSamples)}`
+    ).toBeLessThanOrEqual(
+      reopenSamples[index-1].top+1.5
+    );
+  }
+
+  await page.waitForTimeout(520);
+
+  await expect(page.locator(PICKER))
+    .toHaveClass(/\bon\b/);
+
+  await expect(page.locator(PICKER))
+    .toHaveCSS("display","block");
 });

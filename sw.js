@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.22";
+  "sr-team-runtime-v6.22.23";
 
 const INDEX_FILE=
   "./index.html";
@@ -264,20 +264,20 @@ async function navigationResponse(
 
     const scope=
       new URL(
+        INDEX_FILE,
         self.registration.scope
       );
 
-    const indexUrl=
+    const scopeUrl=
       new URL(
-        INDEX_FILE,
-        scope
+        self.registration.scope
       );
 
     if(
       requestUrl.pathname===
-        scope.pathname ||
+        scopeUrl.pathname ||
       requestUrl.pathname===
-        indexUrl.pathname
+        scope.pathname
     ){
       return (
         await cache.match(

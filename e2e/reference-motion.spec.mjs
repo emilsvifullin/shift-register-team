@@ -322,6 +322,72 @@ test("every sliding window opens and closes with the same reference speed",async
   }
 });
 
+test("PВZ editor cannot be hidden before its 480ms close motion finishes",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  const selector="#manageEditorSheet";
+  const locator=page.locator(selector);
+
+  await openSurface(page,selector);
+  await page.waitForTimeout(600);
+
+  await page.evaluate(selector=>{
+    const element=
+      document.querySelector(selector);
+
+    element.classList.remove("on");
+    element.setAttribute(
+      "aria-hidden",
+      "true"
+    );
+
+    window.setTimeout(()=>{
+      element.style.display="none";
+    },100);
+  },selector);
+
+  await page.waitForTimeout(180);
+
+  const duringClose=
+    await locator.evaluate(element=>({
+      display:getComputedStyle(element).display,
+      closing:
+        element.getAttribute(
+          "data-reference-closing"
+        ),
+      transform:getComputedStyle(element).transform
+    }));
+
+  expect(duringClose.display).toBe("block");
+  expect(duringClose.closing).toBe("true");
+  expect(duringClose.transform).not.toBe("none");
+  expect(duringClose.transform)
+    .not.toBe("matrix(1, 0, 0, 1, 0, 0)");
+
+  const animations=
+    await referenceAnimations(locator);
+
+  expect(animations).toContainEqual({
+    id:"shift-register-modal-transform",
+    duration:480
+  });
+
+  await page.waitForTimeout(380);
+
+  const afterClose=
+    await locator.evaluate(element=>({
+      display:getComputedStyle(element).display,
+      closing:
+        element.hasAttribute(
+          "data-reference-closing"
+        )
+    }));
+
+  expect(afterClose.display).toBe("none");
+  expect(afterClose.closing).toBe(false);
+});
+
 test("reduced motion leaves every sliding window immediately usable",async({page})=>{
   await page.emulateMedia({
     reducedMotion:"reduce"

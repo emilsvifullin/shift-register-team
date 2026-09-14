@@ -3,6 +3,9 @@ import { expect, test } from "@playwright/test";
 const FIXTURE=
   "http://127.0.0.1:4173/tests/fixtures/team-motion.html";
 
+const REFERENCE_FIXTURE=
+  "http://127.0.0.1:4173/tests/fixtures/reference-motion.html";
+
 test.use({
   viewport:{width:390,height:844},
   hasTouch:true,
@@ -124,7 +127,7 @@ test("employee view to edit and back visibly animate instead of replacing conten
 });
 
 test("stats month ghost keeps the exact live vertical geometry after clone ids are stripped",async({page})=>{
-  await page.goto(FIXTURE);
+  await page.goto(REFERENCE_FIXTURE);
   await page.waitForLoadState("networkidle");
 
   const result=await page.evaluate(()=>{

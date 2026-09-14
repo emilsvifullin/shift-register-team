@@ -131,6 +131,22 @@ function isSwipeCloseAnimation(animation){
   );
 }
 
+function monthPickerAlreadyDismissedBySwipe(element){
+  if(
+    element.id!=="monthPicker" ||
+    !element.style.transform
+  ){
+    return false;
+  }
+
+  const rect=element.getBoundingClientRect();
+
+  return (
+    rect.top>=globalThis.innerHeight-2 ||
+    rect.bottom<=0
+  );
+}
+
 function cancelReferenceAnimations(element){
   element
     .getAnimations()
@@ -198,6 +214,17 @@ function playReferenceModalMotion(
 
   if(opening){
     clearClosingVisibilityGuard(element);
+  }
+
+  if(
+    !opening &&
+    monthPickerAlreadyDismissedBySwipe(
+      element
+    )
+  ){
+    clearClosingVisibilityGuard(element);
+    cancelReferenceAnimations(element);
+    return false;
   }
 
   if(

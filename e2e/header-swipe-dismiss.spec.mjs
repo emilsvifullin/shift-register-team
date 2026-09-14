@@ -3,13 +3,8 @@ import { expect, test } from "@playwright/test";
 const FIXTURE=
   "http://127.0.0.1:4173/tests/fixtures/reference-motion.html";
 
-const SHEETS=[
-  "#sheet",
-  "#employeeSheet",
-  "#employeeFilterSheet",
-  "#shiftFilterSheet",
-  "#manageEditorSheet"
-];
+const SHEET="#sheet";
+const HEADER="#sheet .ttl";
 
 test.use({
   viewport:{width:390,height:844},
@@ -17,7 +12,7 @@ test.use({
   colorScheme:"dark"
 });
 
-async function installGuard(page){
+async function installSwipeController(page){
   await page.addScriptTag({
     type:"module",
     url:
@@ -31,343 +26,275 @@ async function installGuard(page){
     );
 }
 
-async function openSheet(page,selector){
-  await page.evaluate(selector=>{
-    const element=
-      document.querySelector(selector);
-
-    element.style.removeProperty(
-      "transition"
-    );
-    element.style.removeProperty(
-      "--sheet-drag"
-    );
-    element.style.display="block";
-    element.classList.add("on");
-    element.setAttribute(
-      "aria-hidden",
-      "false"
-    );
-    element.dispatchEvent(
-      new CustomEvent(
-        "bottomsheetopen"
-      )
-    );
-  },selector);
-
-  await page.waitForTimeout(600);
+async function openSheet(page){
+  await page.locator("#openSheet").click();
+  await page.waitForTimeout(560);
+  await expect(page.locator(SHEET))
+    .toHaveClass(/\bon\b/);
 }
 
-async function startSwipeClose(
+async function dispatchTouch(
   page,
   selector,
-  {
-    startDistance=72,
-    hideAfter=100
-  }={}
+  type,
+  {x,y,id=11}
 ){
   await page.evaluate(
-    ({selector,startDistance,hideAfter})=>{
-      const element=
+    ({selector,type,x,y,id})=>{
+      const target=
         document.querySelector(selector);
 
-      const height=
-        element.getBoundingClientRect()
-          .height;
+      const touch={
+        identifier:id,
+        clientX:x,
+        clientY:y
+      };
 
-      element.style.setProperty(
-        "--sheet-drag",
-        `${startDistance}px`
-      );
-      element.style.transition="none";
-      void element.offsetHeight;
-
-      /*
-        This matches app.js: transition is restored immediately before the
-        WAAPI swipe exit and the modal's .on class is then removed.
-      */
-      element.style.removeProperty(
-        "transition"
-      );
-
-      const animation=
-        element.animate(
-          [
-            {
-              transform:
-                `translate3d(0,${startDistance}px,0)`
-            },
-            {
-              transform:
-                `translate3d(0,${height+40}px,0)`
-            }
-          ],
-          {
-            duration:420,
-            easing:
-              "cubic-bezier(.4,0,.2,1)",
-            fill:"both"
-          }
-        );
-
-      animation.id=
-        "app-header-swipe-close";
-
-      /*
-        app.js cancels its temporary WAAPI animation when it finishes. This
-        exact cancellation used to expose the open pose and cause the visible
-        up/down rebound from the real-device recording.
-      */
-      animation.finished
-        .catch(()=>{})
-        .finally(()=>{
-          animation.cancel();
-        });
-
-      element.classList.remove("on");
-      element.setAttribute(
-        "aria-hidden",
-        "true"
-      );
-
-      window.setTimeout(()=>{
-        element.style.display="none";
-      },hideAfter);
-    },
-    {
-      selector,
-      startDistance,
-      hideAfter
-    }
-  );
-}
-
-test("every sheet stays rendered and never rebounds after header swipe release",async({page})=>{
-  await page.goto(FIXTURE);
-  await page.waitForLoadState("networkidle");
-  await installGuard(page);
-
-  for(const selector of SHEETS){
-    const sheet=page.locator(selector);
-
-    await openSheet(page,selector);
-    await startSwipeClose(
-      page,
-      selector
-    );
-
-    await page.waitForTimeout(180);
-
-    const duringClose=
-      await sheet.evaluate(element=>({
-        display:
-          getComputedStyle(element)
-            .display,
-        guard:
-          element.getAttribute(
-            "data-reference-closing"
-          ),
-        swipeDuration:
-          element
-            .getAnimations()
-            .find(animation=>
-              animation.id===
-                "app-header-swipe-close"
-            )
-            ?.effect
-            ?.getTiming()
-            ?.duration ?? null
-      }));
-
-    expect(
-      duringClose.display,
-      `${selector} must not disappear 100ms into a header swipe close`
-    ).toBe("block");
-
-    expect(duringClose.guard)
-      .toBe("true");
-
-    expect(duringClose.swipeDuration)
-      .toBe(420);
-
-    /*
-      Inspect just after app.js cancels the 420ms swipe animation. The modal
-      must already remain below the viewport. Before the fix this is where it
-      jumped back upward and started another CSS trip down.
-    */
-    await page.waitForTimeout(270);
-
-    const afterWaapiRelease=
-      await sheet.evaluate(element=>({
-        display:
-          getComputedStyle(element)
-            .display,
-        guard:
-          element.getAttribute(
-            "data-reference-closing"
-          ),
-        top:
-          element.getBoundingClientRect()
-            .top,
-        viewportHeight:
-          window.innerHeight,
-        transitionDuration:
-          getComputedStyle(element)
-            .transitionDuration
-      }));
-
-    expect(afterWaapiRelease.display)
-      .toBe("block");
-
-    expect(afterWaapiRelease.guard)
-      .toBe("true");
-
-    expect(
-      afterWaapiRelease.top,
-      `${selector} must not rebound into the viewport after WAAPI cancel`
-    ).toBeGreaterThanOrEqual(
-      afterWaapiRelease.viewportHeight-2
-    );
-
-    expect(
-      afterWaapiRelease.transitionDuration
-        .split(",")
-        .every(value=>
-          Number.parseFloat(value)===0
-        )
-    ).toBe(true);
-
-    await page.waitForTimeout(100);
-
-    const afterClose=
-      await sheet.evaluate(element=>({
-        display:
-          getComputedStyle(element)
-            .display,
-        guarded:
-          element.hasAttribute(
-            "data-reference-closing"
-          )
-      }));
-
-    expect(afterClose.guarded)
-      .toBe(false);
-
-    expect(afterClose.display)
-      .toBe("none");
-  }
-});
-
-test("swipe exit continues from the exact painted release position",async({page})=>{
-  await page.goto(FIXTURE);
-  await page.waitForLoadState("networkidle");
-  await installGuard(page);
-
-  const selector="#sheet";
-  const sheet=page.locator(selector);
-
-  await openSheet(page,selector);
-
-  const releaseTop=
-    await sheet.evaluate(element=>{
-      element.style.transition="none";
-      element.style.setProperty(
-        "--sheet-drag",
-        "180px"
-      );
-      void element.offsetHeight;
-
-      return element
-        .getBoundingClientRect()
-        .top;
-    });
-
-  await page.locator(
-    `${selector} .shead`
-  ).dispatchEvent(
-    "pointerup",
-    {
-      pointerId:17,
-      pointerType:"pen",
-      isPrimary:true,
-      clientX:195,
-      clientY:240
-    }
-  );
-
-  /* Deliberately give the app animation a wrong first keyframe. */
-  await page.evaluate(selector=>{
-    const element=
-      document.querySelector(selector);
-
-    const height=
-      element.getBoundingClientRect()
-        .height;
-
-    element.style.removeProperty(
-      "transition"
-    );
-
-    const animation=
-      element.animate(
-        [
-          {
-            transform:
-              "translate3d(0,40px,0)"
-          },
-          {
-            transform:
-              `translate3d(0,${height+40}px,0)`
-          }
-        ],
+      const event=new Event(
+        type,
         {
-          duration:420,
-          easing:
-            "cubic-bezier(.4,0,.2,1)",
-          fill:"both"
+          bubbles:true,
+          cancelable:true,
+          composed:true
         }
       );
 
-    animation.id=
-      "app-header-swipe-close";
+      Object.defineProperties(
+        event,
+        {
+          touches:{
+            value:
+              type==="touchend" ||
+              type==="touchcancel"
+                ? []
+                : [touch]
+          },
+          changedTouches:{
+            value:[touch]
+          }
+        }
+      );
 
-    animation.finished
-      .catch(()=>{})
-      .finally(()=>{
-        animation.cancel();
+      target.dispatchEvent(event);
+    },
+    {selector,type,x,y,id}
+  );
+}
+
+async function headerPoint(page){
+  const box=
+    await page.locator(HEADER)
+      .boundingBox();
+
+  return {
+    x:box.x+box.width/2,
+    y:box.y+box.height/2
+  };
+}
+
+async function sheetTop(page){
+  return page.locator(SHEET)
+    .evaluate(element=>
+      element.getBoundingClientRect().top
+    );
+}
+
+test("header swipe release continues downward without an upward rebound",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+  await installSwipeController(page);
+  await openSheet(page);
+
+  const point=await headerPoint(page);
+
+  await dispatchTouch(
+    page,
+    HEADER,
+    "touchstart",
+    point
+  );
+
+  await dispatchTouch(
+    page,
+    HEADER,
+    "touchmove",
+    {
+      x:point.x,
+      y:point.y+140
+    }
+  );
+
+  await page.waitForTimeout(24);
+
+  const draggedTop=await sheetTop(page);
+
+  await dispatchTouch(
+    page,
+    HEADER,
+    "touchend",
+    {
+      x:point.x,
+      y:point.y+140
+    }
+  );
+
+  await page.waitForTimeout(24);
+
+  const activeAnimation=
+    await page.locator(SHEET)
+      .evaluate(element=>{
+        const animation=
+          element.getAnimations()
+            .find(item=>
+              item.id===
+                "header-swipe-dismiss"
+            );
+
+        return animation
+          ? Number(
+              animation.effect
+                .getTiming()
+                .duration
+            )
+          : null;
       });
 
-    element.classList.remove("on");
-    element.setAttribute(
-      "aria-hidden",
-      "true"
+  expect(activeAnimation).toBe(420);
+
+  const samples=[draggedTop];
+
+  for(const delay of [16,28,44,64,84,84]){
+    await page.waitForTimeout(delay);
+    samples.push(await sheetTop(page));
+  }
+
+  for(let index=1;index<samples.length;index++){
+    expect(
+      samples[index],
+      `sheet moved upward after release: ${samples.join(", ")}`
+    ).toBeGreaterThanOrEqual(
+      samples[index-1]-1.5
+    );
+  }
+
+  expect(samples[1])
+    .toBeGreaterThanOrEqual(
+      draggedTop-1.5
     );
 
-    window.setTimeout(()=>{
-      element.style.display="none";
-    },500);
-  },selector);
+  await page.waitForTimeout(160);
 
-  await page.waitForTimeout(34);
+  const closedState=
+    await page.locator(SHEET)
+      .evaluate(element=>({
+        open:
+          element.classList.contains("on"),
+        top:
+          element.getBoundingClientRect().top,
+        viewportHeight:
+          window.innerHeight,
+        swipeAnimations:
+          element.getAnimations()
+            .filter(animation=>
+              animation.id===
+                "header-swipe-dismiss"
+            ).length,
+        referenceAnimations:
+          element.getAnimations()
+            .filter(animation=>
+              String(animation.id || "")
+                .startsWith(
+                  "shift-register-modal-"
+                )
+            ).length
+      }));
 
-  const firstExitFrame=
-    await sheet.evaluate(element=>({
-      top:
-        element.getBoundingClientRect()
-          .top,
-      guard:
-        element.getAttribute(
-          "data-reference-closing"
-        )
-    }));
+  expect(closedState.open).toBe(false);
+  expect(closedState.swipeAnimations).toBe(0);
+  expect(closedState.referenceAnimations).toBe(0);
+  expect(closedState.top)
+    .toBeGreaterThanOrEqual(
+      closedState.viewportHeight-2
+    );
+});
 
-  expect(firstExitFrame.guard)
-    .toBe("true");
+test("short header drag returns to the same open position and does not close",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+  await installSwipeController(page);
+  await openSheet(page);
 
-  expect(
-    firstExitFrame.top,
-    "release must continue downward from the painted finger position"
-  ).toBeGreaterThanOrEqual(
-    releaseTop-2
+  const point=await headerPoint(page);
+  const openTop=await sheetTop(page);
+
+  await dispatchTouch(
+    page,
+    HEADER,
+    "touchstart",
+    point
   );
+
+  await dispatchTouch(
+    page,
+    HEADER,
+    "touchmove",
+    {
+      x:point.x,
+      y:point.y+18
+    }
+  );
+
+  await page.waitForTimeout(30);
+
+  const draggedTop=await sheetTop(page);
+
+  expect(draggedTop)
+    .toBeGreaterThan(openTop+8);
+
+  await dispatchTouch(
+    page,
+    HEADER,
+    "touchend",
+    {
+      x:point.x,
+      y:point.y+18
+    }
+  );
+
+  await page.waitForTimeout(470);
+
+  const state=
+    await page.locator(SHEET)
+      .evaluate(element=>({
+        open:
+          element.classList.contains("on"),
+        top:
+          element.getBoundingClientRect().top,
+        drag:
+          element.style.getPropertyValue(
+            "--sheet-drag"
+          ),
+        transition:
+          element.style.getPropertyValue(
+            "transition"
+          )
+      }));
+
+  expect(state.open).toBe(true);
+  expect(Math.abs(state.top-openTop))
+    .toBeLessThanOrEqual(2);
+  expect(state.drag).toBe("");
+  expect(state.transition).toBe("");
+});
+
+test("normal modal buttons stay untouched by the swipe controller",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+  await installSwipeController(page);
+  await openSheet(page);
+
+  await page.locator("#closeSheet").click();
+
+  await expect(page.locator(SHEET))
+    .not.toHaveClass(/\bon\b/);
 });

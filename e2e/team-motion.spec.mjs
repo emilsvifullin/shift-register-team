@@ -126,6 +126,75 @@ test("employee view to edit and back visibly animate instead of replacing conten
   await expect(page.locator("#employeeSheetTitle")).toHaveText("Сотрудник");
 });
 
+test("shift month ghost starts on the exact live vertical baseline",async({page})=>{
+  await page.goto(REFERENCE_FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  const result=await page.evaluate(()=>{
+    const app=document.getElementById("app");
+    app.className="shifts-layout";
+    app.innerHTML=`
+      <div class="ml">Смены</div>
+      <button class="manage-add" type="button">Добавить смену</button>
+      <div class="ml">Поиск и фильтр</div>
+      <div class="card"><div class="row">Поиск</div></div>
+      <div id="shiftListArea">
+        <div class="ml">Список</div>
+        <div class="shift-window"><div class="card">В этом месяце смен пока нет.</div></div>
+      </div>
+    `;
+
+    const sourceLabel=app.children[0];
+    const sourceButton=app.children[1];
+    const sourceSearchLabel=app.children[2];
+    const sourceList=app.children[4];
+
+    const source={
+      label:sourceLabel.getBoundingClientRect().top,
+      button:sourceButton.getBoundingClientRect().top,
+      search:sourceSearchLabel.getBoundingClientRect().top,
+      list:sourceList.getBoundingClientRect().top
+    };
+
+    const rect=app.getBoundingClientRect();
+    const ghost=app.cloneNode(true);
+    ghost.removeAttribute("id");
+    ghost.querySelectorAll("[id]").forEach(node=>node.removeAttribute("id"));
+    ghost.setAttribute("aria-hidden","true");
+    ghost.setAttribute("inert","");
+    ghost.style.position="fixed";
+    ghost.style.left=`${rect.left}px`;
+    ghost.style.top=`${rect.top}px`;
+    ghost.style.width=`${rect.width}px`;
+    ghost.style.height=`${rect.height}px`;
+    ghost.style.margin="0";
+
+    delete document.body.dataset.activeTab;
+    document.body.append(ghost);
+
+    const target={
+      label:ghost.children[0].getBoundingClientRect().top,
+      button:ghost.children[1].getBoundingClientRect().top,
+      search:ghost.children[2].getBoundingClientRect().top,
+      list:ghost.children[4].getBoundingClientRect().top
+    };
+
+    ghost.remove();
+
+    return {
+      label:Math.abs(source.label-target.label),
+      button:Math.abs(source.button-target.button),
+      search:Math.abs(source.search-target.search),
+      list:Math.abs(source.list-target.list)
+    };
+  });
+
+  expect(result.label).toBeLessThanOrEqual(0.5);
+  expect(result.button).toBeLessThanOrEqual(0.5);
+  expect(result.search).toBeLessThanOrEqual(0.5);
+  expect(result.list).toBeLessThanOrEqual(0.5);
+});
+
 test("stats month ghost keeps the exact live vertical geometry after clone ids are stripped",async({page})=>{
   await page.goto(REFERENCE_FIXTURE);
   await page.waitForLoadState("networkidle");

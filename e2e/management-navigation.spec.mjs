@@ -115,40 +115,12 @@ test("management header back stays visually neutral through the iOS touch state"
     "rgba(0, 0, 0, 0)"
   );
 
+  // Keyboard focus visibility is already covered by state-transitions.spec.
+  // This regression is intentionally limited to the iOS/WebKit touch state
+  // that produced the 44x44 dark compositing tile around the back chevron.
   await headerBack.evaluate(element=>
     element.classList.remove("touch-active")
   );
-
-  await page.evaluate(()=>{
-    document.body.dataset.inputModality="keyboard";
-  });
-
-  await headerBack.focus();
-
-  await expect.poll(
-    ()=>page.evaluate(()=>
-      document.activeElement?.id || ""
-    )
-  ).toBe("prevM");
-
-  const keyboardFocus=await headerBack.evaluate(element=>{
-    const style=getComputedStyle(element);
-
-    return {
-      backgroundColor:style.backgroundColor,
-      transform:style.transform,
-      outlineStyle:style.outlineStyle,
-      outlineWidth:style.outlineWidth
-    };
-  });
-
-  expect(keyboardFocus.backgroundColor).toBe(
-    "rgba(0, 0, 0, 0)"
-  );
-  expect(keyboardFocus.transform).toBe("none");
-  expect(keyboardFocus.outlineStyle).not.toBe("none");
-  expect(Number.parseFloat(keyboardFocus.outlineWidth))
-    .toBeGreaterThan(0);
 });
 
 test("point deletion is exposed only after entering point edit mode",async({page},testInfo)=>{

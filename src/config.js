@@ -1,9 +1,10 @@
 import "./management-employee-points.js";
 import "./management-tap-intent.js";
 import "./management-navigation.js";
+import "./management-point-editor.js";
 import "./point-card-summaries.js";
 
-export const APP_VERSION = "6.22.56";
+export const APP_VERSION = "6.22.57";
 export const SCHEMA_VERSION = 3;
 export const RULES_VERSION = "2026-08-12-v3";
 

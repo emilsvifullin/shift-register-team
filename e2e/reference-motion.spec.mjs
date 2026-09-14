@@ -194,7 +194,7 @@ test("hidden sheets and pickers enter from the exact shift-register off-screen p
   }
 });
 
-test("reduced motion remains respected",async({page})=>{
+test("bottom sheets keep shift-register motion when system reduced motion is enabled",async({page})=>{
   await page.emulateMedia({reducedMotion:"reduce"});
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
@@ -203,14 +203,10 @@ test("reduced motion remains respected",async({page})=>{
     getComputedStyle(element).transitionDuration
   );
 
-  const values=duration
-    .split(",")
-    .map(value=>Number.parseFloat(value));
-
-  expect(Math.max(...values)).toBeLessThan(.01);
+  expect(includesDuration(duration,.48)).toBe(true);
 
   await page.locator("#openSheet").click();
-  await page.waitForTimeout(30);
+  await page.waitForTimeout(40);
 
   const referenceAnimations=
     await page.locator("#sheet").evaluate(element=>
@@ -221,8 +217,16 @@ test("reduced motion remains respected",async({page})=>{
             .startsWith(
               "shift-register-modal-"
             )
-        ).length
+        )
+        .map(animation=>
+          Number(
+            animation.effect
+              .getTiming()
+              .duration
+          )
+        )
     );
 
-  expect(referenceAnimations).toBe(0);
+  expect(referenceAnimations).toContain(480);
+  expect(referenceAnimations).toContain(300);
 });

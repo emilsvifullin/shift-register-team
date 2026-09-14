@@ -25,12 +25,12 @@ test("reference horizontal swipes are bootstrapped and precached",()=>{
 
   assert.match(
     config,
-    /APP_VERSION = "6\.22\.24"/
+    /APP_VERSION = "6\.22\.25"/
   );
 
   assert.match(
     serviceWorker,
-    /sr-team-runtime-v6\.22\.24/
+    /sr-team-runtime-v6\.22\.25/
   );
 });
 
@@ -101,16 +101,21 @@ test("stats month transition ghost keeps the same app-only refinement geometry",
   );
 });
 
-test("month ghost first section is pinned to the live app baseline",()=>{
+test("bottom sheets keep stable layout viewport height while iOS keyboard is open",()=>{
   const styles=read("styles/interaction.css");
 
   assert.match(
     styles,
-    /body > main\[aria-hidden="true"\]\[inert\] > \.ml:first-child/
+    /\.sheet\{\s*height:93vh;\s*max-height:93vh;\s*\}/
   );
 
-  assert.match(
-    styles,
-    /margin-top:2px !important/
+  const override=
+    styles.match(
+      /\.sheet\{\s*height:93vh;\s*max-height:93vh;\s*\}/
+    )?.[0] || "";
+
+  assert.doesNotMatch(
+    override,
+    /dvh/
   );
 });

@@ -10,3 +10,14 @@
 body > main[aria-hidden="true"][inert] > .ml:first-child{
   margin-top:2px !important;
 }
+
+/*
+  iOS changes dynamic viewport units when the software keyboard opens. The
+  bottom sheet itself must keep the same layout-viewport height so focusing an
+  input scrolls content inside the sheet instead of shrinking the whole sheet
+  and dropping its top edge behind the keyboard.
+*/
+.sheet{
+  height:93vh;
+  max-height:93vh;
+}

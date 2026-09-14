@@ -170,6 +170,31 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   min-height:76px;
 }
 
+/*
+  На iPhone в зоне списка должны целиком помещаться служебная строка «Подмена»
+  и ещё пять сотрудников. Текст остаётся трёхстрочным, поэтому уменьшаем только
+  вертикальные отступы и межстрочный ритм, не размер шрифта и не touch-target.
+*/
+@media (max-width:520px){
+  #employeeList .employee-row{
+    min-height:64px;
+    padding-top:5px;
+    padding-bottom:5px;
+  }
+
+  #employeeList .employee-row .manage-row-copy{
+    gap:2px;
+  }
+
+  #employeeList .employee-row .manage-row-title{
+    line-height:1.2;
+  }
+
+  #employeeList .employee-row .manage-row-detail{
+    line-height:1.2;
+  }
+}
+
 #pointManageList .point-manage-row{
   min-height:54px;
 }

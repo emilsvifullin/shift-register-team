@@ -37,6 +37,26 @@ main.shifts-layout > :is(#shiftListArea,div:has(> .shift-window)) > .ml{
   flex:none;
 }
 
+/*
+  Тот же слепок теряет #app, поэтому refinement-селекторы итогов должны
+  описывать реальный main и его inert-копию одинаково. Иначе при свайпе
+  кратко появляется скрытый заголовок фильтра и контент визуально съезжает вниз.
+*/
+body[data-active-tab] > main > .ml:first-child{
+  margin-top:2px;
+}
+
+body[data-active-tab="stats"] > main > .ml:has(+ .card .stats-filter-row){
+  display:none;
+}
+
+body[data-active-tab="stats"] > main > .card:has(.stats-filter-row){
+  margin-bottom:12px;
+  overflow:visible;
+  border:0;
+  background:transparent;
+}
+
 /* Детальные экраны управления используют оставшуюся высоту как рабочую область. */
 body[data-active-tab="manage"] main:has(> .manage-back){
   padding-top:calc(68px + env(safe-area-inset-top));

@@ -128,7 +128,7 @@ body[data-active-tab="manage"] main:has(#pointManageList){
   display:flex;
   flex-direction:column;
   overflow:hidden;
-  padding-bottom:12px;
+  padding-bottom:calc(78px + env(safe-area-inset-bottom));
 }
 
 body[data-active-tab="manage"] main:has(#employeeList) > :not(#employeeList),
@@ -137,14 +137,14 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
 }
 
 /*
-  Короткий список занимает ровно высоту своих строк. Когда строк становится
-  больше доступного места, flex-shrink ограничивает окно и включает внутренний
-  скролл — без пустого высокого контейнера под двумя-тремя плитками.
+  Область списка забирает всё свободное место до нижней навигации. Само белое
+  окно остаётся высотой по контенту, пока строк мало; при длинном списке оно
+  расширяется до доступной высоты и только после этого включает внутренний скролл.
 */
 #employeeList,
 #pointManageList{
   min-height:0;
-  flex:0 1 auto;
+  flex:1 1 auto;
   display:flex;
   flex-direction:column;
   overflow:hidden;
@@ -231,20 +231,6 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
 .employee-point-archived:disabled{
   opacity:.68;
   cursor:default;
-}
-
-/*
-  На телефоне длинный список показывает максимум пять сотрудников или семь ПВЗ.
-  Короткий список остаётся естественной высоты и растёт строка за строкой.
-*/
-@media (max-width:520px) and (min-height:760px){
-  #employeeList > .manage-menu{
-    max-height:382px;
-  }
-
-  #pointManageList > .manage-menu{
-    max-height:380px;
-  }
 }
 
 @media (hover:hover) and (pointer:fine){

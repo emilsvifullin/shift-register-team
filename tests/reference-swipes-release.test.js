@@ -25,12 +25,12 @@ test("reference horizontal swipes are bootstrapped and precached",()=>{
 
   assert.match(
     config,
-    /APP_VERSION = "6\.22\.23"/
+    /APP_VERSION = "6\.22\.24"/
   );
 
   assert.match(
     serviceWorker,
-    /sr-team-runtime-v6\.22\.23/
+    /sr-team-runtime-v6\.22\.24/
   );
 });
 
@@ -98,5 +98,19 @@ test("stats month transition ghost keeps the same app-only refinement geometry",
   assert.match(
     styles,
     /body\[data-active-tab="stats"\] > main > \.card:has\(\.stats-filter-row\)/
+  );
+});
+
+test("month ghost first section is pinned to the live app baseline",()=>{
+  const styles=read("styles/interaction.css");
+
+  assert.match(
+    styles,
+    /body > main\[aria-hidden="true"\]\[inert\] > \.ml:first-child/
+  );
+
+  assert.match(
+    styles,
+    /margin-top:2px !important/
   );
 });

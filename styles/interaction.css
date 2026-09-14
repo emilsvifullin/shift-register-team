@@ -12,10 +12,9 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
 }
 
 /*
-  iOS changes dynamic viewport units when the software keyboard opens. The
-  bottom sheet itself must keep the same layout-viewport height so focusing an
-  input scrolls content inside the sheet instead of shrinking the whole sheet
-  and dropping its top edge behind the keyboard.
+  Match shift-register's stable sheet viewport sizing. On iOS the software
+  keyboard changes dynamic viewport units; keeping the sheet on vh prevents
+  the whole modal from shrinking and dropping behind the keyboard on focus.
 */
 .sheet{
   height:93vh;

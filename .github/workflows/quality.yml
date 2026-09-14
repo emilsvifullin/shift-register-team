@@ -98,15 +98,6 @@ jobs:
       - name: Run browser smoke
         run: npx playwright test e2e/platform-shell.spec.mjs e2e/interaction.spec.mjs e2e/state-transitions.spec.mjs e2e/bottom-dock.spec.mjs e2e/management-layout.spec.mjs e2e/management-navigation.spec.mjs e2e/management-tap-intent.spec.mjs e2e/management-dynamic-list.spec.mjs e2e/management-employee-points.spec.mjs e2e/reference-motion.spec.mjs e2e/team-motion.spec.mjs --browser=${{ matrix.browser }} --reporter=line
 
-      - name: Upload WebKit motion preview
-        if: matrix.browser == 'webkit' && always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: team-motion-preview-webkit
-          path: test-results/**/team-motion-edit-mid.png
-          if-no-files-found: ignore
-          retention-days: 1
-
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v6

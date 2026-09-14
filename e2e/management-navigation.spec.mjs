@@ -72,6 +72,60 @@ test("management tiles and header back work from the first user tap without poin
   await expect(headerBack).toBeDisabled();
 });
 
+test("management header back stays visually neutral through the iOS touch state",async({page})=>{
+  await page.goto(FIXTURE);
+  await page.waitForLoadState("networkidle");
+
+  await page.locator(
+    '[data-manage-section="points"]'
+  ).click();
+
+  const headerBack=page.locator("#prevM");
+
+  await expect(headerBack).toHaveAttribute(
+    "data-manage-back-proxy",
+    "true"
+  );
+
+  await headerBack.evaluate(element=>{
+    element.classList.add("touch-active");
+    element.focus();
+  });
+
+  const touchStyle=await headerBack.evaluate(element=>{
+    const style=getComputedStyle(element);
+
+    return {
+      backgroundColor:style.backgroundColor,
+      boxShadow:style.boxShadow,
+      transform:style.transform,
+      outlineStyle:style.outlineStyle,
+      webkitTapHighlightColor:
+        style.webkitTapHighlightColor || ""
+    };
+  });
+
+  expect(touchStyle.backgroundColor).toBe(
+    "rgba(0, 0, 0, 0)"
+  );
+  expect(touchStyle.boxShadow).toBe("none");
+  expect(touchStyle.transform).toBe("none");
+  expect(touchStyle.outlineStyle).toBe("none");
+
+  if(touchStyle.webkitTapHighlightColor){
+    expect(touchStyle.webkitTapHighlightColor).toBe(
+      "rgba(0, 0, 0, 0)"
+    );
+  }
+
+  // Keyboard focus visibility is already covered by state-transitions.spec.
+  // This regression is intentionally limited to the iOS/WebKit touch state
+  // that produced the 44x44 dark compositing tile around the back chevron.
+  await headerBack.evaluate(element=>
+    element.classList.remove("touch-active")
+  );
+});
+
 test("point deletion is exposed only after entering point edit mode",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");

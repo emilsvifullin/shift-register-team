@@ -7,6 +7,8 @@ const CLOSE_EASING="cubic-bezier(0,0,.2,1)";
 
 let gesture=null;
 let suppressClickUntil=0;
+let openRevealFirstFrame=0;
+let openRevealSecondFrame=0;
 
 const picker=()=>
   document.getElementById(PICKER_ID);
@@ -61,6 +63,22 @@ function cancelReferenceMotion(element){
     .forEach(animation=>animation.cancel());
 }
 
+function cancelOpenReveal(){
+  if(openRevealFirstFrame){
+    cancelAnimationFrame(
+      openRevealFirstFrame
+    );
+    openRevealFirstFrame=0;
+  }
+
+  if(openRevealSecondFrame){
+    cancelAnimationFrame(
+      openRevealSecondFrame
+    );
+    openRevealSecondFrame=0;
+  }
+}
+
 function clearGestureStyles(element){
   element.style.removeProperty("transition");
   element.style.removeProperty("transform");
@@ -70,16 +88,46 @@ function clearGestureStyles(element){
 function resetForOpen(element){
   gesture=null;
   suppressClickUntil=0;
+  cancelOpenReveal();
 
-  /*
-    modal-motion handles bottomsheetopen in capture phase and places the
-    picker below the viewport before the app adds .on. Do not clear that
-    staged transform here. Clearing it was the source of the one-frame fully
-    visible "ghost" before the real opening animation on iPhone/WebKit.
-  */
   element.removeAttribute(
     "data-month-swipe-closing"
   );
+
+  if(reducedMotion()){
+    element.style.removeProperty(
+      "visibility"
+    );
+    return;
+  }
+
+  /*
+    Keep the compositor layer hidden while modal-motion stages the picker
+    below the viewport. iOS PWA/WebKit can otherwise reuse the last fully-open
+    layer for one frame after display:none -> display:block, producing the
+    visible "ghost" before the real entrance animation starts.
+  */
+  element.style.visibility="hidden";
+
+  openRevealFirstFrame=
+    requestAnimationFrame(()=>{
+      openRevealFirstFrame=0;
+
+      openRevealSecondFrame=
+        requestAnimationFrame(()=>{
+          openRevealSecondFrame=0;
+
+          if(
+            element.classList.contains(
+              "on"
+            )
+          ){
+            element.style.removeProperty(
+              "visibility"
+            );
+          }
+        });
+    });
 }
 
 function startGesture(kind,id,target,x,y){
@@ -223,6 +271,7 @@ function runTransformTransition(
 }
 
 function normalizeClosedPicker(element){
+  cancelOpenReveal();
   cancelReferenceMotion(element);
   element.removeAttribute(
     "data-reference-closing"
@@ -232,13 +281,15 @@ function normalizeClosedPicker(element){
   );
 
   /*
-    Normalize while display:none is still active, so WebKit cannot retain a
-    transformed compositor snapshot that flashes on the next open.
+    Normalize while display:none is still active and keep the compositor layer
+    non-visible until the next staged open. This prevents WebKit from flashing
+    the previous fully-open layer before the hidden transform is painted.
   */
   element.style.setProperty(
     "display",
     "none"
   );
+  element.style.visibility="hidden";
   element.style.removeProperty("transition");
   element.style.removeProperty("transform");
   element.style.removeProperty("--month-drag");
@@ -275,12 +326,6 @@ function finishSwipeClose(state,endDistance){
     );
   }
 
-  /*
-    The class mutation queues modal-motion's observer before this microtask.
-    It therefore sees the offscreen transform and suppresses its second close
-    pass. Immediately afterwards we clear every swipe-owned style while the
-    picker is hidden, leaving the next open completely clean.
-  */
   queueMicrotask(()=>{
     normalizeClosedPicker(element);
   });

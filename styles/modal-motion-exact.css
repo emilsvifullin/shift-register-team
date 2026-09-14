@@ -220,21 +220,3 @@
     translateX(-50%)
     translateY(0);
 }
-
-@media (prefers-reduced-motion:reduce){
-  .sheet,
-  .point-picker,
-  .date-picker,
-  .month-picker,
-  .veil,
-  .point-veil,
-  .date-veil,
-  .month-veil,
-  .date-jump,
-  .app-confirm,
-  .app-confirm-box,
-  .toast{
-    transition-duration:.001ms !important;
-    animation-duration:.001ms !important;
-  }
-}

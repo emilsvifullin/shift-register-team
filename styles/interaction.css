@@ -22,7 +22,7 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
   max-height:93vh;
 }
 
-/* Employee rows must use the exact same geometry as point rows. */
+/* Employee cards keep the same outer padding, but use a taller three-line rhythm. */
 #employeeList .employee-row{
   min-height:54px;
   padding-top:10px;
@@ -30,7 +30,7 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
 }
 
 #employeeList .employee-row .manage-row-copy{
-  gap:3px;
+  gap:5px;
 }
 
 #employeeList .employee-row .manage-row-title{
@@ -41,11 +41,6 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
   line-height:1.35;
 }
 
-/*
-  The third employee line uses a dedicated class in production. Give it the
-  same typographic height as a point card detail line so the three-line rhythm
-  matches the point list instead of looking compressed.
-*/
 #employeeList .employee-row .employee-account-label{
   font-size:12px;
   line-height:1.35;

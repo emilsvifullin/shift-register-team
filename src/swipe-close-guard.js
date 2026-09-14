@@ -272,6 +272,11 @@ function closeControl(element,config){
 }
 
 function requestClose(element,config){
+  if(suppressSurface===element){
+    suppressClickUntil=0;
+    suppressSurface=null;
+  }
+
   const control=closeControl(
     element,
     config
@@ -388,12 +393,6 @@ function animateClose(state){
 
   animation.finished
     .then(()=>{
-      /*
-        Keep the sheet at the final off-screen position while its normal
-        close handler removes .on. The WAAPI animation is deliberately kept
-        alive until the next frame so modal-motion can recognise this as a
-        swipe-owned close and does not start a second close animation.
-      */
       element.style.transition="none";
       element.style.setProperty(
         config.drag,
@@ -519,8 +518,6 @@ document.addEventListener(
     }
 
     gesture=next;
-
-    /* Do not let the legacy sheet gesture start for the same header touch. */
     event.stopImmediatePropagation();
   },
   {capture:true,passive:true}

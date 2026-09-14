@@ -334,8 +334,113 @@ function finishCloseStyles(
   });
 }
 
+function animateMonthClose(state){
+  const {element,config}=state;
+  const endDistance=
+    element.getBoundingClientRect()
+      .height+40;
+
+  setDistance(
+    state,
+    state.distance
+  );
+
+  element.style.transition="none";
+  void element.offsetHeight;
+
+  if(reducedMotion()){
+    element.style.setProperty(
+      config.drag,
+      `${endDistance}px`
+    );
+    requestClose(element,config);
+    element.style.removeProperty(
+      config.drag
+    );
+    element.style.removeProperty(
+      "transition"
+    );
+    return;
+  }
+
+  let finished=false;
+  let timer=0;
+
+  const finish=()=>{
+    if(finished){
+      return;
+    }
+
+    finished=true;
+    clearTimeout(timer);
+    element.removeEventListener(
+      "transitionend",
+      onTransitionEnd
+    );
+
+    element.style.transition="none";
+    element.style.setProperty(
+      config.drag,
+      `${endDistance}px`
+    );
+
+    requestClose(element,config);
+    element.style.removeProperty(
+      config.drag
+    );
+
+    requestAnimationFrame(()=>{
+      if(
+        !element.classList.contains("on")
+      ){
+        element.style.removeProperty(
+          "transition"
+        );
+      }
+    });
+  };
+
+  const onTransitionEnd=event=>{
+    if(
+      event.target===element &&
+      event.propertyName==="transform"
+    ){
+      finish();
+    }
+  };
+
+  element.addEventListener(
+    "transitionend",
+    onTransitionEnd
+  );
+
+  element.style.transition=
+    `transform ${CLOSE_DURATION}ms ${CLOSE_EASING}`;
+
+  requestAnimationFrame(()=>{
+    if(finished){
+      return;
+    }
+
+    element.style.setProperty(
+      config.drag,
+      `${endDistance}px`
+    );
+  });
+
+  timer=setTimeout(
+    finish,
+    CLOSE_DURATION+80
+  );
+}
+
 function animateClose(state){
   const {element,config}=state;
+
+  if(element.id==="monthPicker"){
+    animateMonthClose(state);
+    return;
+  }
 
   setDistance(
     state,

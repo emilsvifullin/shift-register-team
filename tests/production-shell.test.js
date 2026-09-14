@@ -185,38 +185,3 @@ test(
   }
 );
 
-test(
-  "service worker serves versioned static assets from cache first",
-  async()=>{
-    const [sw,config]=
-      await Promise.all([
-        read("sw.js"),
-        read("src/config.js")
-      ]);
-
-    const appVersion=
-      appVersionFromConfig(config);
-
-    assert.ok(
-      sw.includes(
-        `"sr-team-runtime-v${appVersion}"`
-      ),
-      "service worker cache must follow APP_VERSION"
-    );
-
-    assert.match(
-      sw,
-      /"\.\/styles\/refinement\.css"/
-    );
-
-    assert.match(
-      sw,
-      /async function cacheFirst/
-    );
-
-    assert.match(
-      sw,
-      /ASSET_PATHS\.has\(url\.pathname\)[\s\S]*?cacheFirst\(request\)/
-    );
-  }
-);

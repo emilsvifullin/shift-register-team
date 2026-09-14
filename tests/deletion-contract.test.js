@@ -37,11 +37,11 @@ test("employee deletion cascades payout rows without weakening shift history pro
 });
 
 test("point deletion is admin-only and refuses points with shift history",async()=>{
-  const [migration,pointsApi,navigation]=
+  const [migration,pointsApi,app]=
     await Promise.all([
       read(migrationPath),
       read("src/api/points.js"),
-      read("src/management-navigation.js")
+      read("src/app.js")
     ]);
 
   assert.match(
@@ -66,17 +66,25 @@ test("point deletion is admin-only and refuses points with shift history",async(
     /export async function deleteAdminPoint[\s\S]*?"admin_delete_point"/
   );
 
+  /*
+    Удаление живёт в самом редакторе ПВЗ: подтверждение, вызов API и
+    ошибка показываются одним владельцем экрана.
+  */
   assert.match(
-    navigation,
-    /POINT_DELETE_BUTTON_ID="managePointDelete"/
+    app,
+    /id="managePointDelete"/
   );
   assert.match(
-    navigation,
-    /selectedPointId[\s\S]*?pointEditorOpen\(\)[\s\S]*?pointEditing\(\)/
+    app,
+    /async function deleteManagedPoint\(\)/
   );
   assert.match(
-    navigation,
-    /await deleteAdminPoint\([\s\S]*?pointId[\s\S]*?\)/
+    app,
+    /await deleteAdminPoint\(point\.id\)/
+  );
+  assert.match(
+    app,
+    /point_has_history/
   );
 });
 

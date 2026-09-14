@@ -44,6 +44,7 @@ import {
 import {
   addAdminTariff,
   deleteAdminPayout,
+  deleteAdminPoint,
   deleteAdminTariff,
   deleteAdminEmployee,
   deleteAdminShift,
@@ -73,8 +74,8 @@ import {
 } from "./team-domain.js";
 
 import {
-  initEmployeeUi
-} from "./employee-ui.js";
+  initManageSwipe
+} from "./manage-swipe.js";
 
 import {
   positionAppPicker,
@@ -84,6 +85,37 @@ import {
 import {
   installInputBehavior
 } from "./ui/input-behavior.js";
+
+import {
+  patchChildren
+} from "./render/dom-patch.js";
+
+import {
+  createDeferredRender,
+  whenAnimationsSettle
+} from "./render/schedule.js";
+
+import {
+  installPwa
+} from "./pwa.js";
+
+import {
+  formatAmount,
+  formatMoney,
+  formatNumber,
+  plural
+} from "./format.js";
+
+import {
+  pointEmployeeSummary,
+  pointTariffSummary
+} from "./point-summary.js";
+
+import {
+  assertCurrentTariffDate,
+  assertNewTariffDate,
+  tariffIntentHelp
+} from "./tariff-rules.js";
 
 import {
   employeeSearchText,
@@ -228,21 +260,43 @@ function availableTabs(){
     : BASE_TABS;
 }
 
-function renderWhenReady(){
-  if(
+/*
+  Перерисовка откладывается, пока идёт переход между вкладками, месяцами
+  или разделами управления: иначе экран меняется под запущенной анимацией.
+  Ожидание одно, идёт по кадрам и ограничено сверху — см. render/schedule.js.
+*/
+function transitionsRunning(){
+  return (
     tabTransitionRunning ||
     monthTransitionRunning ||
     manageTransitionRunning
-  ){
-    window.setTimeout(
-      renderWhenReady,
-      60
-    );
+  );
+}
 
-    return;
+const renderWhenReady=createDeferredRender({
+  shouldDefer:transitionsRunning,
+  render:()=>render()
+});
+
+/*
+  Навигация во время идущего перехода раньше молча игнорировалась:
+  быстрый повторный тап по вкладке, месяцу или кнопке «назад» просто
+  пропадал. Последнее намерение запоминается и выполняется, как только
+  анимация завершится.
+*/
+let pendingNavigation=null;
+
+function queueNavigation(run){
+  pendingNavigation=run;
+}
+
+function runPendingNavigation(){
+  const next=pendingNavigation;
+  pendingNavigation=null;
+
+  if(next && !transitionsRunning()){
+    next();
   }
-
-  render();
 }
 
 async function refreshTeamData({
@@ -440,6 +494,8 @@ function sanitizeUIState(value){
   };
 }
 
+let lastSavedUIState="";
+
 function saveUIState(){
   try{
     if(
@@ -456,7 +512,7 @@ function saveUIState(){
       document.body.classList.contains("sheet-open")
     );
 
-    safeSessionSet(UI_KEY,JSON.stringify({
+    const serialized=JSON.stringify({
       tab,
       cursor,
       scrollY:pageScrollTop(),
@@ -464,7 +520,18 @@ function saveUIState(){
       sheetScrollTop:sheetOpen && sheet ? sheet.scrollTop : 0,
       draft:sheetOpen ? draft : null,
       manageSection
-    }));
+    });
+
+    /*
+      Рендер вызывается на каждое нажатие клавиши в поиске, а запись в
+      sessionStorage синхронная. Повторять её без изменений незачем.
+    */
+    if(serialized===lastSavedUIState){
+      return;
+    }
+
+    lastSavedUIState=serialized;
+    safeSessionSet(UI_KEY,serialized);
   }catch{}
 }
 
@@ -502,11 +569,6 @@ function shiftMonth(ym,delta){
   return shifted;
 }
 
-function lastDayOfMonth(ym){
-  const [year,month]=ym.split("-").map(Number);
-  return new Date(year,month,0).getDate();
-}
-
 function localYMD(date=new Date()){
   return date.getFullYear()+"-"+
     String(date.getMonth()+1).padStart(2,"0")+"-"+
@@ -532,73 +594,38 @@ function dateLabel(ymd){
   return day+" "+MONTHS_G[month-1]+" "+year;
 }
 
-function nf(number){
-  return Math.round(number)
-    .toLocaleString("ru-RU")
-    .replace(/\s/g,"\u00A0");
-}
 
-function nfMoney(number){
-  const cents=
-    Math.round(
-      Number(number)*100
-    );
-
-  const value=
-    cents/100;
-
-  return value
-    .toLocaleString(
-      "ru-RU",
-      {
-        minimumFractionDigits:
-          Math.abs(cents)%100===0
-            ? 0
-            : 2,
-        maximumFractionDigits:2
-      }
-    )
-    .replace(/\s/g,"\u00A0");
-}
-
-function money(number){
-  return nfMoney(number)+"\u00A0₽";
-}
 function esc(value){
   return String(value??"").replace(/[&<>\"]/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[char]));
+}
+
+/*
+  Единственная точка, через которую разметка попадает в живой DOM.
+  Реконсилятор применяет её как правки, поэтому рендер не сбрасывает
+  фокус, каретку, прокрутку и не отбирает у пальца нажатый элемент.
+*/
+function setHTML(element,html){
+  if(element){
+    patchChildren(element,html);
+  }
 }
 
 function hoursWord(hours){
   return Number(hours)+" ч";
 }
 
-function shiftsWord(n){
-  const last=n%10,lastTwo=n%100;
-  if(last===1 && lastTwo!==11) return n+" смена";
-  if(last>=2 && last<=4 && (lastTwo<10 || lastTwo>=20)) return n+" смены";
-  return n+" смен";
-}
+const nf=formatNumber;
+const nfMoney=formatAmount;
+const money=formatMoney;
 
-function shiftsAccWord(n){
-  const last=n%10,lastTwo=n%100;
-  if(last===1 && lastTwo!==11) return n+" смену";
-  if(last>=2 && last<=4 && (lastTwo<10 || lastTwo>=20)) return n+" смены";
-  return n+" смен";
-}
+const shiftsWord=n=>plural(n,["смена","смены","смен"]);
+const shiftsAccWord=n=>plural(n,["смену","смены","смен"]);
+const partialShortWord=n=>plural(n,["неполная","неполные","неполных"]);
 
-function partialShortWord(n){
-  const last=n%10,lastTwo=n%100;
-  if(last===1 && lastTwo!==11) return n+" неполная";
-  if(last>=2 && last<=4 && (lastTwo<10 || lastTwo>=20)) return n+" неполные";
-  return n+" неполных";
-}
-
-function extraPartialShortWord(n){
-  const last=n%10,lastTwo=n%100;
-  if(last===1 && lastTwo!==11) return n+" доп. неполная";
-  if(last>=2 && last<=4 && (lastTwo<10 || lastTwo>=20)) return n+" доп. неполные";
-  return n+" доп. неполных";
-}
+const extraPartialShortWord=n=>plural(
+  n,
+  ["доп. неполная","доп. неполные","доп. неполных"]
+);
 
 function calc(shift){return domainCalc(shift);}
 function inMonth(
@@ -716,6 +743,14 @@ function toast(message,duration=2200){
   element.classList.add("on");
   toastTimer=setTimeout(()=>element.classList.remove("on"),duration);
 }
+
+document
+  .getElementById("manageBack")
+  .addEventListener("click",()=>{
+    if(isAdmin && tab==="manage"){
+      changeManageSection("home",-1);
+    }
+  });
 
 document.getElementById("appConfirmCancel").addEventListener("click",()=>closeAppConfirm(false));
 document.getElementById("appConfirmOk").addEventListener("click",()=>closeAppConfirm(true));
@@ -940,12 +975,7 @@ syncChannel?.addEventListener("message",event=>{
 /* ========== экраны ========== */
 const app = document.getElementById("app");
 
-const employeeUi=
-  initEmployeeUi({
-    app,
-    employeeSheet:
-      employeeSheetElement
-  });
+initManageSwipe({app});
 
 function render(){
   saveUIState();
@@ -984,12 +1014,34 @@ function render(){
     !monthTab ||
     cursor===`${MAX_YEAR}-12`;
 
+  /*
+    В подразделе управления шапка показывает «назад» вместо стрелки
+    месяца — в том же слоте, поэтому заголовок остаётся по центру.
+  */
+  const manageDetail=
+    isAdmin &&
+    tab==="manage" &&
+    manageSection!=="home";
+
+  if(manageDetail){
+    document.body.dataset.manageDetail="true";
+  }else{
+    delete document.body.dataset.manageDetail;
+  }
+
+  document.getElementById(
+    "manageBack"
+  ).hidden=!manageDetail;
+
   document.querySelectorAll("#prevM,#nextM").forEach(button=>{
     button.classList.toggle(
       "is-hidden",
       !monthTab
     );
   });
+
+  document.getElementById("prevM").hidden=
+    manageDetail;
 
   const manageTab=
     document.getElementById(
@@ -1037,14 +1089,16 @@ function render(){
     tab==="shifts"
   );
 
-  app.innerHTML=
+  setHTML(
+    app,
     tab==="shifts"
       ? viewShifts()
       : tab==="stats"
         ? viewStats()
         : tab==="manage"
           ? viewManage()
-          : viewData();
+          : viewData()
+  );
 
   requestAnimationFrame(
     fitShiftWindow
@@ -1332,6 +1386,7 @@ function shiftListAreaHTML(){
       <button
         type="button"
         class="sh"
+        data-key="shift-${esc(shift.id)}"
         data-edit="${esc(shift.id)}"
         aria-label="${esc(dateLabel(shift.date))}, ${esc(shift.point)}, ${money(result.total)}"
       >
@@ -1361,7 +1416,7 @@ function updateShiftList(){
   const area=document.getElementById("shiftListArea");
   if(!area) return;
 
-  area.innerHTML=shiftListAreaHTML();
+  setHTML(area,shiftListAreaHTML());
 
   requestAnimationFrame(
     fitShiftWindow
@@ -2298,53 +2353,6 @@ function viewData(){
   `;
 }
 
-function manageBackButton(
-  id="manageBack",
-  label="Управление"
-){
-  return `
-    <button
-      type="button"
-      class="manage-back"
-      id="${id}"
-    >
-      <svg
-        viewBox="0 0 12 16"
-        aria-hidden="true"
-      >
-        <path d="M9 3L3 8L9 13"></path>
-      </svg>
-
-      <span>${esc(label)}</span>
-    </button>
-  `;
-}
-
-function viewManageSection(
-  title,
-  detail
-){
-  return `
-    ${manageBackButton()}
-
-    <div class="ml">
-      ${esc(title)}
-    </div>
-
-    <div class="card">
-      <div class="manage-placeholder">
-        <div class="manage-placeholder-title">
-          ${esc(title)}
-        </div>
-
-        <div class="manage-placeholder-detail">
-          ${esc(detail)}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
 function employeePointIds(
   employeeId
 ){
@@ -2565,6 +2573,7 @@ function employeeRowHTML(
     <button
       type="button"
       class="manage-row employee-row"
+      data-key="employee-${esc(employee.id)}"
       data-employee-id="${esc(employee.id)}"
     >
       <span class="manage-row-copy">
@@ -2670,8 +2679,7 @@ function updateEmployeeList(){
     return;
   }
 
-  list.innerHTML=
-    employeeListHTML();
+  setHTML(list,employeeListHTML());
 }
 
 function employeeFilterLabel(){
@@ -2701,9 +2709,7 @@ function employeeFilterLabel(){
 function viewEmployees(){
   if(teamDataLoading && !teamDataLoaded){
     return `
-      ${manageBackButton()}
-
-      <div class="ml">
+        <div class="ml">
         Сотрудники
       </div>
 
@@ -2717,9 +2723,7 @@ function viewEmployees(){
 
   if(teamDataError && !teamDataLoaded){
     return `
-      ${manageBackButton()}
-
-      <div class="ml">
+        <div class="ml">
         Сотрудники
       </div>
 
@@ -2746,8 +2750,6 @@ function viewEmployees(){
   }
 
   return `
-    ${manageBackButton()}
-
     <div class="ml">
       Сотрудники
     </div>
@@ -2851,7 +2853,9 @@ function drawShiftFilterSheet(){
   const pointItems=orderedTeamPoints()
     .map(point=>({id:point.id,name:point.name}));
   const employeeItems=teamData.employees.map(employee=>({id:employee.id,name:employee.full_name}));
-  document.getElementById("shiftFilterSheetBody").innerHTML=`
+  setHTML(
+    document.getElementById("shiftFilterSheetBody"),
+    `
     <div class="ml">Период месяца</div>
     <div class="card segbox"><div class="seg shift-period-seg">
       <button type="button" data-shift-period="all" class="${shiftFilterDraft.period==="all" ? "on" : ""}">Весь</button>
@@ -2877,7 +2881,8 @@ function drawShiftFilterSheet(){
     ` : ""}
     <button type="button" class="btn" id="shiftFilterReset">Сбросить фильтр</button>
     <div class="sheet-spacer" aria-hidden="true"></div>
-  `;
+  `
+  );
 }
 
 function openShiftFilterSheet(){
@@ -2984,11 +2989,9 @@ function drawEmployeeFilterSheet(){
       })
       .join("");
 
-  document
-    .getElementById(
-      "employeeFilterSheetBody"
-    )
-    .innerHTML=`
+  setHTML(
+    document .getElementById( "employeeFilterSheetBody" ),
+    `
       <div class="ml">
         Пункт выдачи
       </div>
@@ -3009,7 +3012,8 @@ function drawEmployeeFilterSheet(){
         class="sheet-spacer"
         aria-hidden="true"
       ></div>
-    `;
+    `
+  );
 }
 
 function openEmployeeFilterSheet(){
@@ -3271,6 +3275,73 @@ function nextTariffEffectiveFrom(pointId){
   return value;
 }
 
+/*
+  Открытие редактора тарифа. Намерение фиксируется в черновике, а не
+  вычитывается потом из текста кнопок: сохранение по нему выбирает,
+  изменить текущую запись или создать следующую версию.
+*/
+function openTariffEditor(intent,tariff=null){
+  if(!manageEditorDraft?.point){
+    return;
+  }
+
+  const source=tariff ||
+    (
+      intent==="edit-current"
+        ? tariffForDate(
+            teamData.tariffs,
+            manageEditorDraft.point.id,
+            localYMD()
+          )
+        : null
+    );
+
+  if(intent==="edit-current" && !source){
+    toast("Текущий тариф не найден");
+    return;
+  }
+
+  const shape=source ||
+    tariffForDate(
+      teamData.tariffs,
+      manageEditorDraft.point.id,
+      localYMD()
+    );
+
+  manageEditorDraft.tariffOpen=true;
+  manageEditorDraft.tariffIntent=intent;
+  manageEditorDraft.tariffInlineEditId=
+    intent==="create"
+      ? null
+      : source?.id || null;
+  manageEditorDraft.pricingType=
+    shape?.pricing_type || "fixed";
+  manageEditorDraft.fixedRate=
+    shape?.fixed_rate || 3000;
+  manageEditorDraft.tiers=
+    shape?.shk_tiers
+      ? shape.shk_tiers.map(
+          tier=>({...tier})
+        )
+      : defaultTariffTiers();
+  manageEditorDraft.effectiveFrom=
+    intent==="create"
+      ? nextTariffEffectiveFrom(
+          manageEditorDraft.point.id
+        )
+      : source.effective_from;
+}
+
+function closeTariffEditor(){
+  if(!manageEditorDraft){
+    return;
+  }
+
+  manageEditorDraft.tariffOpen=false;
+  manageEditorDraft.tariffIntent="create";
+  manageEditorDraft.tariffInlineEditId=null;
+}
+
 function tariffHistoryItemHTML(
   tariff,
   {
@@ -3423,6 +3494,15 @@ function pointInformationHTML(
     <div class="ml">Текущий тариф</div>
     ${tariffCardHTML(current)}
     ${pointTariffHistoryHTML(point.id,current)}
+
+    <button
+      type="button"
+      class="btn warn manage-point-delete"
+      id="managePointDelete"
+    >
+      Удалить ПВЗ
+    </button>
+
     <div class="sheet-spacer" aria-hidden="true"></div>
   `;
 }
@@ -3430,9 +3510,7 @@ function pointInformationHTML(
 function viewPoints(){
   if(teamDataLoading && !teamDataLoaded){
     return `
-      ${manageBackButton()}
-
-      <div class="ml">
+        <div class="ml">
         Пункты выдачи и тарифы
       </div>
 
@@ -3446,9 +3524,7 @@ function viewPoints(){
 
   if(teamDataError && !teamDataLoaded){
     return `
-      ${manageBackButton()}
-
-      <div class="ml">
+        <div class="ml">
         Пункты выдачи и тарифы
       </div>
 
@@ -3475,8 +3551,6 @@ function viewPoints(){
   }
 
   return `
-    ${manageBackButton()}
-
     <div class="ml">
       Пункты выдачи и тарифы
     </div>
@@ -3618,11 +3692,33 @@ function pointManageListHTML(){
           <button
             type="button"
             class="manage-row point-manage-row"
+            data-key="point-${esc(point.id)}"
             data-point-id="${esc(point.id)}"
           >
             <span class="manage-row-copy">
               <span class="manage-row-title">
                 ${esc(point.name)}
+              </span>
+              <span class="manage-row-detail">
+                ${esc(
+                  pointEmployeeSummary(
+                    point.id,
+                    teamData.employees,
+                    teamData.employeePoints
+                  )
+                )}
+              </span>
+              <span class="manage-row-detail">
+                ${esc(
+                  pointTariffSummary(
+                    point,
+                    tariffForDate(
+                      teamData.tariffs,
+                      point.id,
+                      localYMD()
+                    )
+                  )
+                )}
               </span>
             </span>
             <span class="manage-chevron" aria-hidden="true">
@@ -3660,7 +3756,7 @@ function updatePointManageList(){
   const list=document.getElementById("pointManageList");
 
   if(list){
-    list.innerHTML=pointManageListHTML();
+    setHTML(list,pointManageListHTML());
   }
 }
 
@@ -3836,11 +3932,13 @@ function drawManageEditor(){
       !manageEditorDraft.isNew &&
       !manageEditorDraft.editing
     ){
-      body.innerHTML=
+      setHTML(
+        body,
         pointInformationHTML(
           manageEditorDraft.point,
           current
-        );
+        )
+      );
       return;
     }
 
@@ -3863,22 +3961,55 @@ function drawManageEditor(){
                 <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
               </div></div>
               ${tariffDraftFields()}
-              <div class="employee-help">
-                После сохранения предыдущие тарифы и исторические смены не изменятся.
+              <div class="tariff-editor-help">
+                ${esc(
+                  tariffIntentHelp(
+                    manageEditorDraft.tariffIntent
+                  )
+                )}
               </div>
             </div>
-          ` : tariffCardHTML(current)}
 
-          <button
-            type="button"
-            class="btn tariff-change-button"
-            id="manageTariffAdd"
-          >
-            ${manageEditorDraft.tariffOpen ? "Отменить" : "Изменить тариф"}
-          </button>
+            <button
+              type="button"
+              class="btn tariff-change-button"
+              id="manageTariffCancel"
+            >
+              Отменить
+            </button>
+          ` : `
+            ${tariffCardHTML(current)}
+
+            ${current ? `
+              <button
+                type="button"
+                class="btn tariff-change-button"
+                data-tariff-intent="edit-current"
+              >
+                Изменить текущий тариф
+              </button>
+            ` : ""}
+
+            <button
+              type="button"
+              class="btn tariff-change-button"
+              data-tariff-intent="create"
+            >
+              ${current ? "Новый тариф с даты" : "Задать тариф"}
+            </button>
+
+            ${current ? `
+              <div class="tariff-editor-help">
+                Изменение текущего тарифа не создаёт новую запись.
+                Новый тариф с даты сохраняет предыдущий в истории.
+              </div>
+            ` : ""}
+          `}
         `;
 
-    body.innerHTML=`
+    setHTML(
+      body,
+      `
       <div class="ml">Пункт выдачи</div>
       <div class="card employee-editor">
         <label class="row">
@@ -3901,7 +4032,8 @@ function drawManageEditor(){
 
       ${tariffSection}
       <div class="sheet-spacer" aria-hidden="true"></div>
-    `;
+    `
+    );
     return;
   }
 }
@@ -3971,6 +4103,7 @@ function openManageEditor(kind,id=null){
         active:point.active!==false,
         advanceEnabled:point.advance_enabled===true,
         tariffOpen:false,
+        tariffIntent:"create",
         tariffInlineEditId:null,
         pricingType:
           current?.pricing_type ||
@@ -3998,6 +4131,7 @@ function openManageEditor(kind,id=null){
         active:true,
         advanceEnabled:false,
         tariffOpen:true,
+        tariffIntent:"create",
         tariffInlineEditId:null,
         pricingType:"fixed",
         fixedRate:3000,
@@ -4086,9 +4220,14 @@ async function saveManageEditor(){
   readManageEditor();
 
   let tiers=null;
-  const tariffAdded=
+  const tariffSaved=
     !manageEditorDraft.isNew &&
     manageEditorDraft.tariffOpen;
+
+  const tariffEdited=
+    tariffSaved &&
+    manageEditorDraft.tariffIntent===
+      "edit-current";
 
   try{
     if(
@@ -4164,18 +4303,33 @@ async function saveManageEditor(){
 
     if(
       !manageEditorDraft.isNew &&
-      manageEditorDraft.tariffOpen &&
-      pointTariffs(
-        manageEditorDraft.point.id
-      ).some(
-        tariff=>
-          tariff.effective_from===
-          manageEditorDraft.effectiveFrom
-      )
+      manageEditorDraft.tariffOpen
     ){
-      throw new Error(
-        "На эту дату тариф уже задан. Выберите другую дату."
+      const tariffs=pointTariffs(
+        manageEditorDraft.point.id
       );
+
+      if(
+        manageEditorDraft.tariffIntent===
+        "edit-current"
+      ){
+        assertCurrentTariffDate({
+          tariffs,
+          tariffId:
+            manageEditorDraft
+              .tariffInlineEditId,
+          effectiveFrom:
+            manageEditorDraft.effectiveFrom,
+          today:localYMD()
+        });
+      }else{
+        assertNewTariffDate({
+          tariffs,
+          effectiveFrom:
+            manageEditorDraft.effectiveFrom,
+          today:localYMD()
+        });
+      }
     }
 
     manageEditorSaving=true;
@@ -4217,8 +4371,7 @@ async function saveManageEditor(){
       !manageEditorDraft.isNew &&
       manageEditorDraft.tariffOpen
     ){
-      await addAdminTariff({
-        pointId:manageEditorDraft.point.id,
+      const payload={
         effectiveFrom:manageEditorDraft.effectiveFrom,
         pricingType:manageEditorDraft.pricingType,
         fixedRate:manageEditorDraft.pricingType==="fixed"
@@ -4227,15 +4380,33 @@ async function saveManageEditor(){
         shkTiers:manageEditorDraft.pricingType==="shk_tiers"
           ? tiers
           : null
-      });
+      };
+
+      if(
+        manageEditorDraft.tariffIntent===
+        "edit-current"
+      ){
+        await updateAdminTariff({
+          id:manageEditorDraft
+            .tariffInlineEditId,
+          ...payload
+        });
+      }else{
+        await addAdminTariff({
+          pointId:manageEditorDraft.point.id,
+          ...payload
+        });
+      }
     }
 
     closeManageEditor();
     await refreshTeamData();
     toast(
-      tariffAdded
-        ? "ПВЗ и новый тариф сохранены"
-        : "ПВЗ сохранён"
+      tariffEdited
+        ? "ПВЗ и текущий тариф сохранены"
+        : tariffSaved
+          ? "ПВЗ и новый тариф сохранены"
+          : "ПВЗ сохранён"
     );
   }catch(error){
     toast(
@@ -4359,8 +4530,7 @@ async function saveInlineTariff(){
           point.id===
           manageEditorDraft.id
       ) || manageEditorDraft.point;
-    manageEditorDraft.tariffInlineEditId=null;
-    manageEditorDraft.tariffOpen=false;
+    closeTariffEditor();
     drawManageEditor();
     toast("Тариф изменён");
   }catch(error){
@@ -4394,8 +4564,7 @@ async function removeHistoricalTariff(id){
     await refreshTeamData({
       renderAfter:false
     });
-    manageEditorDraft.tariffInlineEditId=null;
-    manageEditorDraft.tariffOpen=false;
+    closeTariffEditor();
     drawManageEditor();
     toast("Тариф удалён");
   }catch(error){
@@ -4406,6 +4575,67 @@ async function removeHistoricalTariff(id){
       4400
     );
   }
+}
+
+async function deleteManagedPoint(){
+  const point=manageEditorDraft?.point;
+
+  if(!point || manageEditorSaving){
+    return;
+  }
+
+  if(
+    !await appConfirm(
+      "Удалить ПВЗ?",
+      {
+        detail:"ПВЗ будет удалён вместе с назначениями сотрудников и историей тарифов. Если по нему есть смены, используйте архив.",
+        okText:"Удалить",
+        danger:true
+      }
+    )
+  ){
+    return;
+  }
+
+  manageEditorSaving=true;
+
+  try{
+    await deleteAdminPoint(point.id);
+    closeManageEditor();
+    await refreshTeamData();
+    toast("ПВЗ удалён");
+  }catch(error){
+    toast(
+      pointDeleteError(error),
+      4400
+    );
+  }finally{
+    manageEditorSaving=false;
+  }
+}
+
+function pointDeleteError(error){
+  const message=
+    error instanceof Error
+      ? error.message
+      : String(error || "");
+
+  if(
+    message.includes("point_has_history") ||
+    message.includes("shifts_point_id_fkey")
+  ){
+    return "У ПВЗ есть история смен. Переведите его в архив.";
+  }
+
+  if(message.includes("point_not_found")){
+    return "ПВЗ больше не существует";
+  }
+
+  if(message.includes("forbidden")){
+    return "Недостаточно прав для удаления ПВЗ";
+  }
+
+  return message || "Не удалось удалить ПВЗ";
 }
 
 function drawEmployeeSheet(){
@@ -4427,19 +4657,24 @@ function drawEmployeeSheet(){
       );
 
     if(!employee){
-      body.innerHTML=`
+      setHTML(
+        body,
+        `
         <div class="card">
           <div class="employee-empty">
             Сотрудник не найден.
           </div>
         </div>
-      `;
+      `
+      );
 
       return;
     }
 
     if(isSystemSubstitute(employee)){
-      body.innerHTML=`
+      setHTML(
+        body,
+        `
         <div class="ml">
           Системная карточка
         </div>
@@ -4489,7 +4724,8 @@ function drawEmployeeSheet(){
           class="sheet-spacer"
           aria-hidden="true"
         ></div>
-      `;
+      `
+      );
 
       return;
     }
@@ -4527,7 +4763,9 @@ function drawEmployeeSheet(){
             </div>
           `;
 
-    body.innerHTML=`
+    setHTML(
+      body,
+      `
       <div class="ml">
         Сотрудник
       </div>
@@ -4639,7 +4877,8 @@ function drawEmployeeSheet(){
         class="sheet-spacer"
         aria-hidden="true"
       ></div>
-    `;
+    `
+    );
 
     return;
   }
@@ -4652,41 +4891,72 @@ function drawEmployeeSheet(){
       employeeDraft.pointIds
     );
 
-  const pointRows=
+  const availablePoints=
     orderedTeamPoints()
       .filter(
         point=>
-          point.active ||
+          point.active!==false ||
           selectedPoints.has(point.id)
-      )
-      .map(point=>{
-        const selected=
-          selectedPoints.has(
-            point.id
-          );
+      );
 
-        return `
-          <button
-            type="button"
-            class="employee-point ${selected ? "on" : ""}"
-            data-employee-point="${esc(point.id)}"
-          >
-            <span
-              class="employee-point-check"
-              aria-hidden="true"
+  /*
+    Архивный ПВЗ нельзя назначить заново, но уже существующее
+    назначение остаётся кликабельным, чтобы его можно было снять.
+  */
+  const pointRows=
+    availablePoints.length
+      ? availablePoints
+        .map(point=>{
+          const selected=
+            selectedPoints.has(
+              point.id
+            );
+
+          const archived=
+            point.active===false;
+
+          return `
+            <button
+              type="button"
+              class="employee-point ${selected ? "on" : ""} ${archived ? "employee-point-archived" : ""}"
+              data-key="employee-point-${esc(point.id)}"
+              data-employee-point="${esc(point.id)}"
+              aria-label="${esc(point.name)}, ${archived ? "в архиве" : "активен"}, ${selected ? "назначен" : "не назначен"}"
             >
-              ${selected ? "✓" : ""}
-            </span>
+              <span
+                class="employee-point-check"
+                aria-hidden="true"
+              >
+                ${selected ? "✓" : ""}
+              </span>
 
-            <span class="employee-point-name">
-              ${esc(point.name)}
-            </span>
-          </button>
-        `;
-      })
-      .join("");
+              <span class="employee-point-name">
+                ${esc(point.name)}
+              </span>
 
-  body.innerHTML=`
+              ${archived ? `
+                <span class="employee-point-state">
+                  В архиве
+                </span>
+              ` : ""}
+            </button>
+          `;
+        })
+        .join("")
+      : `
+        <div class="employee-points-empty" role="status">
+          <div class="employee-points-empty-title">
+            Пункты выдачи ещё не добавлены
+          </div>
+          <div class="employee-points-empty-detail">
+            Добавьте ПВЗ в разделе «Пункты выдачи и тарифы».
+          </div>
+        </div>
+      `;
+
+  setHTML(
+    body,
+    `
     <div class="ml">
       Сотрудник
     </div>
@@ -4895,7 +5165,8 @@ function drawEmployeeSheet(){
     <div class="card employee-points">
       ${pointRows}
     </div>
-  `;
+  `
+  );
 
 }
 
@@ -5180,25 +5451,24 @@ function animateManageView(
       "opacity"
     );
 
-    Promise.allSettled(
-      animations.map(
-        animation=>
-          animation.finished
-      )
-    ).finally(()=>{
-      animations.forEach(
-        animation=>
-          animation.cancel()
-      );
+    whenAnimationsSettle(
+      animations,
+      ()=>{
+        animations.forEach(
+          animation=>
+            animation.cancel()
+        );
 
-      oldApp.remove();
+        oldApp.remove();
 
-      app.style.removeProperty(
-        "opacity"
-      );
+        app.style.removeProperty(
+          "opacity"
+        );
 
-      manageTransitionRunning=false;
-    });
+        manageTransitionRunning=false;
+        runPendingNavigation();
+      }
+    );
   }catch{
     animations.forEach(
       animation=>
@@ -5212,6 +5482,7 @@ function animateManageView(
     );
 
     manageTransitionRunning=false;
+    runPendingNavigation();
   }
 }
 
@@ -6086,6 +6357,17 @@ function changeManageSection(
     return;
   }
 
+  if(transitionsRunning()){
+    queueNavigation(()=>
+      changeManageSection(
+        nextSection,
+        direction
+      )
+    );
+
+    return;
+  }
+
   animateManageView(
     ()=>{
       manageSection=
@@ -6152,17 +6434,6 @@ function defaultShiftDate(){
     "-"+
     String(day).padStart(2,"0")
   );
-}
-
-function assignedPointIds(
-  employeeId
-){
-  return teamData.employeePoints
-    .filter(item=>
-      item.employee_id===employeeId &&
-      item.active!==false
-    )
-    .map(item=>item.point_id);
 }
 
 function shiftEmployeeOptions(
@@ -6522,7 +6793,10 @@ function drawDatePicker(){
     `;
   }
 
-  document.getElementById("dateGrid").innerHTML=html;
+  setHTML(
+    document.getElementById("dateGrid"),
+    html
+  );
 }
 
 function drawDateJump(){
@@ -6532,7 +6806,8 @@ function drawDateJump(){
   document.getElementById("dateJumpPrevYear").disabled=dateJumpYear<=MIN_YEAR;
   document.getElementById("dateJumpNextYear").disabled=dateJumpYear>=MAX_YEAR;
 
-  document.getElementById("dateJumpMonths").innerHTML=
+  setHTML(
+    document.getElementById("dateJumpMonths"),
     MONTHS.map((month,index)=>{
       const ym=
         dateJumpYear+"-"+
@@ -6547,7 +6822,8 @@ function drawDateJump(){
           ${month}
         </button>
       `;
-    }).join("");
+    }).join("")
+  );
 }
 
 let dateCalendarTransitionRunning=false;
@@ -6762,24 +7038,23 @@ function changeDateCalendarMonth(
     )
   ];
 
-  Promise.allSettled(
-    animations.map(
-      animation=>animation.finished
-    )
-  ).finally(()=>{
-    animations.forEach(
-      animation=>animation.cancel()
-    );
+  whenAnimationsSettle(
+    animations,
+    ()=>{
+      animations.forEach(
+        animation=>animation.cancel()
+      );
 
-    oldGrid.remove();
-    oldTitle.remove();
+      oldGrid.remove();
+      oldTitle.remove();
 
-    grid.style.removeProperty(
-      "pointer-events"
-    );
+      grid.style.removeProperty(
+        "pointer-events"
+      );
 
-    dateCalendarTransitionRunning=false;
-  });
+      dateCalendarTransitionRunning=false;
+    }
+  );
 }
 
 function openDateJump(){
@@ -6956,7 +7231,8 @@ function drawChoicePickerOptions(){
       pointPickerSearchQuery
     );
 
-  list.innerHTML=
+  setHTML(
+    list,
     options.length
       ? options.map(option=>`
           <button
@@ -6977,7 +7253,8 @@ function drawChoicePickerOptions(){
           <div class="point-picker-empty">
             Ничего не найдено
           </div>
-        `;
+        `
+  );
 }
 
 function openChoicePicker({
@@ -7584,7 +7861,9 @@ function drawSheet(isEdit){
         item=>item.id===draft.employeeId
       );
 
-    document.getElementById("sheetBody").innerHTML=`
+    setHTML(
+      document.getElementById("sheetBody"),
+      `
       <div class="ml">Смена</div>
       <div class="card">
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Дата</div><div class="t">${esc(dateLabel(draft.date))}</div></div></div>
@@ -7604,7 +7883,8 @@ function drawSheet(isEdit){
       <div class="ml">Итого</div>
       <div class="calc">${calcHTML()}</div>
       <div class="sheet-spacer" aria-hidden="true"></div>
-    `;
+    `
+    );
     return;
   }
 
@@ -7616,7 +7896,9 @@ function drawSheet(isEdit){
           draft.employeeId
       );
 
-  document.getElementById("sheetBody").innerHTML=`
+  setHTML(
+    document.getElementById("sheetBody"),
+    `
     <div class="ml">Смена</div>
     <div class="card">
       <button type="button" class="row point-row" id="f-date-open">
@@ -7712,7 +7994,8 @@ function drawSheet(isEdit){
     <div class="ml">Расчёт</div>
     <div class="calc" id="calcBox">${calcHTML()}</div>
     ${isEdit?`<button type="button" class="btn warn" id="f-del">Удалить смену</button>`:""}
-    <div class="sheet-spacer" aria-hidden="true"></div>`;
+    <div class="sheet-spacer" aria-hidden="true"></div>`
+  );
 }
 
 function readForm(){
@@ -8017,7 +8300,9 @@ function drawMonthPicker(){
   document.getElementById("monthYearPrev").disabled=monthPickerYear<=MIN_YEAR;
   document.getElementById("monthYearNext").disabled=monthPickerYear>=MAX_YEAR;
 
-  grid.innerHTML=MONTHS.map(
+  setHTML(
+    grid,
+    MONTHS.map(
     (name,index)=>{
       const ym=
         monthPickerYear+"-"+
@@ -8036,7 +8321,8 @@ function drawMonthPicker(){
         </button>
       `;
     }
-  ).join("");
+  ).join("")
+  );
 }
 
 function openMonthPicker(){
@@ -8213,12 +8499,19 @@ function changeMonth(
   direction,
   {scrollTop=true}={}
 ){
-  if(
-    nextCursor===cursor ||
-    monthTransitionRunning ||
-    tabTransitionRunning ||
-    manageTransitionRunning
-  ){
+  if(nextCursor===cursor){
+    return;
+  }
+
+  if(transitionsRunning()){
+    queueNavigation(()=>
+      changeMonth(
+        nextCursor,
+        direction,
+        {scrollTop}
+      )
+    );
+
     return;
   }
 
@@ -8379,31 +8672,30 @@ function changeMonth(
       "opacity"
     );
 
-    Promise.allSettled(
-      animations.map(
-        animation=>
-          animation.finished
-      )
-    ).finally(()=>{
-      animations.forEach(
-        animation=>
-          animation.cancel()
-      );
+    whenAnimationsSettle(
+      animations,
+      ()=>{
+        animations.forEach(
+          animation=>
+            animation.cancel()
+        );
 
-      oldApp.remove();
-      oldPeriod.remove();
+        oldApp.remove();
+        oldPeriod.remove();
 
-      app.style.removeProperty(
-        "opacity"
-      );
+        app.style.removeProperty(
+          "opacity"
+        );
 
-      period.style.removeProperty(
-        "opacity"
-      );
+        period.style.removeProperty(
+          "opacity"
+        );
 
-      monthTransitionRunning=false;
-      flushPendingMonthWheel();
-    });
+        monthTransitionRunning=false;
+        flushPendingMonthWheel();
+        runPendingNavigation();
+      }
+    );
   }catch{
     animations.forEach(
       animation=>
@@ -8423,6 +8715,7 @@ function changeMonth(
 
     monthTransitionRunning=false;
     flushPendingMonthWheel();
+    runPendingNavigation();
   }
 }
 
@@ -8604,24 +8897,23 @@ function animatePickerYearChange({
       )
     ];
 
-    Promise.allSettled(
-      animations.map(
-        animation=>animation.finished
-      )
-    ).finally(()=>{
-      animations.forEach(
-        animation=>animation.cancel()
-      );
+    whenAnimationsSettle(
+      animations,
+      ()=>{
+        animations.forEach(
+          animation=>animation.cancel()
+        );
 
-      oldGrid?.remove();
-      oldLabel?.remove();
+        oldGrid?.remove();
+        oldLabel?.remove();
 
-      grid.style.removeProperty(
-        "pointer-events"
-      );
+        grid.style.removeProperty(
+          "pointer-events"
+        );
 
-      finish();
-    });
+        finish();
+      }
+    );
   }catch{
     animations.forEach(
       animation=>animation.cancel()
@@ -10513,11 +10805,11 @@ function changeTab(
     return;
   }
 
-  if(
-    tabTransitionRunning ||
-    monthTransitionRunning ||
-    manageTransitionRunning
-  ){
+  if(transitionsRunning()){
+    queueNavigation(()=>
+      changeTab(nextTab)
+    );
+
     return;
   }
 
@@ -10604,12 +10896,13 @@ function changeTab(
     tabTransitionRunning=false;
 
     finish();
+    runPendingNavigation();
     return;
   }
 
-  animation.finished
-    .catch(()=>{})
-    .finally(()=>{
+  whenAnimationsSettle(
+    [animation],
+    ()=>{
       animation.cancel();
 
       app.style.removeProperty(
@@ -10619,7 +10912,9 @@ function changeTab(
       tabTransitionRunning=false;
 
       finish();
-    });
+      runPendingNavigation();
+    }
+  );
 }
 
 ADMIN_TABS.forEach(name=>{
@@ -11192,21 +11487,10 @@ manageEditorSheetElement.addEventListener(
         return;
       }
 
-      manageEditorDraft.tariffInlineEditId=
-        tariff.id;
-      manageEditorDraft.tariffOpen=true;
-      manageEditorDraft.pricingType=
-        tariff.pricing_type;
-      manageEditorDraft.fixedRate=
-        tariff.fixed_rate || 3000;
-      manageEditorDraft.tiers=
-        tariff.shk_tiers
-          ? tariff.shk_tiers.map(
-              tier=>({...tier})
-            )
-          : defaultTariffTiers();
-      manageEditorDraft.effectiveFrom=
-        tariff.effective_from;
+      openTariffEditor(
+        "edit-version",
+        tariff
+      );
       drawManageEditor();
       return;
     }
@@ -11215,8 +11499,7 @@ manageEditorSheetElement.addEventListener(
       button.dataset.tariffEditCancel!==
       undefined
     ){
-      manageEditorDraft.tariffInlineEditId=null;
-      manageEditorDraft.tariffOpen=false;
+      closeTariffEditor();
       drawManageEditor();
       return;
     }
@@ -11236,43 +11519,26 @@ manageEditorSheetElement.addEventListener(
       return;
     }
 
+    if(button.id==="managePointDelete"){
+      void deleteManagedPoint();
+      return;
+    }
+
     if(button.id==="manageTariffDateOpen"){
       openDatePicker("tariff");
       return;
     }
 
-    if(button.id==="manageTariffAdd"){
-      manageEditorDraft.tariffOpen=
-        !manageEditorDraft.tariffOpen;
+    if(button.id==="manageTariffCancel"){
+      closeTariffEditor();
+      drawManageEditor();
+      return;
+    }
 
-      if(
-        manageEditorDraft.tariffOpen
-      ){
-        const current=
-          tariffForDate(
-            teamData.tariffs,
-            manageEditorDraft.point.id,
-            localYMD()
-          );
-
-        manageEditorDraft.pricingType=
-          current?.pricing_type ||
-          "fixed";
-        manageEditorDraft.fixedRate=
-          current?.fixed_rate ||
-          3000;
-        manageEditorDraft.tiers=
-          current?.shk_tiers
-            ? current.shk_tiers.map(
-                tier=>({...tier})
-              )
-            : defaultTariffTiers();
-        manageEditorDraft.effectiveFrom=
-          nextTariffEffectiveFrom(
-            manageEditorDraft.point.id
-          );
-      }
-
+    if(button.dataset.tariffIntent){
+      openTariffEditor(
+        button.dataset.tariffIntent
+      );
       drawManageEditor();
       return;
     }
@@ -12291,8 +12557,10 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
       );
 
     if(box){
-      box.innerHTML=
-        calcHTML();
+      setHTML(
+        box,
+        calcHTML()
+      );
     }
 
     saveUIState();
@@ -12608,19 +12876,6 @@ app.addEventListener("click",async event=>{
     return;
   }
 
-  if(
-    button.id==="manageBack" &&
-    isAdmin &&
-    tab==="manage"
-  ){
-    changeManageSection(
-      "home",
-      -1
-    );
-
-    return;
-  }
-
   if(button.id==="shiftAdd"){
     openSheet(null);
     return;
@@ -12843,56 +13098,32 @@ window.addEventListener(
   }
 );
 
-if("serviceWorker" in navigator){
-  window.addEventListener("load",async()=>{
-    try{
-      const registration=
-        await navigator.serviceWorker.register(
-          "./sw.js",
-          {
-            updateViaCache:"none"
-          }
-        );
-
-      /*
-        Проверяем только сам service worker.
-        CSS/JS при обычном открытии всё равно
-        берутся network-first.
-      */
-      await registration.update();
-    }catch(error){
-      console.error(
-        "Service worker не зарегистрирован:",
-        error
-      );
+document.addEventListener(
+  "visibilitychange",
+  ()=>{
+    if(document.visibilityState!=="visible"){
+      saveUIState();
     }
-  });
+  }
+);
 
-  document.addEventListener(
-    "visibilitychange",
-    async()=>{
-      if(
-        document.visibilityState!=="visible"
-      ){
-        saveUIState();
-        return;
-      }
-
-      try{
-        const registration=
-          await navigator.serviceWorker
-            .getRegistration();
-
-        await registration?.update();
-      }catch(error){
-        console.error(
-          "Не удалось проверить service worker:",
-          error
-        );
-      }
-    }
-  );
-}
+/*
+  Перезагрузка ради новой версии допустима только на «чистом» экране:
+  открытая модалка, незаписанный черновик или идущее сохранение
+  означают несохранённую работу пользователя.
+*/
+installPwa({
+  isReadyForUpdate:()=>
+    !activeModal() &&
+    !draft &&
+    !employeeDraft &&
+    !manageEditorDraft &&
+    !payoutEditor &&
+    !employeeSaving &&
+    !manageEditorSaving &&
+    !payoutSaving &&
+    !legacyMigrationRunning
+});
 
 let touchActiveState=null;
 let touchActiveReleaseTimer=null;

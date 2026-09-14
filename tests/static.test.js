@@ -252,87 +252,6 @@ test(
 );
 
 test(
-  "all service worker assets exist",
-  async()=>{
-    for(
-      const path of [
-        "index.html",
-        "login.html",
-        "styles.css",
-        "manifest.webmanifest",
-        "src/config.js",
-        "src/domain.js",
-        "src/storage.js",
-        "src/team.js",
-        "src/team-domain.js",
-        "src/phone.js",
-        "src/employee-ui.js",
-        "src/supabase.js",
-        "src/auth.js",
-        "src/frame-guard.js",
-        "src/login.js",
-        "src/app.js",
-        "icon-192.png",
-        "icon-512.png",
-        "icon-maskable-512.png"
-      ]
-    ){
-      await access(
-        new URL(
-          `../${path}`,
-          import.meta.url
-        )
-      );
-    }
-  }
-);
-
-test(
-  "service worker keeps the current update and network strategy",
-  async()=>{
-    const sw=
-      await read(
-        "sw.js"
-      );
-
-    assert.match(
-      sw,
-      /self\.skipWaiting\(\)/
-    );
-
-    assert.match(
-      sw,
-      /self\.clients\.claim\(\)/
-    );
-
-    assert.match(
-      sw,
-      /AbortController/
-    );
-
-    assert.match(
-      sw,
-      /\.\/src\/login\.js/
-    );
-
-    assert.match(
-      sw,
-      /\.\/src\/supabase\.js/
-    );
-
-    assert.match(
-      sw,
-      /\.\/src\/employee-ui\.js/
-    );
-
-    assert.match(
-      sw,
-      /SUPABASE_CDN_URL/
-    );
-  }
-);
-
-test(
   "Supabase REST, Auth and Edge Functions use proxy while Realtime stays direct",
   async()=>{
     const projectUrl=
@@ -1017,14 +936,28 @@ test(
       /\.point-manage-row\{[\s\S]*min-height:54px;/
     );
 
+    /*
+      Редактирование текущего тарифа и создание новой версии — два
+      разных намерения, зафиксированных в черновике редактора.
+    */
     assert.match(
       app,
-      /id="manageTariffAdd"/
+      /data-tariff-intent="edit-current"/
     );
 
-    assert.doesNotMatch(
+    assert.match(
       app,
-      /Новая версия тарифа/
+      /data-tariff-intent="create"/
+    );
+
+    assert.match(
+      app,
+      /tariffIntent:"create"/
+    );
+
+    assert.match(
+      app,
+      /tariffIntent===\s*"edit-current"/
     );
 
     assert.match(
@@ -1059,7 +992,7 @@ test(
 
     assert.match(
       app,
-      /Изменить тариф/
+      /Изменить текущий тариф/
     );
 
     assert.match(
@@ -1132,9 +1065,9 @@ test(
         "index.html"
       );
 
-    const employeeUi=
+    const manageSwipe=
       await read(
-        "src/employee-ui.js"
+        "src/manage-swipe.js"
       );
 
     const styles=
@@ -1193,14 +1126,9 @@ test(
       )
     );
 
-    assert.doesNotMatch(
-      employeeUi,
-      /function employeesManageView/
-    );
-
     assert.match(
-      employeeUi,
-      /function manageSubsectionView[\s\S]*"manageBack"/
+      manageSwipe,
+      /const inSubsection=\(\)=>Boolean\([\s\S]*"manageBack"/
     );
 
     assert.match(
@@ -1314,28 +1242,54 @@ test(
   }
 );
 
+/*
+  Экран рисует один владелец. Модули жестов и движения работают поверх
+  готового DOM и не имеют права ни читать данные сами, ни дорисовывать
+  разметку по наблюдателю за документом.
+*/
 test(
-  "employee UI exposes one explicit integration without duplicate state or requests",
+  "interaction modules never render or fetch behind the application",
   async()=>{
-    const employeeUi=
-      await read(
-        "src/employee-ui.js"
+    const modules=[
+      "src/manage-swipe.js",
+      "src/team-motion.js",
+      "src/swipe-close-guard.js",
+      "src/month-picker-swipe.js",
+      "src/reference-swipes.js",
+      "src/modal-motion.js",
+      "src/interactions.js"
+    ];
+
+    for(const file of modules){
+      const source=await read(file);
+
+      assert.doesNotMatch(
+        source,
+        /supabaseClient|supabase\.from\(|\.rpc\(/,
+        `${file} must not read data`
       );
 
-    assert.match(
-      employeeUi,
-      /export function initEmployeeUi\(/
-    );
+      assert.doesNotMatch(
+        source,
+        /innerHTML/,
+        `${file} must not render markup`
+      );
 
-    assert.doesNotMatch(
-      employeeUi,
-      /MutationObserver/
-    );
+      /*
+        modal-motion.js — единственное исключение: он следит за классом
+        documentElement, чтобы анимировать открытие модальных окон.
+        Разметку и данные он не трогает.
+      */
+      if(file==="src/modal-motion.js"){
+        continue;
+      }
 
-    assert.doesNotMatch(
-      employeeUi,
-      /supabaseClient|supabase\.from\(|client\.from\(/
-    );
+      assert.doesNotMatch(
+        source,
+        /MutationObserver/,
+        `${file} must not observe the document`
+      );
+    }
   }
 );
 

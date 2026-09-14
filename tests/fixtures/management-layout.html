@@ -11,23 +11,25 @@
 <link rel="stylesheet" href="../../styles/auth.css">
 <link rel="stylesheet" href="../../styles/platform.css">
 <link rel="stylesheet" href="../../styles/refinement.css">
+<link rel="stylesheet" href="../../styles/interaction-core.css">
+<link rel="stylesheet" href="../../styles/management.css">
+<link rel="stylesheet" href="../../styles/motion-reference.css">
+<link rel="stylesheet" href="../../styles/modal-motion-exact.css">
 <link rel="stylesheet" href="../../styles/interaction.css">
 </head>
-<body data-active-tab="manage">
+<body data-active-tab="manage" data-manage-detail="true">
 <header>
   <div class="nav">
-    <button class="is-hidden" aria-label="Назад"></button>
+    <button type="button" class="manage-back" id="manageBack" aria-label="Назад в управление">
+      <svg viewBox="0 0 12 16" aria-hidden="true"><path d="M9 3L3 8L9 13"></path></svg>
+    </button>
+    <button class="is-hidden" aria-label="Назад" hidden></button>
     <button type="button" class="period">УПРАВЛЕНИЕ</button>
     <button class="is-hidden" aria-label="Вперёд"></button>
   </div>
 </header>
 
 <main id="app" role="tabpanel">
-  <button type="button" class="manage-back" id="manageBack">
-    <svg viewBox="0 0 12 16" aria-hidden="true"><path d="M9 3L3 8L9 13"></path></svg>
-    <span>Управление</span>
-  </button>
-
   <div class="ml">Сотрудники</div>
   <button type="button" class="manage-add">＋ Добавить сотрудника</button>
   <button type="button" class="btn employee-archive-button">Архив</button>

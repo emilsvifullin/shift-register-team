@@ -1,125 +1,130 @@
-const CACHE_NAME=
-  "sr-team-runtime-v6.22.63";
+/*
+  Оболочка приложения кешируется целиком и по версиям.
 
-const INDEX_FILE=
-  "./index.html";
+  Правила, которые здесь важны:
+
+  1. Кеш версии либо собран полностью, либо установка проваливается.
+     Частично заполненный кеш раньше считался готовым, и приложение
+     оставалось офлайн с недостающими модулями.
+
+  2. Новая версия не подменяет ресурсы под работающей вкладкой.
+     Раньше `skipWaiting()` в install переключал контроллер сразу, и
+     модуль, догруженный по `import()` уже после переключения, приходил
+     из следующей сборки — в одной сессии жили два поколения кода.
+     Теперь момент переключения выбирает страница (src/pwa.js).
+*/
+
+const VERSION="7.0.0";
+
+const CACHE_NAME=`sr-team-runtime-v${VERSION}`;
+
+const INDEX_FILE="./index.html";
 
 const SUPABASE_CDN_URL=
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
-const ASSETS=[
+const DOCUMENTS=[
   "./",
   INDEX_FILE,
   "./login.html",
+  "./manifest.webmanifest"
+];
+
+const STYLES=[
   "./styles.css",
-  "./styles/platform.css",
   "./styles/accessibility.css",
   "./styles/motion.css",
   "./styles/workflow.css",
   "./styles/auth.css",
+  "./styles/platform.css",
   "./styles/refinement.css",
   "./styles/interaction-core.css",
   "./styles/management.css",
   "./styles/motion-reference.css",
   "./styles/modal-motion-exact.css",
-  "./styles/interaction.css",
-  "./src/ui/input-behavior.js",
-  "./manifest.webmanifest",
+  "./styles/interaction.css"
+];
+
+const SCRIPTS=[
+  "./src/frame-guard.js",
+  "./src/api/employees.js",
+  "./src/api/payouts.js",
+  "./src/api/points.js",
+  "./src/api/read.js",
+  "./src/api/realtime.js",
+  "./src/api/result.js",
+  "./src/api/shifts.js",
+  "./src/app.js",
+  "./src/auth.js",
   "./src/config.js",
   "./src/domain.js",
-  "./src/storage.js",
-  "./src/team.js",
-  "./src/api/result.js",
-  "./src/api/read.js",
-  "./src/api/employees.js",
-  "./src/api/realtime.js",
-  "./src/api/shifts.js",
-  "./src/api/points.js",
-  "./src/api/payouts.js",
-  "./src/team-domain.js",
-  "./src/workflow.js",
-  "./src/phone.js",
-  "./src/employee-ui.js",
-  "./src/picker-position.js",
-  "./src/platform-shell.js",
-  "./src/management-employee-points.js",
-  "./src/management-tap-intent.js",
-  "./src/management-navigation.js",
-  "./src/management-point-editor.js",
-  "./src/point-card-summaries.js",
-  "./src/reference-swipes.js",
-  "./src/team-motion.js",
+  "./src/format.js",
+  "./src/interactions.js",
+  "./src/login.js",
+  "./src/manage-swipe.js",
   "./src/modal-motion.js",
   "./src/month-picker-swipe.js",
-  "./src/swipe-close-guard.js",
+  "./src/phone.js",
+  "./src/picker-position.js",
+  "./src/platform-shell.js",
+  "./src/point-summary.js",
+  "./src/pwa.js",
+  "./src/reference-swipes.js",
+  "./src/render/dom-patch.js",
+  "./src/render/schedule.js",
+  "./src/storage.js",
   "./src/supabase.js",
-  "./src/auth.js",
-  "./src/frame-guard.js",
-  "./src/login.js",
-  "./src/app.js",
+  "./src/swipe-close-guard.js",
+  "./src/tariff-rules.js",
+  "./src/team-domain.js",
+  "./src/team-motion.js",
+  "./src/team.js",
+  "./src/ui/input-behavior.js",
+  "./src/workflow.js"
+];
+
+const ICONS=[
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"
 ];
 
-const REMOTE_ASSETS=[
-  SUPABASE_CDN_URL
+const ASSETS=[
+  ...DOCUMENTS,
+  ...STYLES,
+  ...SCRIPTS,
+  ...ICONS
 ];
 
-const ASSET_PATHS=
-  new Set(
-    ASSETS.map(path=>
-      new URL(
-        path,
-        self.registration.scope
-      ).pathname
-    )
-  );
-
-async function precache(
-  cache,
-  assets
-){
-  const results=
-    await Promise.allSettled(
-      assets.map(asset=>
-        cache.add(asset)
-      )
-    );
-
-  const failed=
-    results.filter(result=>
-      result.status==="rejected"
-    );
-
-  if(failed.length){
-    console.warn(
-      `Не удалось кешировать ${failed.length} ресурсов`
-    );
-  }
-}
+const ASSET_PATHS=new Set(
+  ASSETS.map(path=>
+    new URL(
+      path,
+      self.registration.scope
+    ).pathname
+  )
+);
 
 self.addEventListener(
   "install",
   event=>{
     event.waitUntil(
       (async()=>{
-        const cache=
-          await caches.open(
-            CACHE_NAME
-          );
+        const cache=await caches.open(CACHE_NAME);
 
-        await precache(
-          cache,
-          ASSETS
-        );
+        /*
+          addAll атомарен: если хотя бы один файл оболочки недоступен,
+          установка проваливается и продолжает работать прошлая версия.
+        */
+        await cache.addAll(ASSETS);
 
-        await precache(
-          cache,
-          REMOTE_ASSETS
-        );
-
-        await self.skipWaiting();
+        /*
+          Внешний CDN не должен ронять установку: без него приложение
+          всё равно стартует, а запрос повторится при первом обращении.
+        */
+        await cache
+          .add(SUPABASE_CDN_URL)
+          .catch(()=>{});
       })()
     );
   }
@@ -130,24 +135,15 @@ self.addEventListener(
   event=>{
     event.waitUntil(
       (async()=>{
-        const names=
-          await caches.keys();
+        const names=await caches.keys();
 
         await Promise.all(
           names
-            .filter(
-              name=>
-                name!==CACHE_NAME
+            .filter(name=>
+              name!==CACHE_NAME &&
+              name.startsWith("sr-team-")
             )
-            .filter(
-              name=>
-                name.startsWith(
-                  "sr-team-"
-                )
-            )
-            .map(name=>
-              caches.delete(name)
-            )
+            .map(name=>caches.delete(name))
         );
 
         await self.clients.claim();
@@ -156,18 +152,22 @@ self.addEventListener(
   }
 );
 
-function fetchWithTimeout(
-  request,
-  timeoutMs=5000
-){
-  const controller=
-    new AbortController();
+self.addEventListener(
+  "message",
+  event=>{
+    if(event.data?.type==="activate-update"){
+      void self.skipWaiting();
+    }
+  }
+);
 
-  const timer=
-    setTimeout(
-      ()=>controller.abort(),
-      timeoutMs
-    );
+function fetchWithTimeout(request,timeoutMs=5000){
+  const controller=new AbortController();
+
+  const timer=setTimeout(
+    ()=>controller.abort(),
+    timeoutMs
+  );
 
   return fetch(
     request,
@@ -175,36 +175,23 @@ function fetchWithTimeout(
       cache:"no-store",
       signal:controller.signal
     }
-  ).finally(
-    ()=>clearTimeout(timer)
-  );
+  ).finally(()=>clearTimeout(timer));
 }
 
-async function cacheFirst(
-  request
-){
-  const cache=
-    await caches.open(
-      CACHE_NAME
-    );
+async function cacheFirst(request){
+  const cache=await caches.open(CACHE_NAME);
 
-  const cached=
-    await cache.match(
-      request,
-      {
-        ignoreSearch:true
-      }
-    );
+  const cached=await cache.match(
+    request,
+    {ignoreSearch:true}
+  );
 
   if(cached){
     return cached;
   }
 
   try{
-    const response=
-      await fetchWithTimeout(
-        request
-      );
+    const response=await fetchWithTimeout(request);
 
     if(response.ok){
       await cache.put(
@@ -219,110 +206,55 @@ async function cacheFirst(
   }
 }
 
-async function navigationResponse(
-  request
-){
-  const cache=
-    await caches.open(
-      CACHE_NAME
-    );
+async function navigationResponse(request){
+  const cache=await caches.open(CACHE_NAME);
 
   try{
-    const response=
-      await fetchWithTimeout(
-        request
+    const response=await fetchWithTimeout(request);
+
+    if(
+      response.ok &&
+      (
+        response.headers.get("content-type") || ""
+      ).includes("text/html")
+    ){
+      await cache.put(
+        request,
+        response.clone()
       );
-
-    if(response.ok){
-      const contentType=
-        response.headers.get(
-          "content-type"
-        ) || "";
-
-      if(
-        contentType.includes(
-          "text/html"
-        )
-      ){
-        await cache.put(
-          request,
-          response.clone()
-        );
-      }
     }
 
     return response;
   }catch{
-    const cached=
-      await cache.match(
-        request,
-        {
-          ignoreSearch:true
-        }
-      );
+    const cached=await cache.match(
+      request,
+      {ignoreSearch:true}
+    );
 
     if(cached){
       return cached;
     }
 
-    const requestUrl=
-      new URL(request.url);
-
-    const scope=
-      new URL(
-        self.registration.scope
-      );
-
-    const indexUrl=
-      new URL(
-        INDEX_FILE,
-        scope
-      );
-
-    if(
-      requestUrl.pathname===
-        scope.pathname ||
-      requestUrl.pathname===
-        indexUrl.pathname
-    ){
-      return (
-        await cache.match(
-          INDEX_FILE
-        )
-      ) || Response.error();
-    }
-
-    return Response.error();
+    return (
+      await cache.match(INDEX_FILE)
+    ) || Response.error();
   }
 }
 
 self.addEventListener(
   "fetch",
   event=>{
-    const request=
-      event.request;
+    const request=event.request;
 
     if(request.method!=="GET"){
       return;
     }
 
-    const url=
-      new URL(request.url);
+    const url=new URL(request.url);
+    const scope=new URL(self.registration.scope);
 
-    const scope=
-      new URL(
-        self.registration.scope
-      );
-
-    if(
-      REMOTE_ASSETS.includes(
-        url.href
-      )
-    ){
-      event.respondWith(
-        cacheFirst(request)
-      );
-
+    if(url.href===SUPABASE_CDN_URL){
+      event.respondWith(cacheFirst(request));
       return;
     }
 
@@ -339,9 +271,7 @@ self.addEventListener(
     }
 
     if(ASSET_PATHS.has(url.pathname)){
-      event.respondWith(
-        cacheFirst(request)
-      );
+      event.respondWith(cacheFirst(request));
     }
   }
 );

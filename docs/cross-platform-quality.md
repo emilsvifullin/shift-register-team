@@ -14,9 +14,22 @@ The supported baseline is a responsive web/PWA experience across current Chromiu
 - The login screen must remain usable without horizontal overflow at mobile widths.
 - PWA manifest, maskable icon and service-worker shell remain reachable.
 
+## Required behavior, continued
+
+- A render triggered by a background refresh or a Realtime update must not
+  take focus, caret, scroll position or the pressed element away from the
+  person using the app.
+- A navigation gesture made during a running transition must eventually
+  happen, not disappear.
+- No transition may leave the interface blocked if its animation never
+  finishes — a backgrounded iOS tab pauses animations indefinitely.
+- A new service-worker version must not swap modules underneath a page
+  that is already running.
+
 ## Automated matrix
 
-GitHub Actions runs the complete Node quality suite on Node 22 and Node 24 and Playwright smoke tests on:
+GitHub Actions runs the complete Node quality suite on Node 22 and Node 24
+and the whole Playwright suite on:
 
 - Chromium
 - Firefox
@@ -24,4 +37,10 @@ GitHub Actions runs the complete Node quality suite on Node 22 and Node 24 and P
 - a 390×844 mobile viewport for routing/viewport behavior
 - a 1440×900 laptop viewport for desktop layout behavior
 
-Feature-specific regressions should add a focused test before the fix is merged.
+`e2e/app-shell.spec.mjs` opens every main screen of the real application in
+both viewports and fails on any page or console error, on horizontal
+overflow, or on a missing bottom dock.
+
+Feature-specific regressions should add a focused test before the fix is
+merged. For visual changes, capture `scripts/screenshots.mjs` before and
+after and attach the diff summary to the change.

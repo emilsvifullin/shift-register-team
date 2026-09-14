@@ -1,4 +1,3 @@
-const STYLE_ID="shift-register-modal-motion-style";
 const MOTION_PREFIX="shift-register-modal-";
 const closingVisibilityTimers=new WeakMap();
 
@@ -7,22 +6,6 @@ const reducedMotion=()=>Boolean(
     "(prefers-reduced-motion: reduce)"
   ).matches
 );
-
-function ensureReferenceStyles(){
-  if(document.getElementById(STYLE_ID)){
-    return;
-  }
-
-  const link=document.createElement("link");
-  link.id=STYLE_ID;
-  link.rel="stylesheet";
-  link.href=new URL(
-    "../styles/modal-motion-exact.css",
-    import.meta.url
-  ).href;
-
-  document.head.append(link);
-}
 
 function modalSpec(element){
   if(element.classList.contains("sheet")){
@@ -521,8 +504,6 @@ const observer=
       }
     }
   );
-
-ensureReferenceStyles();
 
 observer.observe(
   document.documentElement,

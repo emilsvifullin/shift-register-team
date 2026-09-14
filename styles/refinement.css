@@ -709,56 +709,11 @@ nav.tabs{
   border-radius:16px;
 }
 
-body[data-active-tab="manage"] main:has(> .manage-back){
+body[data-manage-detail="true"] main{
   padding-top:calc(72px + env(safe-area-inset-top));
 }
 
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-  position:fixed;
-  top:calc(14px + env(safe-area-inset-top));
-  left:max(
-    var(--ui-gutter),
-    calc(50vw - 310px + var(--ui-gutter))
-  );
-  z-index:22;
-
-  width:42px;
-  min-height:42px;
-  margin:0;
-  padding:0;
-
-  display:grid;
-  place-items:center;
-  gap:0;
-
-  border:0;
-  border-radius:0;
-  background:transparent;
-  color:var(--ink2);
-  box-shadow:none;
-
-  backdrop-filter:none;
-  -webkit-backdrop-filter:none;
-}
-
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back svg{
-  width:9px;
-  height:16px;
-}
-
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back span{
-  position:absolute;
-  width:1px;
-  height:1px;
-  padding:0;
-  margin:-1px;
-  overflow:hidden;
-  clip-path:inset(50%);
-  white-space:nowrap;
-  border:0;
-}
-
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back + .ml{
+body[data-manage-detail="true"] main > .ml:first-child{
   margin-top:8px;
 }
 
@@ -792,26 +747,8 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   -webkit-overflow-scrolling:touch;
 }
 
-@media (min-width:900px) and (hover:hover) and (pointer:fine){
-  body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-    left:max(
-      var(--ui-gutter),
-      calc(50vw - 480px + var(--ui-gutter))
-    );
-  }
-}
-
-@media (min-width:1280px) and (hover:hover) and (pointer:fine){
-  body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-    left:max(
-      var(--ui-gutter),
-      calc(50vw - 510px + var(--ui-gutter))
-    );
-  }
-}
-
 @media (max-width:420px){
-  body[data-active-tab="manage"] main:has(> .manage-back){
+  body[data-manage-detail="true"] main{
     padding-top:calc(68px + env(safe-area-inset-top));
   }
 }

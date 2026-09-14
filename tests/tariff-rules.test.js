@@ -5,17 +5,31 @@ import {
   assertCurrentTariffDate,
   assertNewTariffDate,
   currentTariffForDate,
-  dateLabelToYmd
-} from "../src/management-point-editor.js";
+  tariffIntentHelp
+} from "../src/tariff-rules.js";
 
-test("parses Russian tariff date labels",()=>{
-  assert.equal(
-    dateLabelToYmd("1 сентября 2026"),
-    "2026-09-01"
+test("the editor explains which tariff a save will touch",()=>{
+  assert.match(
+    tariffIntentHelp("edit-current"),
+    /не создаётся/i
   );
-  assert.equal(
-    dateLabelToYmd("31 февраля 2026"),
-    ""
+
+  assert.match(
+    tariffIntentHelp("create"),
+    /останется в истории/i
+  );
+});
+
+test("a tariff may not collide with an existing effective date",()=>{
+  assert.throws(()=>
+    assertNewTariffDate({
+      tariffs:[
+        {id:"current",effective_from:"2026-09-14"}
+      ],
+      effectiveFrom:"2026-09-14",
+      today:"2026-09-14"
+    }),
+    /уже задан/i
   );
 });
 

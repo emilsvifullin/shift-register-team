@@ -1,3 +1,14 @@
+/*
+  Классический скрипт, выполняемый до разметки: единственная его задача —
+  не дать странице работать внутри чужого фрейма.
+
+  Раньше этот же файл ещё и подставлял в <head> шесть модулей во время
+  работы, поэтому граф зависимостей приложения существовал только в
+  рантайме: его не видели ни modulepreload, ни service worker, ни тесты,
+  а порядок загрузки был недетерминированным. Теперь модули подключены
+  явно в index.html.
+*/
+
 if(globalThis.self!==globalThis.top){
   document.documentElement.style.display=
     "none";
@@ -7,59 +18,4 @@ if(globalThis.self!==globalThis.top){
       globalThis.self.location.href
     );
   }catch{}
-}else{
-  const source=
-    document.currentScript?.src;
-
-  if(source){
-    const loadModule=modulePath=>{
-      const script=
-        document.createElement("script");
-
-      script.type="module";
-      script.src=
-        new URL(
-          modulePath,
-          source
-        ).href;
-
-      document.head.append(script);
-    };
-
-    loadModule(
-      "./management-navigation.js"
-    );
-
-    loadModule(
-      "./team-motion.js"
-    );
-
-    loadModule(
-      "./modal-motion.js"
-    );
-
-    loadModule(
-      "./month-picker-swipe.js"
-    );
-
-    loadModule(
-      "./swipe-close-guard.js"
-    );
-
-    const loadReferenceSwipes=()=>{
-      loadModule(
-        "./reference-swipes.js"
-      );
-    };
-
-    if(document.readyState==="loading"){
-      document.addEventListener(
-        "DOMContentLoaded",
-        loadReferenceSwipes,
-        {once:true}
-      );
-    }else{
-      loadReferenceSwipes();
-    }
-  }
 }

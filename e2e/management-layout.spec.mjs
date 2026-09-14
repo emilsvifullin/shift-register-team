@@ -59,8 +59,8 @@ test("management back chevron stays aligned and employee rows use five-card rhyt
       (periodBox.y+periodBox.height/2)
     )
   ).toBeLessThanOrEqual(1);
-  expect(backBox.x).toBeGreaterThan(70);
-  expect(backBox.x+backBox.width).toBeLessThan(periodBox.x+periodBox.width/2);
+  expect(backBox.x).toBeGreaterThan(0);
+  expect(backBox.x+backBox.width).toBeLessThanOrEqual(periodBox.x+1);
   expect(Math.abs(labelBox.x-menuBox.x)).toBeLessThanOrEqual(8);
 
   expect(

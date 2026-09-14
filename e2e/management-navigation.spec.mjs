@@ -72,7 +72,7 @@ test("management tiles and header back work from the first user tap without poin
   await expect(headerBack).toBeDisabled();
 });
 
-test("management header back stays transparent and untransformed through the iOS touch state",async({page})=>{
+test("management header back stays visually neutral through the iOS touch state",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -100,7 +100,8 @@ test("management header back stays transparent and untransformed through the iOS
       boxShadow:style.boxShadow,
       transform:style.transform,
       outlineStyle:style.outlineStyle,
-      outlineWidth:style.outlineWidth
+      webkitTapHighlightColor:
+        style.webkitTapHighlightColor || ""
     };
   });
 
@@ -110,7 +111,9 @@ test("management header back stays transparent and untransformed through the iOS
   expect(touchStyle.boxShadow).toBe("none");
   expect(touchStyle.transform).toBe("none");
   expect(touchStyle.outlineStyle).toBe("none");
-  expect(touchStyle.outlineWidth).toBe("0px");
+  expect(touchStyle.webkitTapHighlightColor).toBe(
+    "rgba(0, 0, 0, 0)"
+  );
 
   await headerBack.evaluate(element=>
     element.classList.remove("touch-active")
@@ -134,6 +137,7 @@ test("management header back stays transparent and untransformed through the iOS
     return {
       backgroundColor:style.backgroundColor,
       transform:style.transform,
+      outlineStyle:style.outlineStyle,
       outlineWidth:style.outlineWidth
     };
   });
@@ -142,6 +146,7 @@ test("management header back stays transparent and untransformed through the iOS
     "rgba(0, 0, 0, 0)"
   );
   expect(keyboardFocus.transform).toBe("none");
+  expect(keyboardFocus.outlineStyle).not.toBe("none");
   expect(Number.parseFloat(keyboardFocus.outlineWidth))
     .toBeGreaterThan(0);
 });

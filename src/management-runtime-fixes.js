@@ -185,6 +185,53 @@ function install({
   installRuntimeStyle(documentRef);
   warmTariffCache();
 
+  const previous=
+    documentRef.getElementById("prevM");
+
+  const clearBackFocus=()=>{
+    if(
+      !previous ||
+      documentRef.activeElement!==previous ||
+      !shouldClearManagementBackFocus({
+        isProxy:
+          previous.dataset
+            .manageBackProxy==="true",
+        modality:lastInputModality
+      })
+    ){
+      return;
+    }
+
+    previous.classList.remove(
+      "touch-active"
+    );
+    previous.blur();
+  };
+
+  const queueBackFocusCleanup=()=>{
+    windowRef.requestAnimationFrame(
+      clearBackFocus
+    );
+  };
+
+  const backObserver=previous
+    ? new windowRef.MutationObserver(
+        queueBackFocusCleanup
+      )
+    : null;
+
+  backObserver?.observe(
+    previous,
+    {
+      attributes:true,
+      attributeFilter:[
+        "data-manage-back-proxy",
+        "class",
+        "disabled"
+      ]
+    }
+  );
+
   documentRef.addEventListener(
     "pointerdown",
     event=>{
@@ -227,32 +274,9 @@ function install({
   documentRef.addEventListener(
     "focusin",
     event=>{
-      const previous=
-        documentRef.getElementById("prevM");
-
-      if(
-        event.target!==previous ||
-        !shouldClearManagementBackFocus({
-          isProxy:
-            previous?.dataset
-              .manageBackProxy==="true",
-          modality:lastInputModality
-        })
-      ){
-        return;
+      if(event.target===previous){
+        queueBackFocusCleanup();
       }
-
-      windowRef.requestAnimationFrame(()=>{
-        if(
-          documentRef.activeElement===previous &&
-          lastInputModality!=="keyboard"
-        ){
-          previous.classList.remove(
-            "touch-active"
-          );
-          previous.blur();
-        }
-      });
     },
     true
   );
@@ -315,6 +339,10 @@ function install({
         loadTariffCache(),
         LOAD_TIMEOUT
       ).then(()=>{
+        if(!button.isConnected){
+          return;
+        }
+
         button.disabled=false;
         button.textContent=previousText;
 
@@ -325,8 +353,11 @@ function install({
 
         button.click();
       }).catch(error=>{
-        button.disabled=false;
-        button.textContent=previousText;
+        if(button.isConnected){
+          button.disabled=false;
+          button.textContent=previousText;
+        }
+
         notify(
           error instanceof Error
             ? error.message

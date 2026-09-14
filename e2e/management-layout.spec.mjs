@@ -9,9 +9,24 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management back chevron stays aligned and long employee lists use the space above the dock",async({page},testInfo)=>{
+test("management back chevron stays aligned and five employees fit above the dock",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
+
+  await page.locator("#employeeList > .manage-menu").evaluate(menu=>{
+    const substitution=document.createElement("button");
+    substitution.type="button";
+    substitution.className="manage-row employee-row";
+    substitution.innerHTML=`
+      <span class="manage-row-copy">
+        <span class="manage-row-title">Подмена</span>
+        <span class="manage-row-detail">Для смен на всех ПВЗ</span>
+        <span class="manage-row-detail">Без итогов и аккаунта</span>
+      </span>
+      <span class="manage-chevron">›</span>
+    `;
+    menu.prepend(substitution);
+  });
 
   const back=page.locator(".manage-back");
   const period=page.locator("header .period");
@@ -24,17 +39,18 @@ test("management back chevron stays aligned and long employee lists use the spac
   await expect(back).toBeVisible();
   await expect(menu).toBeVisible();
 
-  const [backBox,periodBox,labelBox,menuBox,firstRowBox,dockBox,tabsBox]=await Promise.all([
+  const [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthEmployeeBox,dockBox,tabsBox]=await Promise.all([
     back.boundingBox(),
     period.boundingBox(),
     sectionLabel.boundingBox(),
     menu.boundingBox(),
     rows.nth(0).boundingBox(),
+    rows.nth(5).boundingBox(),
     dock.boundingBox(),
     tabs.boundingBox()
   ]);
 
-  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,dockBox,tabsBox]){
+  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthEmployeeBox,dockBox,tabsBox]){
     expect(box).not.toBeNull();
   }
 
@@ -62,21 +78,26 @@ test("management back chevron stays aligned and long employee lists use the spac
 
   expect(backVisual.stroke).not.toBe("none");
   expect(Number(backVisual.opacity)).toBeGreaterThan(0);
-  expect(firstRowBox.height).toBeGreaterThanOrEqual(76);
+  expect(firstRowBox.height).toBeGreaterThanOrEqual(63);
+  expect(firstRowBox.height).toBeLessThanOrEqual(66);
 
   const menuBottom=menuBox.y+menuBox.height;
+  const fifthEmployeeBottom=fifthEmployeeBox.y+fifthEmployeeBox.height;
   const gap=dockBox.y-menuBottom;
 
+  expect(fifthEmployeeBottom).toBeLessThanOrEqual(menuBottom+1);
   expect(gap).toBeGreaterThanOrEqual(8);
   expect(gap).toBeLessThanOrEqual(32);
 
   const menuMetrics=await menu.evaluate(element=>({
     clientHeight:element.clientHeight,
     scrollHeight:element.scrollHeight,
+    scrollTop:element.scrollTop,
     radius:parseFloat(getComputedStyle(element).borderTopLeftRadius)
   }));
 
   expect(menuMetrics.scrollHeight).toBeGreaterThan(menuMetrics.clientHeight);
+  expect(menuMetrics.scrollTop).toBe(0);
   expect(menuMetrics.radius).toBeGreaterThanOrEqual(14);
 
   const tabsRadius=await tabs.evaluate(element=>

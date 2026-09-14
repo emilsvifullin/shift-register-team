@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.19";
+  "sr-team-runtime-v6.22.20";
 
 const INDEX_FILE=
   "./index.html";
@@ -44,6 +44,7 @@ const ASSETS=[
   "./src/management-employee-points.js",
   "./src/management-tap-intent.js",
   "./src/management-navigation.js",
+  "./src/team-motion.js",
   "./src/supabase.js",
   "./src/auth.js",
   "./src/frame-guard.js",

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>
+:root{
+  color-scheme:dark;
+  --bg:#0B0C0E;
+  --surf:#141518;
+  --line:rgba(255,255,255,.08);
+  --ink:#F3F2EF;
+  --ink2:#93959B;
+  --gold:#D6B278;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
+body{padding:72px 16px 90px}
+main{position:relative;min-height:180px;max-width:520px;margin:0 auto}
+.card{padding:18px;border:1px solid var(--line);border-radius:18px;background:var(--surf)}
+.bottom-controls{position:fixed;left:16px;right:16px;bottom:18px;display:flex;justify-content:center}
+.tabs{width:min(100%,520px);display:grid;grid-template-columns:repeat(3,1fr);padding:4px;border:1px solid var(--line);border-radius:16px;background:#1A1B1F}
+.tabs button{min-height:44px;border:0;border-radius:12px;background:transparent;color:var(--ink2);font:inherit}
+.tabs button.on{background:rgba(255,255,255,.10);color:var(--ink)}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:78vh;padding:8px 16px 28px;border:1px solid var(--line);border-radius:24px 24px 0 0;background:#0F1013;transform:translate3d(0,0,0)}
+.shead{height:58px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+.shead .lnk{border:0;background:none;color:var(--ink2);font:inherit;text-align:left}
+.shead .lnk:last-child{text-align:right;color:var(--gold)}
+.ttl{font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase}
+.sbody{min-height:330px;padding-top:8px}
+.row{padding:16px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.preview-actions{display:flex;gap:10px;margin-top:16px}
+.preview-actions button{flex:1;min-height:44px;border:1px solid var(--line);border-radius:13px;background:var(--surf);color:var(--ink);font:inherit}
+</style>
+</head>
+<body>
+<main id="app">
+  <div class="card" id="pageCard">Смены</div>
+</main>
+
+<div class="preview-actions">
+  <button id="manageForward">Управление вперёд</button>
+  <button id="manageBack">Управление назад</button>
+</div>
+
+<div class="bottom-controls">
+  <nav class="tabs">
+    <button id="tab-shifts" class="on">Смены</button>
+    <button id="tab-stats">Итоги</button>
+    <button id="tab-data">Данные</button>
+  </nav>
+</div>
+
+<div class="sheet on" id="employeeSheet">
+  <div class="shead">
+    <button class="lnk" id="employeeSheetCancel">Закрыть</button>
+    <div class="ttl" id="employeeSheetTitle">Сотрудник</div>
+    <button class="lnk" id="employeeSheetSave">Изменить</button>
+  </div>
+  <div class="sbody" id="employeeSheetBody">
+    <div class="card">
+      <div class="row">ФИО: Кристина Лейкина</div>
+      <div class="row">Статус: Активен</div>
+      <div class="row">ПВЗ: Пятницкий Переулок 2</div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="../../src/team-motion.js"></script>
+<script>
+const app=document.getElementById("app");
+const tabs=["shifts","stats","data"];
+let activeTab="shifts";
+
+tabs.forEach((name,index)=>{
+  const button=document.getElementById("tab-"+name);
+  button.onclick=()=>{
+    if(name===activeTab) return;
+    const current=tabs.indexOf(activeTab);
+    const direction=index>current ? 1 : -1;
+    activeTab=name;
+    document.querySelectorAll(".tabs button").forEach(item=>item.classList.toggle("on",item===button));
+    document.getElementById("pageCard").textContent=button.textContent;
+    const startX=direction>0?24:-24;
+    app.style.transform=`translate3d(${startX}px,0,0)`;
+    const animation=app.animate([
+      {transform:`translate3d(${startX}px,0,0)`},
+      {transform:"translate3d(0,0,0)"}
+    ],{
+      duration:220,
+      easing:"cubic-bezier(.2,.8,.2,1)",
+      fill:"both"
+    });
+    app.style.transform="translate3d(0,0,0)";
+    animation.finished.finally(()=>{
+      animation.cancel();
+      app.style.removeProperty("transform");
+    });
+  };
+});
+
+function manageMotion(direction){
+  const old=document.getElementById("pageCard").cloneNode(true);
+  const oldX=direction>0?-20:20;
+  const newX=-oldX;
+  const options={duration:260,easing:"cubic-bezier(.22,.72,.22,1)",fill:"both"};
+  const a=old.animate([
+    {opacity:1,transform:"translate3d(0,0,0)"},
+    {opacity:0,transform:`translate3d(${oldX}px,0,0)`}
+  ],options);
+  const b=app.animate([
+    {opacity:0,transform:`translate3d(${newX}px,0,0)`},
+    {opacity:1,transform:"translate3d(0,0,0)"}
+  ],options);
+  return [a,b];
+}
+
+document.getElementById("manageForward").onclick=()=>manageMotion(1);
+document.getElementById("manageBack").onclick=()=>manageMotion(-1);
+
+const employeeSave=document.getElementById("employeeSheetSave");
+const employeeCancel=document.getElementById("employeeSheetCancel");
+const employeeTitle=document.getElementById("employeeSheetTitle");
+const employeeBody=document.getElementById("employeeSheetBody");
+
+employeeSave.onclick=()=>{
+  if(employeeSave.textContent.trim()!=="Изменить") return;
+  employeeTitle.textContent="Редактирование";
+  employeeSave.textContent="Готово";
+  employeeCancel.textContent="Назад";
+  employeeBody.innerHTML=`<div class="card"><div class="row">ФИО <strong>Кристина Лейкина</strong></div><div class="row">Телефон <strong>+7 967 102-28-81</strong></div><div class="row">Статус <strong>Активен</strong></div></div>`;
+};
+
+employeeCancel.onclick=()=>{
+  if(employeeCancel.textContent.trim()!=="Назад") return;
+  employeeTitle.textContent="Сотрудник";
+  employeeSave.textContent="Изменить";
+  employeeCancel.textContent="Закрыть";
+  employeeBody.innerHTML=`<div class="card"><div class="row">ФИО: Кристина Лейкина</div><div class="row">Статус: Активен</div><div class="row">ПВЗ: Пятницкий Переулок 2</div></div>`;
+};
+</script>
+</body>
+</html>

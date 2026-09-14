@@ -9,7 +9,7 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management back chevron stays aligned and employee rows match point geometry",async({page},testInfo)=>{
+test("management back chevron stays aligned and employee rows use five-card rhythm",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -78,7 +78,7 @@ test("management back chevron stays aligned and employee rows match point geomet
   expect(backVisual.stroke).not.toBe("none");
   expect(Number(backVisual.opacity)).toBeGreaterThan(0);
 
-  const rowParity=await page.evaluate(()=>{
+  const rowMetrics=await page.evaluate(()=>{
     const employee=document.querySelector("#employeeList .employee-row");
     const width=employee.parentElement.getBoundingClientRect().width;
     const benchmark=document.createElement("div");
@@ -127,12 +127,14 @@ test("management back chevron stays aligned and employee rows match point geomet
     return result;
   });
 
-  expect(Math.abs(rowParity.employeeHeight-rowParity.pointHeight)).toBeLessThanOrEqual(1);
-  expect(rowParity.employeePaddingTop).toBe(rowParity.pointPaddingTop);
-  expect(rowParity.employeePaddingBottom).toBe(rowParity.pointPaddingBottom);
-  expect(rowParity.employeeGap).toBe(rowParity.pointGap);
-  expect(rowParity.employeeTitleLineHeight).toBe(rowParity.pointTitleLineHeight);
-  expect(rowParity.employeeDetailLineHeight).toBe(rowParity.pointDetailLineHeight);
+  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeGreaterThanOrEqual(3.5);
+  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeLessThanOrEqual(4.5);
+  expect(rowMetrics.employeePaddingTop).toBe(rowMetrics.pointPaddingTop);
+  expect(rowMetrics.employeePaddingBottom).toBe(rowMetrics.pointPaddingBottom);
+  expect(rowMetrics.employeeGap).toBe("5px");
+  expect(rowMetrics.pointGap).toBe("3px");
+  expect(rowMetrics.employeeTitleLineHeight).toBe(rowMetrics.pointTitleLineHeight);
+  expect(rowMetrics.employeeDetailLineHeight).toBe(rowMetrics.pointDetailLineHeight);
 
   const menuBottom=menuBox.y+menuBox.height;
   const gap=dockBox.y-menuBottom;

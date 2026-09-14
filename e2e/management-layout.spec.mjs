@@ -127,11 +127,11 @@ test("management back chevron stays aligned and employee rows use five-card rhyt
     return result;
   });
 
-  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeGreaterThanOrEqual(3.5);
-  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeLessThanOrEqual(4.5);
+  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeGreaterThanOrEqual(4.5);
+  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeLessThanOrEqual(5.5);
   expect(rowMetrics.employeePaddingTop).toBe(rowMetrics.pointPaddingTop);
   expect(rowMetrics.employeePaddingBottom).toBe(rowMetrics.pointPaddingBottom);
-  expect(rowMetrics.employeeGap).toBe("5px");
+  expect(rowMetrics.employeeGap).toBe("5.5px");
   expect(rowMetrics.pointGap).toBe("3px");
   expect(rowMetrics.employeeTitleLineHeight).toBe(rowMetrics.pointTitleLineHeight);
   expect(rowMetrics.employeeDetailLineHeight).toBe(rowMetrics.pointDetailLineHeight);

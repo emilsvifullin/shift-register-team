@@ -122,7 +122,7 @@ test("management detail keeps the chevron beside the page title and lets long li
   assert.match(management,/\.manage-back[\s\S]*?calc\(50% - 108px\)/);
   assert.match(management,/\.manage-back[\s\S]*?visibility:visible[\s\S]*?opacity:1/);
   assert.match(management,/\.manage-back svg[\s\S]*?stroke:currentColor/);
-  assert.match(management,/main:has\(#employeeList\),[\s\S]*?main:has\(#pointManageList\)[\s\S]*?padding-bottom:calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(management,/main:has\(#employeeList\),[\s\S]*?main:has\(#pointManageList\)[\s\S]*?padding-bottom:16px/);
   assert.match(management,/#employeeList,[\s\S]*?#pointManageList[\s\S]*?flex:1 1 auto/);
   assert.match(management,/#employeeList > \.manage-menu,[\s\S]*?#pointManageList > \.manage-menu[\s\S]*?height:auto[\s\S]*?max-height:100%[\s\S]*?flex:0 1 auto[\s\S]*?overflow-y:auto/);
   assert.match(management,/#employeeList \.employee-row\{[\s\S]*?min-height:76px/);

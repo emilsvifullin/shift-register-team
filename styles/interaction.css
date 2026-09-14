@@ -22,7 +22,11 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
   max-height:93vh;
 }
 
-/* Employee cards keep the same outer padding, but use a taller three-line rhythm. */
+/*
+  Keep five complete employee tiles in the management list window: the
+  substitute tile plus four employee tiles. Only the spacing between the three
+  text lines is increased; the list window itself is unchanged.
+*/
 #employeeList .employee-row{
   min-height:54px;
   padding-top:10px;
@@ -30,7 +34,7 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
 }
 
 #employeeList .employee-row .manage-row-copy{
-  gap:5px;
+  gap:5.5px;
 }
 
 #employeeList .employee-row .manage-row-title{

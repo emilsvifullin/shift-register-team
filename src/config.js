@@ -3,7 +3,7 @@ import "./management-tap-intent.js";
 import "./management-navigation.js";
 import "./point-card-summaries.js";
 
-export const APP_VERSION = "6.22.45";
+export const APP_VERSION = "6.22.46";
 export const SCHEMA_VERSION = 3;
 export const RULES_VERSION = "2026-08-12-v3";
 
@@ -16,7 +16,7 @@ export const POINT_DEFINITIONS = Object.freeze([
   {id:"nagatinskaya-56a", name:"Нагатинская Набережная 56а"},
   {id:"volgogradskiy-73s1", name:"Волгоградский Проспект 73с1"},
   {id:"yartsevskaya-6", name:"Ярцевская 6"},
-  {id:"yartsevskaya-25a", name:"Ярцевская 25а"},
+  {id:"yartsevskaya-25a", name:"Ярцевская 25a"},
   {id:"pyatnitskiy-2", name:"Пятницкий Переулок 2"},
   {id:"mustaya-karima-12", name:"Мустая Карима 12"},
   {id:"kruzenshterna-9", name:"Крузенштерна 9"},

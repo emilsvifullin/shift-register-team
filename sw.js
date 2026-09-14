@@ -1,5 +1,5 @@
 const CACHE_NAME=
-  "sr-team-runtime-v6.22.26";
+  "sr-team-runtime-v6.22.27";
 
 const INDEX_FILE=
   "./index.html";
@@ -21,6 +21,7 @@ const ASSETS=[
   "./styles/interaction-core.css",
   "./styles/management.css",
   "./styles/motion-reference.css",
+  "./styles/modal-motion-exact.css",
   "./styles/interaction.css",
   "./src/ui/input-behavior.js",
   "./manifest.webmanifest",
@@ -46,6 +47,7 @@ const ASSETS=[
   "./src/management-navigation.js",
   "./src/reference-swipes.js",
   "./src/team-motion.js",
+  "./src/modal-motion.js",
   "./src/supabase.js",
   "./src/auth.js",
   "./src/frame-guard.js",

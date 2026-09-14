@@ -114,7 +114,7 @@ test("bottom dock clips page scrolling and keeps final navigation geometry consi
   assert.match(css,/#shiftFilterOpen\{[\s\S]*?width:100%[\s\S]*?min-height:52px/);
 });
 
-test("management detail keeps the chevron beside the page title and lets short lists hug their rows",async()=>{
+test("management detail keeps the chevron beside the page title and lets long lists use the free space",async()=>{
   const management=await read("styles/management.css");
 
   assert.match(management,/\.manage-back[\s\S]*?position:fixed/);
@@ -122,14 +122,12 @@ test("management detail keeps the chevron beside the page title and lets short l
   assert.match(management,/\.manage-back[\s\S]*?calc\(50% - 108px\)/);
   assert.match(management,/\.manage-back[\s\S]*?visibility:visible[\s\S]*?opacity:1/);
   assert.match(management,/\.manage-back svg[\s\S]*?stroke:currentColor/);
-  assert.match(management,/#employeeList,[\s\S]*?#pointManageList[\s\S]*?flex:0 1 auto/);
-  assert.match(management,/#employeeList > \.manage-menu,[\s\S]*?#pointManageList > \.manage-menu[\s\S]*?height:auto[\s\S]*?flex:0 1 auto[\s\S]*?overflow-y:auto/);
+  assert.match(management,/main:has\(#employeeList\),[\s\S]*?main:has\(#pointManageList\)[\s\S]*?padding-bottom:calc\(78px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(management,/#employeeList,[\s\S]*?#pointManageList[\s\S]*?flex:1 1 auto/);
+  assert.match(management,/#employeeList > \.manage-menu,[\s\S]*?#pointManageList > \.manage-menu[\s\S]*?height:auto[\s\S]*?max-height:100%[\s\S]*?flex:0 1 auto[\s\S]*?overflow-y:auto/);
   assert.match(management,/#employeeList \.employee-row\{[\s\S]*?min-height:76px/);
   assert.match(management,/#pointManageList \.point-manage-row\{[\s\S]*?min-height:54px/);
-  assert.match(
-    management,
-    /@media \(max-width:520px\) and \(min-height:760px\)[\s\S]*?#employeeList > \.manage-menu\{[\s\S]*?max-height:382px[\s\S]*?#pointManageList > \.manage-menu\{[\s\S]*?max-height:380px/
-  );
+  assert.doesNotMatch(management,/max-height:382px|#pointManageList > \.manage-menu\{[\s\S]*?max-height:380px/);
 });
 
 test("standalone iOS shell uses the full app viewport and modal states remove the dock",async()=>{

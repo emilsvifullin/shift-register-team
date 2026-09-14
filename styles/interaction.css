@@ -1,6 +1,7 @@
 @import url("./interaction-core.css");
 @import url("./management.css");
 @import url("./motion-reference.css");
+@import url("./modal-motion-exact.css");
 
 /*
   The swipe ghost is the old #app cloned without its id. Keep its first section

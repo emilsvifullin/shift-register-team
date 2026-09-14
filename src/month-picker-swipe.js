@@ -1,8 +1,9 @@
 const PICKER_ID="monthPicker";
 const HANDLE_SELECTOR=".month-picker-handle,.picker-toolbar";
-const CLOSE_DURATION=420;
-const CLOSE_EASING="cubic-bezier(.4,0,.2,1)";
 const REFERENCE_PREFIX="shift-register-modal-";
+const SNAP_DURATION=260;
+const SNAP_EASING="cubic-bezier(.4,0,.2,1)";
+const CLOSE_EASING="cubic-bezier(0,0,.2,1)";
 
 let gesture=null;
 let cleanupTimer=0;
@@ -170,9 +171,11 @@ function applyDistance(state,distance){
     `translate3d(0,${next}px,0)`;
 }
 
-function transitionFromCurrent(
+function runTransformTransition(
   state,
   destination,
+  duration,
+  easing,
   onFinish
 ){
   const {element}=state;
@@ -207,32 +210,25 @@ function transitionFromCurrent(
     handleTransitionEnd
   );
 
+  /*
+    The drag position is already painted. Flush that exact position, then
+    start the continuation immediately in the same task. Waiting one or two
+    requestAnimationFrame callbacks here creates the visible release hitch on
+    iPhone because the sheet almost stops before it continues downward.
+  */
   element.style.transition="none";
   element.style.transform=
     `translate3d(0,${state.distance}px,0)`;
   void element.offsetHeight;
 
-  requestAnimationFrame(()=>{
-    if(finished){
-      return;
-    }
-
-    element.style.transition=
-      `transform ${CLOSE_DURATION}ms ${CLOSE_EASING}`;
-
-    requestAnimationFrame(()=>{
-      if(finished){
-        return;
-      }
-
-      element.style.transform=
-        `translate3d(0,${destination}px,0)`;
-    });
-  });
+  element.style.transition=
+    `transform ${duration}ms ${easing}`;
+  element.style.transform=
+    `translate3d(0,${destination}px,0)`;
 
   fallbackTimer=window.setTimeout(
     finish,
-    CLOSE_DURATION+120
+    duration+100
   );
 }
 
@@ -243,11 +239,6 @@ function finishSwipeClose(state,endDistance){
   element.style.transform=
     `translate3d(0,${endDistance}px,0)`;
 
-  /*
-    The swipe has already moved the picker completely below the viewport.
-    Keep it hard-hidden while the normal close handler updates veil/body/focus.
-    This prevents modal-motion from painting a second y=0 -> hidden close pass.
-  */
   element.setAttribute(
     "data-month-swipe-closing",
     "true"
@@ -288,6 +279,23 @@ function finishSwipeClose(state,endDistance){
   },560);
 }
 
+function closeDuration(state,endDistance){
+  const remaining=Math.max(
+    0,
+    endDistance-state.distance
+  );
+  const ratio=endDistance>0
+    ? remaining/endDistance
+    : 1;
+
+  return Math.round(
+    Math.max(
+      140,
+      Math.min(320,360*ratio)
+    )
+  );
+}
+
 function closeMonthPicker(state){
   const {element}=state;
   const endDistance=
@@ -298,9 +306,11 @@ function closeMonthPicker(state){
     return;
   }
 
-  transitionFromCurrent(
+  runTransformTransition(
     state,
     endDistance,
+    closeDuration(state,endDistance),
+    CLOSE_EASING,
     ()=>finishSwipeClose(
       state,
       endDistance
@@ -316,9 +326,11 @@ function snapBack(state){
     return;
   }
 
-  transitionFromCurrent(
+  runTransformTransition(
     state,
     0,
+    SNAP_DURATION,
+    SNAP_EASING,
     ()=>{
       if(element.classList.contains("on")){
         clearGestureStyles(element);
@@ -458,10 +470,7 @@ window.addEventListener(
       event.preventDefault();
     }
 
-    /*
-      Keep the last painted touchmove distance. Safari can report a smaller
-      changedTouches Y on release, which would otherwise create an up-jump.
-    */
+    /* Safari can report a smaller changedTouches Y on release. */
     finishGesture();
   },
   {capture:true,passive:false}

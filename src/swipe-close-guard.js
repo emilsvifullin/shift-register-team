@@ -1,6 +1,7 @@
 const GUARD_ATTRIBUTE="data-reference-closing";
 const REFERENCE_PREFIX="shift-register-modal-";
 const guardTimers=new WeakMap();
+const releaseTransforms=new WeakMap();
 
 function isReferenceAnimation(animation){
   return String(
@@ -49,6 +50,67 @@ function trackedSurface(element){
   );
 }
 
+function surfaceFromTarget(target){
+  if(!(target instanceof Element)){
+    return null;
+  }
+
+  const element=target.closest(
+    ".sheet,#pointPicker,#datePicker,#monthPicker"
+  );
+
+  return trackedSurface(element)
+    ? element
+    : null;
+}
+
+function rememberReleaseTransform(event){
+  const element=
+    surfaceFromTarget(event.target);
+
+  if(
+    !element ||
+    !element.classList.contains("on")
+  ){
+    return;
+  }
+
+  const transform=
+    getComputedStyle(element).transform;
+
+  if(
+    transform &&
+    transform!=="none"
+  ){
+    releaseTransforms.set(
+      element,
+      transform
+    );
+  }
+}
+
+/*
+  Capture the exact painted position before app.js handles the release.
+  On iOS the final touch coordinate can be a little ahead of the last
+  rendered drag frame. Starting the exit from this computed transform keeps
+  the sheet continuous instead of letting it jump to another Y position.
+*/
+document.addEventListener(
+  "touchend",
+  rememberReleaseTransform,
+  true
+);
+
+document.addEventListener(
+  "pointerup",
+  event=>{
+    if(event.pointerType!=="touch"){
+      rememberReleaseTransform(event);
+    }
+  },
+  true
+);
+
 function clearGuard(element){
   const timer=guardTimers.get(element);
 
@@ -57,6 +119,7 @@ function clearGuard(element){
   }
 
   guardTimers.delete(element);
+  releaseTransforms.delete(element);
   element.removeAttribute(GUARD_ATTRIBUTE);
 }
 
@@ -84,22 +147,70 @@ function remainingDuration(animation){
   );
 }
 
+function stabilizeSwipeClose(
+  element,
+  animation
+){
+  const frames=
+    animation.effect?.getKeyframes?.();
+
+  const releaseTransform=
+    releaseTransforms.get(element);
+
+  const endTransform=
+    Array.isArray(frames)
+      ? frames.at(-1)?.transform
+      : null;
+
+  if(
+    releaseTransform &&
+    typeof endTransform==="string" &&
+    endTransform
+  ){
+    try{
+      animation.effect.setKeyframes([
+        {
+          offset:0,
+          transform:releaseTransform
+        },
+        {
+          offset:1,
+          transform:endTransform
+        }
+      ]);
+    }catch{}
+  }
+
+  releaseTransforms.delete(element);
+
+  /*
+    app.js removes the temporary swipe WAAPI animation when its 420 ms exit
+    finishes. If CSS transitions are active at that exact moment, WebKit can
+    expose the underlying open pose for one frame and then start a second
+    CSS close. That is the visible "up, then down" jerk from the recording.
+
+    Keep the underlying transform transition disabled for the swipe-owned
+    exit. When WAAPI releases the property, the closed CSS pose is applied
+    immediately off-screen, so there is no second trip from the top.
+  */
+  element.style.transition="none";
+}
+
 function guardSwipeClose(
   element,
   animation
 ){
   clearGuard(element);
+  stabilizeSwipeClose(
+    element,
+    animation
+  );
 
   element.setAttribute(
     GUARD_ATTRIBUTE,
     "true"
   );
 
-  /*
-    Team editors can request display:none only 100 ms after close starts.
-    A header swipe owns its own 420 ms WAAPI exit, so keep the surface
-    rendered until that animation has painted its final frame.
-  */
   const timeout=
     Math.max(
       48,

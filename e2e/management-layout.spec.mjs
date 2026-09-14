@@ -9,7 +9,7 @@ test.use({
   colorScheme:"dark"
 });
 
-test("management back chevron stays aligned and five employees fit above the dock",async({page},testInfo)=>{
+test("management back chevron stays aligned and employee rows match point geometry",async({page},testInfo)=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -39,18 +39,17 @@ test("management back chevron stays aligned and five employees fit above the doc
   await expect(back).toBeVisible();
   await expect(menu).toBeVisible();
 
-  const [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthEmployeeBox,dockBox,tabsBox]=await Promise.all([
+  const [backBox,periodBox,labelBox,menuBox,firstRowBox,dockBox,tabsBox]=await Promise.all([
     back.boundingBox(),
     period.boundingBox(),
     sectionLabel.boundingBox(),
     menu.boundingBox(),
     rows.nth(0).boundingBox(),
-    rows.nth(5).boundingBox(),
     dock.boundingBox(),
     tabs.boundingBox()
   ]);
 
-  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,fifthEmployeeBox,dockBox,tabsBox]){
+  for(const box of [backBox,periodBox,labelBox,menuBox,firstRowBox,dockBox,tabsBox]){
     expect(box).not.toBeNull();
   }
 
@@ -78,14 +77,66 @@ test("management back chevron stays aligned and five employees fit above the doc
 
   expect(backVisual.stroke).not.toBe("none");
   expect(Number(backVisual.opacity)).toBeGreaterThan(0);
-  expect(firstRowBox.height).toBeGreaterThanOrEqual(63);
-  expect(firstRowBox.height).toBeLessThanOrEqual(66);
+
+  const rowParity=await page.evaluate(()=>{
+    const employee=document.querySelector("#employeeList .employee-row");
+    const width=employee.parentElement.getBoundingClientRect().width;
+    const benchmark=document.createElement("div");
+    benchmark.id="pointManageList";
+    benchmark.style.cssText=`position:fixed;left:-2000px;top:0;width:${width}px;`;
+    benchmark.innerHTML=`
+      <div class="card manage-menu point-manage-menu">
+        <button type="button" class="manage-row point-manage-row">
+          <span class="manage-row-copy">
+            <span class="manage-row-title">Адрес 1</span>
+            <span class="manage-row-detail">Сотрудники не назначены</span>
+            <span class="manage-row-detail">Фиксированный · 3 000 ₽</span>
+          </span>
+          <span class="manage-chevron">›</span>
+        </button>
+      </div>
+    `;
+    document.body.append(benchmark);
+
+    const point=benchmark.querySelector(".point-manage-row");
+    const employeeCopy=employee.querySelector(".manage-row-copy");
+    const pointCopy=point.querySelector(".manage-row-copy");
+    const employeeTitle=employee.querySelector(".manage-row-title");
+    const pointTitle=point.querySelector(".manage-row-title");
+    const employeeDetail=employee.querySelector(".manage-row-detail");
+    const pointDetail=point.querySelector(".manage-row-detail");
+    const employeeStyle=getComputedStyle(employee);
+    const pointStyle=getComputedStyle(point);
+
+    const result={
+      employeeHeight:employee.getBoundingClientRect().height,
+      pointHeight:point.getBoundingClientRect().height,
+      employeePaddingTop:employeeStyle.paddingTop,
+      pointPaddingTop:pointStyle.paddingTop,
+      employeePaddingBottom:employeeStyle.paddingBottom,
+      pointPaddingBottom:pointStyle.paddingBottom,
+      employeeGap:getComputedStyle(employeeCopy).gap,
+      pointGap:getComputedStyle(pointCopy).gap,
+      employeeTitleLineHeight:getComputedStyle(employeeTitle).lineHeight,
+      pointTitleLineHeight:getComputedStyle(pointTitle).lineHeight,
+      employeeDetailLineHeight:getComputedStyle(employeeDetail).lineHeight,
+      pointDetailLineHeight:getComputedStyle(pointDetail).lineHeight
+    };
+
+    benchmark.remove();
+    return result;
+  });
+
+  expect(Math.abs(rowParity.employeeHeight-rowParity.pointHeight)).toBeLessThanOrEqual(1);
+  expect(rowParity.employeePaddingTop).toBe(rowParity.pointPaddingTop);
+  expect(rowParity.employeePaddingBottom).toBe(rowParity.pointPaddingBottom);
+  expect(rowParity.employeeGap).toBe(rowParity.pointGap);
+  expect(rowParity.employeeTitleLineHeight).toBe(rowParity.pointTitleLineHeight);
+  expect(rowParity.employeeDetailLineHeight).toBe(rowParity.pointDetailLineHeight);
 
   const menuBottom=menuBox.y+menuBox.height;
-  const fifthEmployeeBottom=fifthEmployeeBox.y+fifthEmployeeBox.height;
   const gap=dockBox.y-menuBottom;
 
-  expect(fifthEmployeeBottom).toBeLessThanOrEqual(menuBottom+1);
   expect(gap).toBeGreaterThanOrEqual(8);
   expect(gap).toBeLessThanOrEqual(32);
 

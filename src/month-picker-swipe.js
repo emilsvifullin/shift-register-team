@@ -2,6 +2,7 @@ const PICKER_ID="monthPicker";
 const HANDLE_SELECTOR=".month-picker-handle,.picker-toolbar";
 const CLOSE_DURATION=420;
 const CLOSE_EASING="cubic-bezier(.4,0,.2,1)";
+const REFERENCE_PREFIX="shift-register-modal-";
 
 let gesture=null;
 let cleanupTimer=0;
@@ -50,19 +51,35 @@ function isMonthHeaderTarget(target){
   );
 }
 
-function cancelOwnMotion(element){
+function cancelReferenceMotion(element){
   element
     .getAnimations?.()
     .filter(animation=>
-      animation.id==="month-picker-swipe-close"
+      String(animation.id || "")
+        .startsWith(REFERENCE_PREFIX)
     )
     .forEach(animation=>animation.cancel());
 }
 
-function clearInlineMotion(element){
+function clearGestureStyles(element){
   window.clearTimeout(cleanupTimer);
   cleanupTimer=0;
-  cancelOwnMotion(element);
+
+  element.style.removeProperty("transition");
+  element.style.removeProperty("transform");
+  element.style.removeProperty("--month-drag");
+}
+
+function resetForOpen(element){
+  window.clearTimeout(cleanupTimer);
+  cleanupTimer=0;
+  gesture=null;
+  suppressClickUntil=0;
+
+  cancelReferenceMotion(element);
+  element.removeAttribute("data-reference-closing");
+  element.removeAttribute("data-month-swipe-closing");
+  element.style.removeProperty("display");
   element.style.removeProperty("transition");
   element.style.removeProperty("transform");
   element.style.removeProperty("--month-drag");
@@ -78,7 +95,7 @@ function startGesture(kind,id,target,x,y){
     return false;
   }
 
-  clearInlineMotion(element);
+  clearGestureStyles(element);
 
   gesture={
     kind,
@@ -97,18 +114,7 @@ function startGesture(kind,id,target,x,y){
 function beginVerticalDrag(state){
   const {element}=state;
 
-  element
-    .getAnimations?.()
-    .forEach(animation=>{
-      const id=String(animation.id || "");
-      if(
-        id.startsWith("shift-register-modal-") ||
-        id==="month-picker-swipe-close"
-      ){
-        animation.cancel();
-      }
-    });
-
+  cancelReferenceMotion(element);
   element.style.transition="none";
   element.style.removeProperty("--month-drag");
   element.style.transform="translate3d(0,0,0)";
@@ -230,40 +236,75 @@ function transitionFromCurrent(
   );
 }
 
+function finishSwipeClose(state,endDistance){
+  const {element}=state;
+
+  element.style.transition="none";
+  element.style.transform=
+    `translate3d(0,${endDistance}px,0)`;
+
+  /*
+    The swipe has already moved the picker completely below the viewport.
+    Keep it hard-hidden while the normal close handler updates veil/body/focus.
+    This prevents modal-motion from painting a second y=0 -> hidden close pass.
+  */
+  element.setAttribute(
+    "data-month-swipe-closing",
+    "true"
+  );
+  element.style.setProperty(
+    "display",
+    "none",
+    "important"
+  );
+
+  suppressClickUntil=0;
+  document.getElementById("monthCancel")?.click();
+
+  const suppressSecondaryClose=()=>{
+    cancelReferenceMotion(element);
+    element.removeAttribute(
+      "data-reference-closing"
+    );
+  };
+
+  queueMicrotask(suppressSecondaryClose);
+  requestAnimationFrame(suppressSecondaryClose);
+  window.setTimeout(suppressSecondaryClose,0);
+
+  cleanupTimer=window.setTimeout(()=>{
+    suppressSecondaryClose();
+    element.style.setProperty(
+      "display",
+      "none"
+    );
+    element.removeAttribute(
+      "data-month-swipe-closing"
+    );
+    element.style.removeProperty("transition");
+    element.style.removeProperty("transform");
+    element.style.removeProperty("--month-drag");
+    cleanupTimer=0;
+  },560);
+}
+
 function closeMonthPicker(state){
   const {element}=state;
   const endDistance=
     element.getBoundingClientRect().height+48;
 
   if(reducedMotion()){
-    element.style.transition="none";
-    element.style.transform=
-      `translate3d(0,${endDistance}px,0)`;
-    suppressClickUntil=0;
-    document.getElementById("monthCancel")?.click();
-    cleanupTimer=window.setTimeout(
-      ()=>clearInlineMotion(element),
-      500
-    );
+    finishSwipeClose(state,endDistance);
     return;
   }
 
   transitionFromCurrent(
     state,
     endDistance,
-    ()=>{
-      element.style.transition="none";
-      element.style.transform=
-        `translate3d(0,${endDistance}px,0)`;
-
-      suppressClickUntil=0;
-      document.getElementById("monthCancel")?.click();
-
-      cleanupTimer=window.setTimeout(
-        ()=>clearInlineMotion(element),
-        500
-      );
-    }
+    ()=>finishSwipeClose(
+      state,
+      endDistance
+    )
   );
 }
 
@@ -271,7 +312,7 @@ function snapBack(state){
   const {element}=state;
 
   if(reducedMotion()){
-    clearInlineMotion(element);
+    clearGestureStyles(element);
     return;
   }
 
@@ -280,7 +321,7 @@ function snapBack(state){
     0,
     ()=>{
       if(element.classList.contains("on")){
-        clearInlineMotion(element);
+        clearGestureStyles(element);
       }
     }
   );
@@ -418,9 +459,8 @@ window.addEventListener(
     }
 
     /*
-      Do not replace the last painted drag distance with changedTouches here.
-      Mobile Safari may report a slightly different release coordinate, which
-      is exactly what caused the visible upward jump before the close motion.
+      Keep the last painted touchmove distance. Safari can report a smaller
+      changedTouches Y on release, which would otherwise create an up-jump.
     */
     finishGesture();
   },
@@ -561,11 +601,7 @@ document.addEventListener(
 
     element.addEventListener(
       "bottomsheetopen",
-      ()=>{
-        gesture=null;
-        suppressClickUntil=0;
-        clearInlineMotion(element);
-      }
+      ()=>resetForOpen(element)
     );
   },
   {once:true}

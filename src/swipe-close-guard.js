@@ -111,7 +111,10 @@ document.addEventListener(
   true
 );
 
-function clearGuard(element){
+function clearGuard(
+  element,
+  {clearRelease=true}={}
+){
   const timer=guardTimers.get(element);
 
   if(timer){
@@ -119,7 +122,11 @@ function clearGuard(element){
   }
 
   guardTimers.delete(element);
-  releaseTransforms.delete(element);
+
+  if(clearRelease){
+    releaseTransforms.delete(element);
+  }
+
   element.removeAttribute(GUARD_ATTRIBUTE);
 }
 
@@ -200,7 +207,11 @@ function guardSwipeClose(
   element,
   animation
 ){
-  clearGuard(element);
+  clearGuard(
+    element,
+    {clearRelease:false}
+  );
+
   stabilizeSwipeClose(
     element,
     animation

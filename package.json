@@ -1,6 +1,6 @@
 {
   "name": "shift-register",
-  "version": "6.22.29",
+  "version": "6.22.30",
   "private": true,
   "type": "module",
   "scripts": {

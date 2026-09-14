@@ -269,7 +269,6 @@ async function navigationResponse(
 
     const scope=
       new URL(
-        INDEX_FILE,
         self.registration.scope
       );
 
@@ -281,7 +280,7 @@ async function navigationResponse(
 
     if(
       requestUrl.pathname===
-        new URL(self.registration.scope).pathname ||
+        scope.pathname ||
       requestUrl.pathname===
         indexUrl.pathname
     ){

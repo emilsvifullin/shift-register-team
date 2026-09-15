@@ -75,88 +75,34 @@ body{
 
 <script src="./src/frame-guard.js"></script>
 
+<!--
+  Каскад загружается одним пакетом ссылок в стабильном порядке.
+  Раньше последние пять файлов подключались через @import из
+  styles/interaction.css, то есть браузер узнавал о них только после
+  загрузки родителя, и первая отрисовка ждала лишний круг запросов.
+-->
 <link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./styles/accessibility.css">
+<link rel="stylesheet" href="./styles/motion.css">
+<link rel="stylesheet" href="./styles/workflow.css">
+<link rel="stylesheet" href="./styles/auth.css">
+<link rel="stylesheet" href="./styles/platform.css">
+<link rel="stylesheet" href="./styles/refinement.css">
+<link rel="stylesheet" href="./styles/interaction-core.css">
+<link rel="stylesheet" href="./styles/management.css">
+<link rel="stylesheet" href="./styles/motion-reference.css">
+<link rel="stylesheet" href="./styles/modal-motion-exact.css">
+<link rel="stylesheet" href="./styles/interaction.css">
 
-<link
-  rel="stylesheet"
-  href="./styles/accessibility.css"
->
+<!--
+  Модули намеренно не предзагружаются через modulepreload: WebKit держит
+  предзагруженный модуль в памяти процесса и отдаёт его мимо service worker
+  даже после обновления, так что новая разметка запускалась со старым кодом.
 
-<link
-  rel="stylesheet"
-  href="./styles/motion.css"
->
-
-<link
-  rel="stylesheet"
-  href="./styles/workflow.css"
->
-
-<link
-  rel="stylesheet"
-  href="./styles/auth.css"
->
-
-<link
-  rel="stylesheet"
-  href="./styles/platform.css"
->
-
-<link
-  rel="stylesheet"
-  href="./styles/refinement.css"
->
-  <link rel="stylesheet" href="./styles/interaction.css">
-
-<link
-  rel="modulepreload"
-  href="./src/app.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/platform-shell.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/config.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/domain.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/storage.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/team.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/team-domain.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/phone.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/employee-ui.js"
->
-
-<link
-  rel="modulepreload"
-  href="./src/workflow.js"
->
+  Модули, которые предзагружали версии до 7.0, запрашиваются с маркером
+  ?shell=7: под прежним адресом в уже запущенном процессе iOS лежит старый
+  код. Подробности — docs/architecture.md, «Обновление оболочки».
+-->
 
 <script
   src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
@@ -164,15 +110,9 @@ body{
   crossorigin="anonymous"
 ></script>
 
-<script
-  type="module"
-  src="./src/platform-shell.js"
-></script>
-
-<script
-  type="module"
-  src="./src/app.js"
-></script>
+<script type="module" src="./src/platform-shell.js?shell=7"></script>
+<script type="module" src="./src/app.js?shell=7"></script>
+<script type="module" src="./src/interactions.js"></script>
 
 </head>
 <body class="app-booting">
@@ -185,6 +125,24 @@ body{
 
 <header>
   <div class="nav">
+    <!--
+      Возврат из раздела управления — настоящий элемент шапки.
+      Раньше кнопка жила в #app и телепортировалась сюда через
+      position:fixed, из-за чего попадала под composited-слой шапки
+      с backdrop-filter и оставалась невидимой.
+    -->
+    <button
+      type="button"
+      class="manage-back"
+      id="manageBack"
+      aria-label="Назад в управление"
+      hidden
+    >
+      <svg viewBox="0 0 12 16" aria-hidden="true">
+        <path d="M9 3L3 8L9 13"></path>
+      </svg>
+    </button>
+
     <button id="prevM" aria-label="Назад">
       <svg viewBox="0 0 12 16" aria-hidden="true">
         <path d="M9 3L3 8L9 13"></path>

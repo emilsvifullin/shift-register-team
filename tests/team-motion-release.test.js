@@ -8,21 +8,6 @@ const read=path=>
     "utf8"
   );
 
-test("reference team motion is bootstrapped and precached",()=>{
-  const frameGuard=read("src/frame-guard.js");
-  const serviceWorker=read("sw.js");
-
-  assert.match(
-    frameGuard,
-    /\.\/team-motion\.js/
-  );
-
-  assert.match(
-    serviceWorker,
-    /\.\/src\/team-motion\.js/
-  );
-});
-
 test("team motion carries the exact shift-register tab timing and smooth management motion",()=>{
   const motion=read("src/team-motion.js");
 

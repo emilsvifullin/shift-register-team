@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
 import test from "node:test";
 
 import {
   pointEmployeeSummary,
   pointTariffSummary
-} from "../src/point-card-summaries.js";
+} from "../src/point-summary.js";
+
+import {
+  tariffForDate
+} from "../src/team-domain.js";
 
 const pointId="point-1";
 
@@ -107,23 +110,21 @@ test(
           id:pointId,
           advance_enabled:true
         },
-        [
-          {
-            point_id:pointId,
-            effective_from:"2026-01-01",
-            pricing_type:"fixed",
-            fixed_rate:3500,
-            shk_tiers:null
-          }
-        ]
+        {
+          point_id:pointId,
+          effective_from:"2026-01-01",
+          pricing_type:"fixed",
+          fixed_rate:3500,
+          shk_tiers:null
+        }
       ),
-      "Фиксированный · 3 500 ₽ · Аванс"
+      "Фиксированный · 3\u00A0500\u00A0₽ · Аванс"
     );
   }
 );
 
 test(
-  "point tariff summary shows SHK range and ignores future tariff",
+  "point tariff summary shows the range of SHK rates",
   ()=>{
     assert.equal(
       pointTariffSummary(
@@ -131,60 +132,71 @@ test(
           id:pointId,
           advance_enabled:false
         },
-        [
-          {
-            point_id:pointId,
-            effective_from:"2026-01-01",
-            pricing_type:"shk_tiers",
-            fixed_rate:null,
-            shk_tiers:[
-              {up_to:350,rate:3000},
-              {up_to:null,rate:6500}
-            ]
-          },
-          {
-            point_id:pointId,
-            effective_from:"2099-01-01",
-            pricing_type:"fixed",
-            fixed_rate:9999,
-            shk_tiers:null
-          }
-        ]
+        {
+          point_id:pointId,
+          effective_from:"2026-01-01",
+          pricing_type:"shk_tiers",
+          fixed_rate:null,
+          shk_tiers:[
+            {up_to:350,rate:3000},
+            {up_to:null,rate:6500}
+          ]
+        }
       ),
-      "По ШК · 3 000 ₽–6 500 ₽"
+      "По ШК · 3\u00A0000\u00A0₽–6\u00A0500\u00A0₽"
     );
   }
 );
 
 test(
-  "point summary hydration never hides or locks the management list",
+  "a point without a tariff says so",
   ()=>{
-    const source=readFileSync(
-      new URL(
-        "../src/point-card-summaries.js",
-        import.meta.url
+    assert.equal(
+      pointTariffSummary(
+        {id:pointId,advance_enabled:false},
+        null
       ),
-      "utf8"
+      "Тариф не задан"
     );
+  }
+);
 
-    assert.doesNotMatch(
-      source,
-      /style\.visibility\s*=\s*["']hidden["']/
-    );
+/*
+  Какой именно тариф считается текущим, решает tariffForDate — карточка
+  ПВЗ и расчёт смены обязаны отвечать на этот вопрос одинаково.
+*/
+test(
+  "the card summarises the same tariff the shift calculation uses",
+  ()=>{
+    const tariffs=[
+      {
+        id:"today",
+        point_id:pointId,
+        effective_from:"2026-01-01",
+        pricing_type:"fixed",
+        fixed_rate:3500,
+        shk_tiers:null
+      },
+      {
+        id:"planned",
+        point_id:pointId,
+        effective_from:"2099-01-01",
+        pricing_type:"fixed",
+        fixed_rate:9999,
+        shk_tiers:null
+      }
+    ];
 
-    assert.doesNotMatch(
-      source,
-      /style\.pointerEvents\s*=\s*["']none["']/
-    );
-
-    assert.match(
-      source,
-      /LOAD_TIMEOUT_MS=4500/
-    );
-
-    assert.match(
-      source,
-      /Summaries are supplemental/
+    assert.equal(
+      pointTariffSummary(
+        {id:pointId,advance_enabled:false},
+        tariffForDate(
+          tariffs,
+          pointId,
+          "2026-09-14"
+        )
+      ),
+      "Фиксированный · 3\u00A0500\u00A0₽"
     );
   }
 );

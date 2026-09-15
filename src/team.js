@@ -27,6 +27,7 @@ export {
 
 export {
   addAdminTariff,
+  deleteAdminPoint,
   deleteAdminTariff,
   saveAdminPoint,
   updateAdminTariff

@@ -1,5 +1,7 @@
-const STYLE_ID="shift-register-modal-motion-style";
 const MOTION_PREFIX="shift-register-modal-";
+const SWIPE_ANIMATION_ID="header-swipe-dismiss";
+const SWIPE_TRANSFORM=
+  /translate3d\(\s*0(?:px)?\s*,\s*(\d+(?:\.\d+)?)px\s*,\s*0(?:px)?\s*\)/u;
 const closingVisibilityTimers=new WeakMap();
 
 const reducedMotion=()=>Boolean(
@@ -7,22 +9,6 @@ const reducedMotion=()=>Boolean(
     "(prefers-reduced-motion: reduce)"
   ).matches
 );
-
-function ensureReferenceStyles(){
-  if(document.getElementById(STYLE_ID)){
-    return;
-  }
-
-  const link=document.createElement("link");
-  link.id=STYLE_ID;
-  link.rel="stylesheet";
-  link.href=new URL(
-    "../styles/modal-motion-exact.css",
-    import.meta.url
-  ).href;
-
-  document.head.append(link);
-}
 
 function modalSpec(element){
   if(element.classList.contains("sheet")){
@@ -110,6 +96,10 @@ function isCssTransition(animation){
 }
 
 function isSwipeCloseAnimation(animation){
+  if(animation.id===SWIPE_ANIMATION_ID){
+    return true;
+  }
+
   if(
     isReferenceAnimation(animation) ||
     isCssTransition(animation)
@@ -124,11 +114,20 @@ function isSwipeCloseAnimation(animation){
     return false;
   }
 
-  return frames.some(frame=>
-    typeof frame?.transform==="string" &&
-    /translate3d\(0,\s*\d+(?:\.\d+)?px,\s*0\)/u
-      .test(frame.transform)
-  );
+  /*
+    getKeyframes() returns serialized values: "translate3d(0,140px,0)" comes
+    back as "translate3d(0px, 140px, 0px)" in Chromium and WebKit. Matching only
+    the source spelling never recognized a swipe close, so the reference close
+    replayed from the fully-open pose right after the sheet left the screen.
+  */
+  return frames.some(frame=>{
+    const match=
+      typeof frame?.transform==="string"
+        ? SWIPE_TRANSFORM.exec(frame.transform)
+        : null;
+
+    return Boolean(match) && Number(match[1])>0;
+  });
 }
 
 function monthPickerAlreadyDismissedBySwipe(element){
@@ -521,8 +520,6 @@ const observer=
       }
     }
   );
-
-ensureReferenceStyles();
 
 observer.observe(
   document.documentElement,

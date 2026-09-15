@@ -1,11 +1,13 @@
 {
   "name": "shift-register",
-  "version": "6.22.63",
+  "version": "7.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
     "check:syntax": "node ./scripts/check-source.mjs",
+    "stamp:sw": "node ./scripts/stamp-sw.mjs",
+    "serve": "node ./scripts/serve.mjs",
     "check": "npm run check:syntax && node --test"
   },
   "engines": {

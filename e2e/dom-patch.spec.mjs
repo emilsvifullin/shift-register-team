@@ -397,3 +397,65 @@ test(
     ).toEqual(["off","true","true","other"]);
   }
 );
+
+/*
+  Узел, который достался другому элементу экрана, не приносит с собой ни
+  фокус, ни состояние нажатия: иначе после перехода между разделами белая
+  рамка выделения оказывалась на элементе, которого никто не нажимал.
+*/
+test(
+  "a node reused for another element does not carry focus or press state",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    await patch(
+      page,
+      `<button type="button" data-manage-section="employees">Сотрудники</button>`
+    );
+
+    await page.evaluate(()=>{
+      const button=document.querySelector("[data-manage-section]");
+
+      button.focus();
+      button.classList.add("touch-active");
+    });
+
+    await patch(
+      page,
+      `<button type="button" id="statsEmployeeOpen">Выберите сотрудника</button>`
+    );
+
+    expect(
+      await page.evaluate(()=>{
+        const button=document.getElementById("statsEmployeeOpen");
+
+        return {
+          focused:document.activeElement===button,
+          pressed:button.classList.contains("touch-active"),
+          active:document.activeElement.tagName
+        };
+      })
+    ).toEqual({focused:false,pressed:false,active:"BODY"});
+  }
+);
+
+test(
+  "a keyed row is never built from an unrelated node",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    await patch(page,`<div class="card">старая карточка</div>`);
+
+    await page.evaluate(()=>{
+      document.querySelector(".card").identityStamp="old";
+    });
+
+    await patch(page,`<div class="card" data-key="row-1">строка</div>`);
+
+    expect(
+      await page.evaluate(()=>
+        document.querySelector("[data-key]").identityStamp ?? null
+      )
+    ).toBe(null);
+  }
+);

@@ -151,6 +151,45 @@ function applyFormSignature(target,source,previous){
   }
 }
 
+/*
+  «Личность» элемента — то, чем он отличается от соседей по смыслу: ключ,
+  id, имя и data-атрибуты, по которым приложение его находит. Пока она не
+  меняется, узел переиспользуется вместе с состоянием рантайма. Если
+  меняется, это уже другой элемент экрана: фокус и нажатие с него снимаются,
+  иначе, например, выделение с плитки «Сотрудники» уезжало на кнопку
+  «Выберите сотрудника» при переходе на другую вкладку.
+*/
+function identity(element){
+  const parts=[element.nodeName];
+  const attributes=element.attributes;
+
+  for(let index=0;index<attributes.length;index++){
+    const {name,value}=attributes[index];
+
+    if(
+      name===KEY_ATTRIBUTE ||
+      name==="id" ||
+      name==="name" ||
+      name==="type" ||
+      name.startsWith("data-")
+    ){
+      parts.push(`${name}=${value}`);
+    }
+  }
+
+  return parts.sort().join("|");
+}
+
+function releaseRuntimeState(element){
+  if(element.ownerDocument.activeElement===element){
+    element.blur();
+  }
+
+  for(const name of RUNTIME_CLASSES){
+    element.classList.remove(name);
+  }
+}
+
 function runtimeClasses(element){
   return RUNTIME_CLASSES.filter(name=>
     element.classList.contains(name)
@@ -257,6 +296,10 @@ function patchElement(target,source){
     ? formSignature(target)
     : null;
 
+  if(identity(target)!==identity(source)){
+    releaseRuntimeState(target);
+  }
+
   patchAttributes(target,source);
 
   /*
@@ -344,6 +387,19 @@ function patchChildNodes(parent,source){
 
       keyed.delete(key);
       patchNode(reusable,next);
+      continue;
+    }
+
+    /*
+      Узел с ключом — отдельная сущность: он не забирает чужой узел без
+      ключа вместе с его состоянием, а создаётся заново.
+    */
+    if(key){
+      parent.insertBefore(
+        next.cloneNode(true),
+        cursor
+      );
+
       continue;
     }
 

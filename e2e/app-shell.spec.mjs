@@ -161,3 +161,68 @@ test(
     ).toBeHidden();
   }
 );
+
+/*
+  Блок «Аккаунт» показывает данные вошедшего пользователя: у настоящего
+  Supabase в сессии есть почта и метаданные, и они должны попадать на экран.
+*/
+test(
+  "the account card shows the signed-in account",
+  async({page})=>{
+    await openApp(page);
+
+    await page.locator("#tab-data").click();
+
+    const account=page
+      .locator(".ml", {hasText:/^Аккаунт$/})
+      .locator("xpath=following-sibling::div[1]");
+
+    await expect(account).toContainText("Администратор");
+    await expect(account).toContainText("Эмиль Сайфуллин");
+    await expect(account).toContainText("admin@example.test");
+  }
+);
+
+test(
+  "switching tabs does not move focus onto the next screen",
+  async({page})=>{
+    await openApp(page);
+
+    await page.locator("#tab-manage").click();
+
+    await page.evaluate(()=>
+      document
+        .querySelector('#app [data-manage-section="employees"]')
+        .focus()
+    );
+
+    await page.evaluate(()=>
+      document
+        .getElementById("tab-stats")
+        .dispatchEvent(new MouseEvent("click",{bubbles:true}))
+    );
+
+    /*
+      Экран считается переключённым, когда содержимое «Итогов» уже
+      отрисовано: атрибут вкладки на body ставится раньше рендера.
+    */
+    await expect(
+      page.locator("#statsEmployeeOpen")
+    ).toBeVisible();
+
+    await expect
+      .poll(()=>page.evaluate(()=>
+        document.querySelectorAll(
+          'body > main[aria-hidden="true"][inert]'
+        ).length
+      ))
+      .toBe(0);
+
+    expect(
+      await page.evaluate(()=>({
+        active:document.activeElement.tagName,
+        id:document.activeElement.id
+      }))
+    ).toEqual({active:"BODY",id:""});
+  }
+);

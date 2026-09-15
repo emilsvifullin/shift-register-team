@@ -62,13 +62,13 @@ test(
     const platformShell=
       positionOf(
         html,
-        'src="./src/platform-shell.js"'
+        'src="./src/platform-shell.js?shell=7"'
       );
 
     const app=
       positionOf(
         html,
-        'src="./src/app.js"'
+        'src="./src/app.js?shell=7"'
       );
 
     assert.ok(
@@ -81,9 +81,10 @@ test(
       "platform shell must start before the application"
     );
 
-    assert.match(
+    assert.doesNotMatch(
       html,
-      /rel="modulepreload"[\s\S]*?href="\.\/src\/app\.js"/
+      /rel="modulepreload"/,
+      "WebKit reuses a preloaded module past the service worker after an update"
     );
 
     assert.match(
@@ -154,7 +155,12 @@ test(
 
     assert.match(
       html,
-      /href="\.\/src\/login\.js"/
+      /src="\.\/src\/login\.js\?shell=7"/
+    );
+
+    assert.doesNotMatch(
+      html,
+      /rel="modulepreload"/
     );
   }
 );

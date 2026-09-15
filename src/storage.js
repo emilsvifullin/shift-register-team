@@ -1,7 +1,7 @@
 import {
   createBackupEnvelope,
   parseBackupJson
-} from "./domain.js";
+} from "./domain.js?shell=7";
 
 export const DB_KEY="shift-register-team-db-v3";
 export const LEGACY_DB_KEY="shift-register-team-legacy-v1";

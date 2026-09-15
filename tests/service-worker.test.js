@@ -11,6 +11,12 @@ import {
   posix
 } from "node:path";
 
+import {
+  serviceWorkerShell as readServiceWorkerShell,
+  serviceWorkerSource,
+  shellFingerprint
+} from "../scripts/stamp-sw.mjs";
+
 const root=new URL("../",import.meta.url);
 
 const read=path=>
@@ -25,39 +31,9 @@ const read=path=>
   или лишний файл виден сразу, а не превращается в неработающий офлайн.
 */
 async function serviceWorkerShell(){
-  const source=await read("sw.js");
-
-  const context={
-    self:{
-      registration:{
-        scope:"https://example.test/app/"
-      },
-      addEventListener(){},
-      skipWaiting(){},
-      clients:{claim(){}}
-    },
-    caches:{},
-    fetch(){},
-    AbortController,
-    setTimeout,
-    clearTimeout,
-    Response:{error(){}},
-    URL
-  };
-
-  context.globalThis=context;
-
-  vm.runInNewContext(
-    `${source}
-    globalThis.__shell={
-      assets:ASSETS,
-      cacheName:CACHE_NAME,
-      version:VERSION
-    };`,
-    context
+  return readServiceWorkerShell(
+    await serviceWorkerSource()
   );
-
-  return context.__shell;
 }
 
 const IMPORT_PATTERNS=[
@@ -84,7 +60,7 @@ async function moduleGraph(entries){
           posix.normalize(
             posix.join(
               posix.dirname(file),
-              match[1]
+              match[1].replace(/\?.*$/,"")
             )
           )
         );
@@ -116,10 +92,6 @@ test(
     const {assets}=await serviceWorkerShell();
 
     for(const asset of assets){
-      if(asset==="./"){
-        continue;
-      }
-
       await access(
         new URL(asset,root)
       );
@@ -233,7 +205,7 @@ test(
 test(
   "the cache name, the manifest version and the app version agree",
   async()=>{
-    const {cacheName,version}=
+    const {cacheName,version,fingerprint}=
       await serviceWorkerShell();
 
     const pkg=JSON.parse(
@@ -243,7 +215,10 @@ test(
     const config=await read("src/config.js");
 
     assert.equal(version,pkg.version);
-    assert.ok(cacheName.endsWith(pkg.version));
+    assert.equal(
+      cacheName,
+      `sr-shell-v${pkg.version}-${fingerprint.slice(0,12)}`
+    );
 
     assert.match(
       config,
@@ -254,44 +229,103 @@ test(
   }
 );
 
+/*
+  HTML, модули и стили отдаются из кеша поколения. Если файл оболочки
+  изменился, а отпечаток в sw.js — нет, браузер не увидит обновления, и
+  пользователи навсегда останутся на прошлой версии.
+*/
 test(
-  "a new version never takes over a running page on its own",
+  "the shell fingerprint in sw.js matches the files on disk",
   async()=>{
-    const sw=await read("sw.js");
+    const {assets,fingerprint}=await serviceWorkerShell();
 
-    /*
-      `skipWaiting` допустим только по явному сообщению страницы:
-      иначе догруженный по import() модуль приходит из следующей
-      сборки, и в одной сессии работают два поколения кода.
-    */
-    const installBlock=sw.slice(
-      sw.indexOf('"install"'),
-      sw.indexOf('"activate"')
+    assert.equal(
+      fingerprint,
+      await shellFingerprint(assets),
+      "run npm run stamp:sw after changing any shell file"
+    );
+  }
+);
+
+/*
+  Эти модули предзагружали через modulepreload index.html и login.html
+  версий до 7.0. WebKit держит предзагруженный модуль в памяти процесса и
+  отдаёт его мимо service worker даже после обновления, поэтому в уже
+  запущенном процессе iOS под прежним адресом лежит старый код: страница
+  нового поколения запускала старый app.js, тот тянул удалённые модули и
+  приложение не стартовало. Поколение 7 запрашивает их с маркером ?shell=7.
+*/
+const LEGACY_PRELOADED_MODULES=new Set([
+  "src/app.js",
+  "src/config.js",
+  "src/domain.js",
+  "src/login.js",
+  "src/phone.js",
+  "src/platform-shell.js",
+  "src/storage.js",
+  "src/team-domain.js",
+  "src/team.js",
+  "src/workflow.js"
+]);
+
+const SHELL_MARKER="?shell=7";
+
+test(
+  "modules preloaded before 7.0 are only requested under the shell marker",
+  async()=>{
+    const references=[];
+
+    for(const page of ["index.html","login.html"]){
+      const html=await read(page);
+
+      assert.doesNotMatch(
+        html,
+        /rel="modulepreload"/,
+        `${page}: WebKit serves a preloaded module past the service worker`
+      );
+
+      for(const match of html.matchAll(/src="\.\/(src\/[^"]+)"/g)){
+        references.push({from:page,specifier:match[1],path:match[1]});
+      }
+    }
+
+    const graph=await moduleGraph([
+      "src/app.js",
+      "src/platform-shell.js",
+      "src/interactions.js",
+      "src/login.js"
+    ]);
+
+    for(const file of graph){
+      const source=await read(file);
+
+      for(const pattern of IMPORT_PATTERNS){
+        for(const match of source.matchAll(pattern)){
+          references.push({
+            from:file,
+            specifier:match[1],
+            path:posix.normalize(
+              posix.join(
+                posix.dirname(file),
+                match[1].replace(/\?.*$/,"")
+              )
+            )
+          });
+        }
+      }
+    }
+
+    const legacy=references.filter(reference=>
+      LEGACY_PRELOADED_MODULES.has(reference.path.replace(/\?.*$/,""))
     );
 
-    assert.doesNotMatch(
-      installBlock,
-      /skipWaiting/
-    );
+    assert.ok(legacy.length>=10);
 
-    assert.match(
-      sw,
-      /activate-update/
-    );
-
-    assert.match(
-      sw,
-      /cache\.addAll\(ASSETS\)/
-    );
-
-    assert.match(
-      sw,
-      /self\.clients\.claim\(\)/
-    );
-
-    assert.match(
-      sw,
-      /AbortController/
-    );
+    for(const reference of legacy){
+      assert.ok(
+        reference.specifier.endsWith(SHELL_MARKER),
+        `${reference.from} must request ${reference.path} as ${reference.path}${SHELL_MARKER}`
+      );
+    }
   }
 );

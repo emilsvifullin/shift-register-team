@@ -2,13 +2,13 @@ import {
   FULL_HOURS,
   MAX_MONEY,
   MAX_SHK
-} from "./config.js";
+} from "./config.js?shell=7";
 
 import {
   calc,
   isValidDateString,
   normalizeShiftRecord
-} from "./domain.js";
+} from "./domain.js?shell=7";
 
 const TEAM_RULES_VERSION=
   "supabase-point-tariffs-v1";

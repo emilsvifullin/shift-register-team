@@ -94,22 +94,15 @@ body{
 <link rel="stylesheet" href="./styles/modal-motion-exact.css">
 <link rel="stylesheet" href="./styles/interaction.css">
 
-<link rel="modulepreload" href="./src/app.js">
-<link rel="modulepreload" href="./src/platform-shell.js">
-<link rel="modulepreload" href="./src/interactions.js">
-<link rel="modulepreload" href="./src/config.js">
-<link rel="modulepreload" href="./src/domain.js">
-<link rel="modulepreload" href="./src/storage.js">
-<link rel="modulepreload" href="./src/team.js">
-<link rel="modulepreload" href="./src/team-domain.js">
-<link rel="modulepreload" href="./src/format.js">
-<link rel="modulepreload" href="./src/point-summary.js">
-<link rel="modulepreload" href="./src/tariff-rules.js">
-<link rel="modulepreload" href="./src/render/dom-patch.js">
-<link rel="modulepreload" href="./src/render/schedule.js">
-<link rel="modulepreload" href="./src/phone.js">
-<link rel="modulepreload" href="./src/manage-swipe.js">
-<link rel="modulepreload" href="./src/workflow.js">
+<!--
+  Модули намеренно не предзагружаются через modulepreload: WebKit держит
+  предзагруженный модуль в памяти процесса и отдаёт его мимо service worker
+  даже после обновления, так что новая разметка запускалась со старым кодом.
+
+  Модули, которые предзагружали версии до 7.0, запрашиваются с маркером
+  ?shell=7: под прежним адресом в уже запущенном процессе iOS лежит старый
+  код. Подробности — docs/architecture.md, «Обновление оболочки».
+-->
 
 <script
   src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
@@ -117,8 +110,8 @@ body{
   crossorigin="anonymous"
 ></script>
 
-<script type="module" src="./src/platform-shell.js"></script>
-<script type="module" src="./src/app.js"></script>
+<script type="module" src="./src/platform-shell.js?shell=7"></script>
+<script type="module" src="./src/app.js?shell=7"></script>
 <script type="module" src="./src/interactions.js"></script>
 
 </head>

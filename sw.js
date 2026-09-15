@@ -1,22 +1,41 @@
 /*
-  Оболочка приложения кешируется целиком и по версиям.
+  Оболочка приложения кешируется целиком и по поколениям.
 
   Правила, которые здесь важны:
 
-  1. Кеш версии либо собран полностью, либо установка проваливается.
-     Частично заполненный кеш раньше считался готовым, и приложение
-     оставалось офлайн с недостающими модулями.
+  1. HTML, модули и стили всегда приходят из одного поколения кеша.
+     Прежний worker брал документ из сети, а модули из своего кеша:
+     после выкладки новая разметка запускалась со старым app.js, и так
+     повторялось при каждом открытии, пока приложение не закроют целиком.
 
-  2. Новая версия не подменяет ресурсы под работающей вкладкой.
-     Раньше `skipWaiting()` в install переключал контроллер сразу, и
-     модуль, догруженный по `import()` уже после переключения, приходил
-     из следующей сборки — в одной сессии жили два поколения кода.
-     Теперь момент переключения выбирает страница (src/pwa.js).
+  2. Поколение либо собрано полностью и совпадает с отпечатком
+     SHELL_FINGERPRINT, либо установка проваливается и продолжает работать
+     прошлая версия. Файлы качаются мимо HTTP-кеша: GitHub Pages отдаёт
+     max-age=600, и без этого в новое поколение попадали старые файлы.
+
+  3. Новая версия не подменяет ресурсы под работающей вкладкой: момент
+     переключения выбирает страница (src/pwa.js). Исключение — переход с
+     поколений до 7.0: их страницы не умеют просить об обновлении, поэтому
+     такой переход worker завершает сам и перезагружает их окна.
+
+  Отпечаток пересчитывает `npm run stamp:sw`; tests/service-worker.test.js
+  падает, если его забыли обновить после правки любого файла оболочки.
 */
 
 const VERSION="7.0.0";
 
-const CACHE_NAME=`sr-team-runtime-v${VERSION}`;
+const SHELL_FINGERPRINT="4127433b6be9fed021d2e1751dbc282fcfa2cb04c7c79ed396d7bcacb1c6468a";
+
+const CACHE_PREFIX="sr-shell-";
+
+const CACHE_NAME=`${CACHE_PREFIX}v${VERSION}-${SHELL_FINGERPRINT.slice(0,12)}`;
+
+/*
+  Кеши поколений до 7.0 назывались sr-team-runtime-v*. Их worker
+  перехватывал документы через сеть, а страница не отвечала на
+  сообщение об обновлении.
+*/
+const LEGACY_CACHE_PREFIX="sr-team-";
 
 const INDEX_FILE="./index.html";
 
@@ -24,7 +43,6 @@ const SUPABASE_CDN_URL=
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
 const DOCUMENTS=[
-  "./",
   INDEX_FILE,
   "./login.html",
   "./manifest.webmanifest"
@@ -96,14 +114,70 @@ const ASSETS=[
   ...ICONS
 ];
 
+const scopeUrl=path=>
+  new URL(
+    path,
+    self.registration.scope
+  );
+
 const ASSET_PATHS=new Set(
-  ASSETS.map(path=>
-    new URL(
-      path,
-      self.registration.scope
-    ).pathname
-  )
+  ASSETS.map(path=>scopeUrl(path).pathname)
 );
+
+/*
+  Документы оболочки. Навигация на них отдаётся из кеша поколения, а
+  адрес "./" и "./index.html" — это один и тот же документ.
+*/
+const SHELL_DOCUMENTS=new Map([
+  [scopeUrl("./").pathname,INDEX_FILE],
+  [scopeUrl(INDEX_FILE).pathname,INDEX_FILE],
+  [scopeUrl("./login.html").pathname,"./login.html"]
+]);
+
+/*
+  Отпечаток поколения: SHA-256 по путям и байтам всех файлов оболочки в
+  порядке ASSETS. Тот же расчёт делает scripts/stamp-sw.mjs; тест сверяет,
+  что оба дают одинаковый результат.
+*/
+async function shellFingerprint(readAsset){
+  const encoder=new TextEncoder();
+  const parts=[];
+
+  for(const path of ASSETS){
+    const bytes=await readAsset(path);
+
+    if(!bytes){
+      return null;
+    }
+
+    parts.push(encoder.encode(`${path}\n`));
+    parts.push(new Uint8Array(bytes));
+  }
+
+  const size=parts.reduce((total,part)=>total+part.byteLength,0);
+  const bytes=new Uint8Array(size);
+  let offset=0;
+
+  for(const part of parts){
+    bytes.set(part,offset);
+    offset+=part.byteLength;
+  }
+
+  const digest=await crypto.subtle.digest("SHA-256",bytes);
+
+  return Array.from(
+    new Uint8Array(digest),
+    byte=>byte.toString(16).padStart(2,"0")
+  ).join("");
+}
+
+async function hasLegacyGeneration(){
+  const names=await caches.keys();
+
+  return names.some(name=>
+    name.startsWith(LEGACY_CACHE_PREFIX)
+  );
+}
 
 self.addEventListener(
   "install",
@@ -112,11 +186,46 @@ self.addEventListener(
       (async()=>{
         const cache=await caches.open(CACHE_NAME);
 
+        const cachedFingerprint=()=>shellFingerprint(
+          async path=>{
+            const response=await cache.match(path);
+            return response ? response.arrayBuffer() : null;
+          }
+        );
+
         /*
-          addAll атомарен: если хотя бы один файл оболочки недоступен,
-          установка проваливается и продолжает работать прошлая версия.
+          Если изменился только сам worker, поколение с тем же отпечатком
+          уже собрано и проверено — его не качаем заново и не трогаем.
         */
-        await cache.addAll(ASSETS);
+        if(await cachedFingerprint()!==SHELL_FINGERPRINT){
+          try{
+            /*
+              addAll атомарен: если хотя бы один файл недоступен, установка
+              проваливается. cache:"reload" идёт мимо HTTP-кеша браузера.
+            */
+            await cache.addAll(
+              ASSETS.map(path=>
+                new Request(path,{cache:"reload"})
+              )
+            );
+
+            const fingerprint=await cachedFingerprint();
+
+            /*
+              Сразу после выкладки CDN может ещё отдавать часть старых
+              файлов. Смешанное поколение не устанавливается: браузер
+              повторит попытку при следующей проверке обновления.
+            */
+            if(fingerprint!==SHELL_FINGERPRINT){
+              throw new Error(
+                `Оболочка ${VERSION} собрана не полностью: ${fingerprint}`
+              );
+            }
+          }catch(error){
+            await caches.delete(CACHE_NAME);
+            throw error;
+          }
+        }
 
         /*
           Внешний CDN не должен ронять установку: без него приложение
@@ -125,6 +234,10 @@ self.addEventListener(
         await cache
           .add(SUPABASE_CDN_URL)
           .catch(()=>{});
+
+        if(await hasLegacyGeneration()){
+          await self.skipWaiting();
+        }
       })()
     );
   }
@@ -135,18 +248,52 @@ self.addEventListener(
   event=>{
     event.waitUntil(
       (async()=>{
+        const legacy=await hasLegacyGeneration();
         const names=await caches.keys();
 
         await Promise.all(
           names
             .filter(name=>
               name!==CACHE_NAME &&
-              name.startsWith("sr-team-")
+              (
+                name.startsWith(CACHE_PREFIX) ||
+                name.startsWith(LEGACY_CACHE_PREFIX)
+              )
             )
             .map(name=>caches.delete(name))
         );
 
         await self.clients.claim();
+
+        if(!legacy){
+          return;
+        }
+
+        /*
+          Окна прежнего поколения запущены со смешанной оболочкой и не
+          перезагрузятся сами. Навигация на тот же адрес пройдёт уже через
+          этот worker и соберёт страницу из одного поколения.
+
+          Навигацию нельзя ждать внутри waitUntil: её запрос обслуживается
+          только активированным worker, а активация ждала бы навигацию —
+          взаимная блокировка и в WebKit, и в Chromium.
+
+          Адрес берётся без #фрагмента: переход на тот же адрес с фрагментом
+          браузер выполняет как прокрутку к якорю, без перезагрузки. Вкладку
+          приложение восстановит из сохранённого состояния интерфейса.
+        */
+        const windows=await self.clients.matchAll({
+          type:"window"
+        });
+
+        for(const client of windows){
+          const target=new URL(client.url);
+          target.hash="";
+
+          client
+            .navigate(target.href)
+            .catch(()=>null);
+        }
       })()
     );
   }
@@ -178,7 +325,7 @@ function fetchWithTimeout(request,timeoutMs=5000){
   ).finally(()=>clearTimeout(timer));
 }
 
-async function cacheFirst(request){
+async function cacheFirst(request,{store=false}={}){
   const cache=await caches.open(CACHE_NAME);
 
   const cached=await cache.match(
@@ -193,7 +340,11 @@ async function cacheFirst(request){
   try{
     const response=await fetchWithTimeout(request);
 
-    if(response.ok){
+    /*
+      Своё поколение дописывать нельзя: файл из сети может оказаться уже
+      из следующей выкладки. Дописывается только внешний supabase-js.
+    */
+    if(store && response.ok){
       await cache.put(
         request,
         response.clone()
@@ -206,34 +357,27 @@ async function cacheFirst(request){
   }
 }
 
-async function navigationResponse(request){
+async function shellDocument(request,path){
   const cache=await caches.open(CACHE_NAME);
 
+  const cached=await cache.match(path);
+
+  if(cached){
+    return cached;
+  }
+
   try{
-    const response=await fetchWithTimeout(request);
-
-    if(
-      response.ok &&
-      (
-        response.headers.get("content-type") || ""
-      ).includes("text/html")
-    ){
-      await cache.put(
-        request,
-        response.clone()
-      );
-    }
-
-    return response;
+    return await fetchWithTimeout(request);
   }catch{
-    const cached=await cache.match(
-      request,
-      {ignoreSearch:true}
-    );
+    return Response.error();
+  }
+}
 
-    if(cached){
-      return cached;
-    }
+async function navigationResponse(request){
+  try{
+    return await fetchWithTimeout(request);
+  }catch{
+    const cache=await caches.open(CACHE_NAME);
 
     return (
       await cache.match(INDEX_FILE)
@@ -254,7 +398,10 @@ self.addEventListener(
     const scope=new URL(self.registration.scope);
 
     if(url.href===SUPABASE_CDN_URL){
-      event.respondWith(cacheFirst(request));
+      event.respondWith(
+        cacheFirst(request,{store:true})
+      );
+
       return;
     }
 
@@ -263,8 +410,12 @@ self.addEventListener(
     }
 
     if(request.mode==="navigate"){
+      const shellPath=SHELL_DOCUMENTS.get(url.pathname);
+
       event.respondWith(
-        navigationResponse(request)
+        shellPath
+          ? shellDocument(request,shellPath)
+          : navigationResponse(request)
       );
 
       return;

@@ -19,7 +19,7 @@ import {
   isFixedPoint,
   pointIdForName,
   pointNameForId
-} from "./config.js";
+} from "./config.js?shell=7";
 
 export class DataValidationError extends Error {
   constructor(message,{recordIndex=null,code="invalid_data"}={}){

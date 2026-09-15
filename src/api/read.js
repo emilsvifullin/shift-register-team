@@ -5,7 +5,7 @@ import {
 import {
   mapServerShift,
   sortPointsAlphabetically
-} from "../team-domain.js";
+} from "../team-domain.js?shell=7";
 
 import {
   resultData

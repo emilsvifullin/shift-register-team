@@ -6,6 +6,8 @@
   "scripts": {
     "test": "node --test",
     "check:syntax": "node ./scripts/check-source.mjs",
+    "stamp:sw": "node ./scripts/stamp-sw.mjs",
+    "serve": "node ./scripts/serve.mjs",
     "check": "npm run check:syntax && node --test"
   },
   "engines": {

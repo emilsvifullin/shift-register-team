@@ -80,22 +80,7 @@ jobs:
       - name: Install browser
         run: npx playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Start static server
-        run: |
-          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/shift-register-http.log 2>&1 &
-          echo $! > /tmp/shift-register-http.pid
-
-      - name: Wait for server
-        run: |
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:4173/tests/fixtures/platform-shell.html > /dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat /tmp/shift-register-http.log
-          exit 1
-
+      # Статический сервер поднимает playwright.config.mjs (scripts/serve.mjs).
       - name: Run browser smoke
         run: npx playwright test e2e --browser=${{ matrix.browser }} --reporter=line
 

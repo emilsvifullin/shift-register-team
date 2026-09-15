@@ -83,7 +83,7 @@ test(
 
     assert.match(
       html,
-      /src="\.\/src\/app\.js"/
+      /src="\.\/src\/app\.js\?shell=7"/
     );
   }
 );
@@ -226,7 +226,7 @@ test(
 
     assert.match(
       html,
-      /src="\.\/src\/login\.js"/
+      /src="\.\/src\/login\.js\?shell=7"/
     );
   }
 );
@@ -1126,9 +1126,13 @@ test(
       )
     );
 
+    /*
+      Кнопка «назад» живёт в шапке всегда: жест управления действует только
+      пока она видима. Поведение проверяет e2e/manage-swipe.spec.mjs.
+    */
     assert.match(
       manageSwipe,
-      /const inSubsection=\(\)=>Boolean\([\s\S]*"manageBack"/
+      /const inSubsection=\(\)=>\{[\s\S]*"manageBack"[\s\S]*!back\.hidden/
     );
 
     assert.match(

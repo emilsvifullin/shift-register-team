@@ -709,11 +709,12 @@ nav.tabs{
   border-radius:16px;
 }
 
-body[data-manage-detail="true"] main{
+body main[data-manage-detail="true"]{
   padding-top:calc(72px + env(safe-area-inset-top));
 }
 
-body[data-manage-detail="true"] main > .ml:first-child{
+body #app[data-manage-detail="true"] > .ml:first-child,
+body main[data-manage-detail="true"] > .ml:first-child{
   margin-top:8px;
 }
 
@@ -748,7 +749,7 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
 }
 
 @media (max-width:420px){
-  body[data-manage-detail="true"] main{
+  body main[data-manage-detail="true"]{
     padding-top:calc(68px + env(safe-area-inset-top));
   }
 }

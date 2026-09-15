@@ -82,8 +82,44 @@ export function assertNewTariffDate({
   }
 }
 
+/*
+  Запись из истории редактируется на месте. Её дату можно сдвинуть, но не
+  на дату другой версии того же ПВЗ.
+*/
+export function assertTariffVersionDate({
+  tariffs,
+  tariffId,
+  effectiveFrom
+}){
+  if(
+    (tariffs || []).some(tariff=>
+      tariff.id!==tariffId &&
+      tariff.effective_from===effectiveFrom
+    )
+  ){
+    throw new Error(
+      "На эту дату тариф уже задан."
+    );
+  }
+}
+
+/*
+  Сохранение по намерению: изменить существующую запись или создать
+  следующую версию.
+*/
+export function tariffIntentUpdatesRecord(intent){
+  return intent==="edit-current" ||
+    intent==="edit-version";
+}
+
 export function tariffIntentHelp(intent){
-  return intent==="edit-current"
-    ? "Редактируется текущий тариф. Новая запись в истории не создаётся."
-    : "Создаётся новая версия тарифа с выбранной даты. Предыдущий тариф останется в истории.";
+  if(intent==="edit-current"){
+    return "Редактируется текущий тариф. Новая запись в истории не создаётся.";
+  }
+
+  if(intent==="edit-version"){
+    return "Редактируется тариф из истории. Новая запись не создаётся.";
+  }
+
+  return "Создаётся новая версия тарифа с выбранной даты. Предыдущий тариф останется в истории.";
 }

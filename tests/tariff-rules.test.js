@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import {
   assertCurrentTariffDate,
   assertNewTariffDate,
+  assertTariffVersionDate,
   currentTariffForDate,
-  tariffIntentHelp
+  tariffIntentHelp,
+  tariffIntentUpdatesRecord
 } from "../src/tariff-rules.js";
 
 test("the editor explains which tariff a save will touch",()=>{
@@ -105,5 +107,43 @@ test("new tariff must start after the current version",()=>{
       effectiveFrom:"2026-09-15",
       today:"2026-09-14"
     })
+  );
+});
+
+/*
+  Запись из истории, открытая на редактирование, сохраняется на месте.
+  Раньше из режима редактирования ПВЗ её сохранение шло как «новый тариф»
+  на ту же дату и падало с «На эту дату тариф уже задан».
+*/
+test("editing a tariff from history updates that record in place",()=>{
+  assert.equal(tariffIntentUpdatesRecord("edit-version"),true);
+  assert.equal(tariffIntentUpdatesRecord("edit-current"),true);
+  assert.equal(tariffIntentUpdatesRecord("create"),false);
+
+  assert.match(
+    tariffIntentHelp("edit-version"),
+    /из истории/i
+  );
+
+  const tariffs=[
+    {id:"old",effective_from:"2025-06-01"},
+    {id:"current",effective_from:"2026-01-01"}
+  ];
+
+  assert.doesNotThrow(()=>
+    assertTariffVersionDate({
+      tariffs,
+      tariffId:"old",
+      effectiveFrom:"2025-06-01"
+    })
+  );
+
+  assert.throws(()=>
+    assertTariffVersionDate({
+      tariffs,
+      tariffId:"old",
+      effectiveFrom:"2026-01-01"
+    }),
+    /уже задан/i
   );
 });

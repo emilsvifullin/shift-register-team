@@ -13,6 +13,11 @@ body > main[aria-hidden="true"][inert] > .ml:first-child{
   margin-top:2px !important;
 }
 
+/* У подраздела управления первый заголовок стоит ниже — слепок повторяет это. */
+body > main[aria-hidden="true"][inert][data-manage-detail="true"] > .ml:first-child{
+  margin-top:8px !important;
+}
+
 /*
   Match shift-register's stable sheet viewport sizing. On iOS the software
   keyboard changes dynamic viewport units; keeping the sheet on vh prevents

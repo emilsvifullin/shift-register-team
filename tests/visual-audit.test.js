@@ -150,7 +150,7 @@ test("management detail keeps a real header back control and lets long lists use
 
   assert.match(
     management,
-    /body\[data-manage-detail="true"\] main\{/
+    /body main\[data-manage-detail="true"\]\{/
   );
 
   assert.match(management,/main:has\(#employeeList\),[\s\S]*?main:has\(#pointManageList\)[\s\S]*?padding-bottom:16px/);

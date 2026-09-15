@@ -57,12 +57,20 @@ body[data-active-tab="stats"] > main > .card:has(.stats-filter-row){
   background:transparent;
 }
 
-/* Детальные экраны управления используют оставшуюся высоту как рабочую область. */
-body[data-manage-detail="true"] main{
+/*
+  Детальные экраны управления используют оставшуюся высоту как рабочую область.
+
+  Флаг стоит на самом #app, а не на body: слепок старого экрана во время
+  перехода сохраняет прежнее значение и не прыгает на 16px в первом кадре.
+  Заголовок раздела — первый ребёнок #app, поэтому его отступ задаётся через
+  #app: иначе его перебивает общее правило #app > .ml:first-child.
+*/
+body main[data-manage-detail="true"]{
   padding-top:calc(68px + env(safe-area-inset-top));
 }
 
-body[data-manage-detail="true"] main > .ml:first-child{
+body #app[data-manage-detail="true"] > .ml:first-child,
+body main[data-manage-detail="true"] > .ml:first-child{
   margin-top:8px;
   margin-left:3px;
 }
@@ -143,7 +151,8 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   min-height:54px;
 }
 
-.manage-point-delete{
+.manage-point-delete,
+.manage-employee-delete{
   margin-top:16px;
 }
 
@@ -205,14 +214,62 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
 }
 
 @media (orientation:landscape) and (max-height:520px){
-  body[data-manage-detail="true"] main{
+  body main[data-manage-detail="true"]{
     padding-top:calc(54px + env(safe-area-inset-top));
   }
 }
 
 /*
-  Возврат из раздела управления — штатная кнопка шапки. Прокси-стрелка
-  требовала наблюдателя за DOM, отдельного подавления фокуса и правок
-  !important, а на WebKit оставляла тёмный квадрат вокруг стрелки при
-  касании.
+  Возврат из раздела управления — штатная кнопка шапки и выглядит как до
+  7.0: прозрачная стрелка без круга.
+
+  Внутри header с backdrop-filter WebKit на 1–2 кадра рисует тёмный квадрат
+  44×44 вокруг прозрачной кнопки, если у неё появляется transform, тень или
+  фон (исправление #39). Поэтому ни касание, ни фокус указателем их не
+  добавляют; клавиатурный focus-visible остаётся за accessibility.css.
 */
+#manageBack{
+  border:0;
+  border-radius:0;
+  background:transparent !important;
+  color:var(--ink2);
+  box-shadow:none !important;
+  appearance:none;
+  -webkit-appearance:none;
+  -webkit-tap-highlight-color:transparent;
+  transform:none !important;
+  transition:
+    color var(--ui-base) ease,
+    opacity var(--ui-base) ease !important;
+}
+
+#manageBack svg{
+  width:11px;
+  height:18px;
+  stroke-width:1.8;
+}
+
+#manageBack.touch-active,
+#manageBack:active{
+  transform:none !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+
+body:not([data-input-modality="keyboard"]) #manageBack:focus,
+body:not([data-input-modality="keyboard"]) #manageBack:focus-visible{
+  outline:none !important;
+  outline-width:0 !important;
+  outline-offset:0 !important;
+  box-shadow:none !important;
+  background:transparent !important;
+  transform:none !important;
+}
+
+@media (hover:hover) and (pointer:fine){
+  #manageBack:hover{
+    color:var(--ink);
+    background:transparent !important;
+    transform:none !important;
+  }
+}

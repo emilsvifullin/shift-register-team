@@ -10,7 +10,7 @@ import {
   MONTHS_G,
   RULES_VERSION,
   WD
-} from "./config.js";
+} from "./config.js?shell=7";
 
 import {
   DataValidationError,
@@ -19,7 +19,7 @@ import {
   isPlainObject,
   isValidDateString,
   payouts as domainPayouts
-} from "./domain.js";
+} from "./domain.js?shell=7";
 
 import {
   BACKUP_KEY,
@@ -28,7 +28,7 @@ import {
   LEGACY_DB_KEY,
   StorageCorruptError,
   createAppStorage
-} from "./storage.js";
+} from "./storage.js?shell=7";
 
 import {
   signOut,
@@ -39,7 +39,7 @@ import {
   normalizePhone,
   optionalPhone,
   phoneLabel
-} from "./phone.js";
+} from "./phone.js?shell=7";
 
 import {
   addAdminTariff,
@@ -58,7 +58,7 @@ import {
   saveAdminShift,
   subscribeTeamChanges,
   updateAdminTariff
-} from "./team.js";
+} from "./team.js?shell=7";
 
 import {
   calculateBaseAmount,
@@ -71,7 +71,7 @@ import {
   shiftPointChoices,
   sortPointsAlphabetically,
   tariffForDate
-} from "./team-domain.js";
+} from "./team-domain.js?shell=7";
 
 import {
   initManageSwipe
@@ -114,7 +114,9 @@ import {
 import {
   assertCurrentTariffDate,
   assertNewTariffDate,
-  tariffIntentHelp
+  assertTariffVersionDate,
+  tariffIntentHelp,
+  tariffIntentUpdatesRecord
 } from "./tariff-rules.js";
 
 import {
@@ -124,7 +126,7 @@ import {
   filterMonthShifts,
   paymentProgress,
   toggleFilterSelection
-} from "./workflow.js";
+} from "./workflow.js?shell=7";
 
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
@@ -286,8 +288,8 @@ const renderWhenReady=createDeferredRender({
 */
 let pendingNavigation=null;
 
-function queueNavigation(run){
-  pendingNavigation=run;
+function queueNavigation(run,{month=null}={}){
+  pendingNavigation={run,month};
 }
 
 function runPendingNavigation(){
@@ -295,8 +297,15 @@ function runPendingNavigation(){
   pendingNavigation=null;
 
   if(next && !transitionsRunning()){
-    next();
+    next.run();
   }
+}
+
+function monthOffset(from,to){
+  const [fromYear,fromMonth]=from.split("-").map(Number);
+  const [toYear,toMonth]=to.split("-").map(Number);
+
+  return (toYear-fromYear)*12+(toMonth-fromMonth);
 }
 
 async function refreshTeamData({
@@ -1023,10 +1032,14 @@ function render(){
     tab==="manage" &&
     manageSection!=="home";
 
+  /*
+    Флаг живёт на самом #app: слепок экрана при переходе копирует его вместе
+    с разметкой и сохраняет геометрию старого экрана.
+  */
   if(manageDetail){
-    document.body.dataset.manageDetail="true";
+    app.dataset.manageDetail="true";
   }else{
-    delete document.body.dataset.manageDetail;
+    delete app.dataset.manageDetail;
   }
 
   document.getElementById(
@@ -3494,15 +3507,6 @@ function pointInformationHTML(
     <div class="ml">Текущий тариф</div>
     ${tariffCardHTML(current)}
     ${pointTariffHistoryHTML(point.id,current)}
-
-    <button
-      type="button"
-      class="btn warn manage-point-delete"
-      id="managePointDelete"
-    >
-      Удалить ПВЗ
-    </button>
-
     <div class="sheet-spacer" aria-hidden="true"></div>
   `;
 }
@@ -3857,12 +3861,28 @@ function readManageEditor(){
   }
 }
 
+/*
+  Строки редакторов списков получают ключ по самому объекту черновика: при
+  удалении строки из середины её поля не достаются соседней строке.
+*/
+const rowKeys=new WeakMap();
+let nextRowKey=0;
+
+function rowKey(item){
+  if(!rowKeys.has(item)){
+    nextRowKey+=1;
+    rowKeys.set(item,nextRowKey);
+  }
+
+  return rowKeys.get(item);
+}
+
 function tierEditorHTML(tiers){
   return tiers.map((tier,index)=>{
     const final=index===tiers.length-1;
 
     return `
-      <div class="row tariff-tier" data-tier-index="${index}">
+      <div class="row tariff-tier" data-key="tier-${rowKey(tier)}" data-tier-index="${index}">
         <div class="tariff-tier-fields">
           <label class="tariff-tier-field">
             <span>${final ? "Диапазон" : "ШК до"}</span>
@@ -4031,6 +4051,21 @@ function drawManageEditor(){
       </div></div>
 
       ${tariffSection}
+
+      ${!manageEditorDraft.isNew ? `
+        <!--
+          Удаление — действие режима редактирования: в режиме просмотра
+          разрушительной кнопки нет, как и было до 7.0.
+        -->
+        <button
+          type="button"
+          class="btn warn manage-point-delete"
+          id="managePointDelete"
+        >
+          Удалить ПВЗ
+        </button>
+      ` : ""}
+
       <div class="sheet-spacer" aria-hidden="true"></div>
     `
     );
@@ -4224,10 +4259,12 @@ async function saveManageEditor(){
     !manageEditorDraft.isNew &&
     manageEditorDraft.tariffOpen;
 
+  const tariffIntent=
+    manageEditorDraft.tariffIntent;
+
   const tariffEdited=
     tariffSaved &&
-    manageEditorDraft.tariffIntent===
-      "edit-current";
+    tariffIntentUpdatesRecord(tariffIntent);
 
   try{
     if(
@@ -4322,6 +4359,18 @@ async function saveManageEditor(){
             manageEditorDraft.effectiveFrom,
           today:localYMD()
         });
+      }else if(
+        manageEditorDraft.tariffIntent===
+        "edit-version"
+      ){
+        assertTariffVersionDate({
+          tariffs,
+          tariffId:
+            manageEditorDraft
+              .tariffInlineEditId,
+          effectiveFrom:
+            manageEditorDraft.effectiveFrom
+        });
       }else{
         assertNewTariffDate({
           tariffs,
@@ -4382,10 +4431,7 @@ async function saveManageEditor(){
           : null
       };
 
-      if(
-        manageEditorDraft.tariffIntent===
-        "edit-current"
-      ){
+      if(tariffIntentUpdatesRecord(tariffIntent)){
         await updateAdminTariff({
           id:manageEditorDraft
             .tariffInlineEditId,
@@ -4403,7 +4449,9 @@ async function saveManageEditor(){
     await refreshTeamData();
     toast(
       tariffEdited
-        ? "ПВЗ и текущий тариф сохранены"
+        ? tariffIntent==="edit-version"
+          ? "ПВЗ и тариф из истории сохранены"
+          : "ПВЗ и текущий тариф сохранены"
         : tariffSaved
           ? "ПВЗ и новый тариф сохранены"
           : "ПВЗ сохранён"
@@ -4865,14 +4913,6 @@ function drawEmployeeSheet(){
         ${pointRows}
       </div>
 
-      <button
-        type="button"
-        class="btn warn"
-        id="employeeDelete"
-      >
-        Удалить сотрудника
-      </button>
-
       <div
         class="sheet-spacer"
         aria-hidden="true"
@@ -5165,6 +5205,16 @@ function drawEmployeeSheet(){
     <div class="card employee-points">
       ${pointRows}
     </div>
+
+    ${!isCreate && employeeDraft.id && !employeeDraft.isSystem ? `
+      <button
+        type="button"
+        class="btn warn manage-employee-delete"
+        id="employeeDelete"
+      >
+        Удалить сотрудника
+      </button>
+    ` : ""}
   `
   );
 
@@ -6205,7 +6255,7 @@ function employeeDeleteError(
 async function deleteEmployeeDraft(){
   if(
     !employeeDraft?.id ||
-    employeeSheetMode!=="view" ||
+    employeeSheetMode!=="edit" ||
     employeeDraft.isSystem
   ){
     return;
@@ -7754,7 +7804,7 @@ function adjustmentEditorHTML(
   return `
     <div class="card adjustment-list">
       ${(rows || []).map((item,index)=>`
-        <div class="adjustment-row" data-adjustment-kind="${kind}" data-adjustment-index="${index}">
+        <div class="adjustment-row" data-key="${kind}-${rowKey(item)}" data-adjustment-kind="${kind}" data-adjustment-index="${index}">
           <label class="row">
             <div class="t">${label}</div>
             <input type="text" inputmode="decimal" data-adjustment-amount value="${esc(String(item.amount ?? "").replace(".",","))}" placeholder="0" autocomplete="off">
@@ -8504,12 +8554,23 @@ function changeMonth(
   }
 
   if(transitionsRunning()){
-    queueNavigation(()=>
-      changeMonth(
-        nextCursor,
-        direction,
+    /*
+      Каждый тап по стрелке — шаг на месяц. Шаги во время перехода
+      складываются: три быстрых «вперёд» ведут на три месяца вперёд, а не
+      на тот, что был следующим в момент последнего тапа.
+    */
+    const target=shiftMonth(
+      pendingNavigation?.month ?? cursor,
+      monthOffset(cursor,nextCursor)
+    );
+
+    queueNavigation(
+      ()=>changeMonth(
+        target,
+        Math.sign(monthOffset(cursor,target)) || direction,
         {scrollTop}
-      )
+      ),
+      {month:target}
     );
 
     return;

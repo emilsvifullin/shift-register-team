@@ -235,7 +235,7 @@ test(
 );
 
 test(
-  "deleting a point closes the editor and refreshes the list",
+  "deleting a point is an edit-mode action that refreshes the list",
   async({page})=>{
     await openApp(page);
     await openPoints(page);
@@ -243,6 +243,23 @@ test(
     await page
       .locator('[data-point-id="point-2"]')
       .click();
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    /*
+      В режиме просмотра разрушительной кнопки нет — так было и до 7.0.
+    */
+    await expect(
+      page.locator("#managePointDelete")
+    ).toHaveCount(0);
+
+    await page.locator("#manageEditorSave").click();
+
+    await expect(
+      page.locator("#managePointName")
+    ).toBeVisible();
 
     await page
       .locator("#managePointDelete")
@@ -263,5 +280,109 @@ test(
     await expect(
       page.locator('[data-point-id="point-2"]')
     ).toHaveCount(0);
+  }
+);
+
+test(
+  "employee deletion appears only after Edit and cancelling keeps editing",
+  async({page})=>{
+    await openApp(page);
+
+    await page.locator("#tab-manage").click();
+    await page
+      .locator('#app [data-manage-section="employees"]')
+      .click();
+
+    await page
+      .locator('[data-employee-id="employee-2"]')
+      .click();
+
+    await expect(
+      page.locator("#employeeSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator("#employeeDelete")
+    ).toHaveCount(0);
+
+    await page.locator("#employeeSheetSave").click();
+
+    await expect(
+      page.locator("#employeeName")
+    ).toBeVisible();
+
+    await page.locator("#employeeDelete").click();
+
+    await expect(
+      page.locator("#appConfirm")
+    ).toHaveClass(/\bon\b/);
+
+    await page.locator("#appConfirmCancel").click();
+
+    await expect(
+      page.locator("#employeeName")
+    ).toBeVisible();
+
+    await expect(
+      page.locator("#employeeDelete")
+    ).toBeVisible();
+  }
+);
+
+/*
+  Строка ступени без ключа доставалась соседней, и ставка удалённой
+  строки уходила в сохранённый тариф.
+*/
+test(
+  "removing a tariff tier saves the remaining tiers unchanged",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+
+    await page.locator("#pointAdd").click();
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await page.locator("#managePointName").fill("Тестовый ПВЗ");
+
+    await page
+      .locator('#manageEditorBody [data-pricing-type="shk_tiers"]')
+      .click();
+
+    await page.locator("#tierAdd").click();
+
+    const rows=page.locator("#manageEditorBody [data-tier-index]");
+
+    await expect(rows).toHaveCount(3);
+
+    await rows.nth(1).locator("[data-tier-limit]").fill("500");
+    await rows.nth(1).locator("[data-tier-rate]").fill("5000");
+
+    await page.locator('[data-tier-remove="1"]').click();
+
+    await expect(rows).toHaveCount(2);
+
+    expect(
+      await rows.last().locator("[data-tier-rate]").inputValue()
+    ).toBe("6500");
+
+    await page.locator("#manageEditorSave").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("ПВЗ сохранён");
+
+    const saved=await page.evaluate(()=>
+      globalThis.__stubCalls.find(call=>
+        call.name==="admin_save_point"
+      ).args.p_shk_tiers
+    );
+
+    expect(saved).toEqual([
+      {up_to:350,rate:3000},
+      {up_to:null,rate:6500}
+    ]);
   }
 );

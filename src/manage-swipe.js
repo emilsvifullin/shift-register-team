@@ -18,7 +18,15 @@ const FLICK_VELOCITY=0.30;
 const SWIPE_DISTANCE=38;
 const WHEEL_DISTANCE=48;
 const WHEEL_IDLE=140;
-const CLICK_SUPPRESSION=650;
+
+/*
+  После перетаскивания мышью или пером браузер сразу присылает click по
+  элементу под курсором — он относится к жесту, а не к новому нажатию.
+  После касательного свайпа click не приходит: горизонтальный touchmove
+  отменён. Поэтому окно короткое и открывается только после pointer-жеста,
+  иначе оно съедало бы настоящий тап сразу после свайпа.
+*/
+const CLICK_SUPPRESSION=350;
 
 const INTERACTIVE_SELECTOR=
   "input,textarea,select,[contenteditable='true']";
@@ -90,9 +98,16 @@ export function initManageSwipe({app}){
   let wheelTimer=0;
   let wheelLocked=false;
 
-  const inSubsection=()=>Boolean(
-    document.getElementById("manageBack")
-  );
+  /*
+    Кнопка «назад» живёт в шапке всегда и лишь скрывается вне подраздела
+    управления. Жест действует только пока она видима: на вкладке смен тот
+    же свайп вправо листает месяц.
+  */
+  const inSubsection=()=>{
+    const back=document.getElementById("manageBack");
+
+    return Boolean(back && !back.hidden);
+  };
 
   const blocked=target=>Boolean(
     !inSubsection() ||
@@ -109,9 +124,11 @@ export function initManageSwipe({app}){
     swipe=null;
   };
 
-  const goBack=()=>{
-    suppressClickUntil=
-      performance.now()+CLICK_SUPPRESSION;
+  const goBack=({suppressClick=false}={})=>{
+    if(suppressClick){
+      suppressClickUntil=
+        performance.now()+CLICK_SUPPRESSION;
+    }
 
     document
       .getElementById("manageBack")
@@ -160,6 +177,7 @@ export function initManageSwipe({app}){
     reset();
 
     if(
+      inSubsection() &&
       swipeCompletesBack({
         dx:x-current.x,
         dy:y-current.y,
@@ -168,7 +186,7 @@ export function initManageSwipe({app}){
           performance.now()-current.time
       })
     ){
-      goBack();
+      goBack({suppressClick:current.pointer});
     }
   };
 
@@ -379,7 +397,8 @@ export function initManageSwipe({app}){
     event=>{
       if(
         event.detail!==0 &&
-        performance.now()<=suppressClickUntil
+        performance.now()<=suppressClickUntil &&
+        app?.contains(event.target)
       ){
         suppressClickUntil=0;
         event.preventDefault();

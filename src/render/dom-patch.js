@@ -24,6 +24,18 @@ const RUNTIME_CLASSES=Object.freeze([
   "touch-active"
 ]);
 
+/*
+  Эти атрибуты полей ставит src/ui/input-behavior.js, чтобы менеджеры паролей
+  и автозаполнение не всплывали над служебными полями. Разметка их не
+  описывает, поэтому рендер не вправе их снимать.
+*/
+const RUNTIME_FIELD_ATTRIBUTES=new Set([
+  "autocomplete",
+  "data-1p-ignore",
+  "data-lpignore",
+  "data-form-type"
+]);
+
 const VALUE_TAGS=new Set([
   "INPUT",
   "TEXTAREA",
@@ -58,8 +70,14 @@ export function isCompatible(target,source){
 }
 
 /*
-  «Подпись» — то, что о состоянии поля утверждает разметка. Пока подпись не
-  менялась, живое значение принадлежит пользователю и не трогается.
+  «Подпись» — то, что о состоянии поля утверждает разметка.
+
+  Живое значение принадлежит человеку, только пока он работает с этим полем:
+  оно в фокусе, и разметка утверждает о нём то же, что в прошлый раз. Во всех
+  остальных случаях значение берётся из разметки, как при полной отрисовке.
+  Приложение перед перерисовкой переносит ввод в черновик, а узел без ключа
+  мог достаться другой строке списка или новой форме — оставленный в нём
+  чужой ввод уходил бы в сохранение.
 */
 function formSignature(element){
   if(element.nodeName==="SELECT"){
@@ -91,31 +109,46 @@ function formSignature(element){
 function applyFormSignature(target,source,previous){
   const next=formSignature(source);
 
-  if(next===previous){
+  if(
+    next===previous &&
+    target.ownerDocument.activeElement===target
+  ){
     return;
   }
 
   if(target.nodeName==="SELECT"){
     if(next!==null){
-      target.value=next;
+      if(target.value!==next){
+        target.value=next;
+      }
+    }else if(target.options.length){
+      target.selectedIndex=0;
     }
 
     return;
   }
 
-  if(target.nodeName==="TEXTAREA"){
-    target.value=next ?? "";
-    return;
-  }
-
   const type=target.getAttribute("type");
 
-  if(type==="checkbox" || type==="radio"){
-    target.checked=next==="on";
+  if(type==="file"){
     return;
   }
 
-  target.value=next ?? "";
+  if(type==="checkbox" || type==="radio"){
+    const checked=next==="on";
+
+    if(target.checked!==checked){
+      target.checked=checked;
+    }
+
+    return;
+  }
+
+  const value=next ?? "";
+
+  if(target.value!==value){
+    target.value=value;
+  }
 }
 
 function runtimeClasses(element){
@@ -200,6 +233,13 @@ function patchAttributes(target,source){
     if(
       name==="style" &&
       !source.hasAttribute("style")
+    ){
+      continue;
+    }
+
+    if(
+      RUNTIME_FIELD_ATTRIBUTES.has(name) &&
+      VALUE_TAGS.has(target.nodeName)
     ){
       continue;
     }

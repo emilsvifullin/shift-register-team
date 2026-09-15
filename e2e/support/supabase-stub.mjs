@@ -149,6 +149,8 @@ export function stubScript(seed){
 (()=>{
   const db=${JSON.stringify(seed)};
 
+  db.saved_shifts=[];
+
   globalThis.__stubDb=db;
   globalThis.__stubCalls=[];
 
@@ -281,6 +283,58 @@ export function stubScript(seed){
       tariff.shk_tiers=args.p_shk_tiers;
 
       return tariff.id;
+    },
+    admin_save_shift_v2(args){
+      db.saved_shifts.push(args);
+      db.shifts=db.shifts.filter(shift=>
+        shift.id!==args.p_shift_id
+      );
+
+      const employee=db.employees.find(item=>
+        item.id===args.p_employee_id
+      ) || {};
+
+      const point=db.points.find(item=>
+        item.id===args.p_point_id
+      ) || {};
+
+      db.shifts.push({
+        id:args.p_shift_id,
+        employee_id:args.p_employee_id,
+        shift_date:args.p_shift_date,
+        point_id:args.p_point_id,
+        shift_type:args.p_shift_type,
+        shk:args.p_shk,
+        partial:args.p_partial,
+        hours:args.p_hours,
+        full_hours:12,
+        base_amount:args.p_base_amount_override ?? 3000,
+        pricing_snapshot:{
+          version:2,
+          fixed:true,
+          pricingType:"fixed",
+          rate:3000,
+          fullHours:12
+        },
+        note:args.p_note,
+        employee:{
+          id:employee.id,
+          user_id:employee.user_id,
+          full_name:employee.full_name,
+          status:employee.status
+        },
+        point:{
+          id:point.id,
+          code:point.code,
+          name:point.name,
+          active:point.active,
+          advance_enabled:point.advance_enabled
+        },
+        bonuses:args.p_bonuses || [],
+        penalties:args.p_penalties || []
+      });
+
+      return args.p_shift_id;
     },
     admin_delete_point_tariff(args){
       db.point_tariffs=db.point_tariffs.filter(

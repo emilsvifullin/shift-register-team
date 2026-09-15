@@ -293,3 +293,107 @@ test(
     ).toBe("height:40px");
   }
 );
+
+/*
+  Узел без ключа может достаться другой строке или новой форме. Ввод,
+  оставленный в нём, уходил в сохранение: ступень тарифа получала ставку
+  удалённой строки, а новая смена — ШК и комментарий предыдущей.
+*/
+const rateRows=rates=>rates
+  .map(rate=>`
+    <div class="row">
+      <input type="text" data-rate value="${rate}">
+    </div>
+  `)
+  .join("");
+
+test(
+  "a field nobody is editing takes its value from the markup",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    await patch(page,rateRows(["3000","6500","6500"]));
+
+    await page.locator("[data-rate]").nth(1).fill("5000");
+    await page.evaluate(()=>document.activeElement.blur());
+
+    await patch(page,rateRows(["3000","6500"]));
+
+    expect(
+      await page.locator("[data-rate]").evaluateAll(inputs=>
+        inputs.map(input=>input.value)
+      )
+    ).toEqual(["3000","6500"]);
+  }
+);
+
+test(
+  "a reopened form does not keep what was typed into the previous one",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    const form=`
+      <input type="number" id="shk" value="">
+      <input type="checkbox" id="partial">
+      <select id="kind">
+        <option value="main">Основная</option>
+        <option value="extra">Дополнительная</option>
+      </select>
+    `;
+
+    await patch(page,form);
+
+    await page.locator("#shk").fill("150");
+    await page.locator("#partial").check();
+    await page.locator("#kind").selectOption("extra");
+    await page.evaluate(()=>document.activeElement?.blur());
+
+    await patch(page,form);
+
+    expect(
+      await page.evaluate(()=>({
+        shk:document.getElementById("shk").value,
+        partial:document.getElementById("partial").checked,
+        kind:document.getElementById("kind").value
+      }))
+    ).toEqual({
+      shk:"",
+      partial:false,
+      kind:"main"
+    });
+  }
+);
+
+test(
+  "field attributes set at runtime by the input layer survive a render",
+  async({page})=>{
+    await page.goto(FIXTURE);
+
+    const field=value=>`<input type="search" id="search" value="${value}">`;
+
+    await patch(page,field(""));
+
+    await page.evaluate(()=>{
+      const input=document.getElementById("search");
+      input.setAttribute("autocomplete","off");
+      input.setAttribute("data-1p-ignore","true");
+      input.setAttribute("data-lpignore","true");
+      input.setAttribute("data-form-type","other");
+    });
+
+    await patch(page,field("Кораб"));
+
+    expect(
+      await page.evaluate(()=>{
+        const input=document.getElementById("search");
+
+        return [
+          "autocomplete",
+          "data-1p-ignore",
+          "data-lpignore",
+          "data-form-type"
+        ].map(name=>input.getAttribute(name));
+      })
+    ).toEqual(["off","true","true","other"]);
+  }
+);

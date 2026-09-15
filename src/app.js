@@ -3878,6 +3878,12 @@ function rowKey(item){
 }
 
 function tierEditorHTML(tiers){
+  /*
+    Место под кнопку удаления держится, только пока строки можно удалять:
+    иначе поля «ШК до» и «Ставка» без всякой причины уже остальной формы.
+  */
+  const removable=tiers.length>2;
+
   return tiers.map((tier,index)=>{
     const final=index===tiers.length-1;
 
@@ -3897,9 +3903,9 @@ function tierEditorHTML(tiers){
             <input type="text" inputmode="decimal" data-tier-rate value="${esc(tier.rate)}" aria-label="Ставка">
           </label>
         </div>
-        ${!final && tiers.length>2 ? `
+        ${removable ? (!final ? `
           <button type="button" class="tariff-tier-remove" data-tier-remove="${index}" aria-label="Удалить границу">×</button>
-        ` : `<span class="tariff-tier-remove-space" aria-hidden="true"></span>`}
+        ` : `<span class="tariff-tier-remove-space" aria-hidden="true"></span>`) : ""}
       </div>
     `;
   }).join("");
@@ -4116,6 +4122,44 @@ function openManageEditor(kind,id=null){
     return;
   }
 
+  manageEditorDraft=createPointDraft(id);
+
+  document.getElementById(
+    "manageEditorTitle"
+  ).textContent=
+    manageEditorDraft.isNew
+      ? "Новый ПВЗ"
+      : "Пункт выдачи";
+
+  drawManageEditor();
+
+  const veil=document.getElementById(
+    "manageEditorVeil"
+  );
+
+  prepareBottomSheetOpen(
+    manageEditorSheetElement,
+    "--sheet-drag"
+  );
+
+  manageEditorSheetElement.style.display="block";
+  manageEditorSheetElement.classList.remove("on");
+  manageEditorSheetElement.setAttribute("aria-hidden","false");
+  veil.setAttribute("aria-hidden","false");
+  setBackgroundInert(true);
+  void manageEditorSheetElement.offsetHeight;
+  document.body.classList.add("sheet-open");
+  veil.classList.add("on");
+  manageEditorSheetElement.classList.add("on");
+  requestAnimationFrame(()=>{
+    manageEditorSheetElement.scrollTop=0;
+    manageEditorSheetElement.focus({
+      preventScroll:true
+    });
+  });
+}
+
+function createPointDraft(id){
   const point=teamData.points.find(
     item=>item.id===id
   );
@@ -4128,7 +4172,7 @@ function openManageEditor(kind,id=null){
       )
     : null;
 
-  manageEditorDraft=point
+  return point
     ? {
         id:point.id,
         point,
@@ -4173,40 +4217,37 @@ function openManageEditor(kind,id=null){
         tiers:defaultTariffTiers(),
         effectiveFrom:localYMD()
       };
+}
 
-  document.getElementById(
-    "manageEditorTitle"
-  ).textContent=
-    manageEditorDraft.isNew
-      ? "Новый ПВЗ"
-      : "Пункт выдачи";
+/*
+  Правка существующего ПВЗ отменяется в его карточку, как у сотрудника:
+  «Отмена» возвращает к просмотру, а закрывает лист только «Закрыть» или
+  отмена нового ПВЗ, у которого карточки ещё нет.
+*/
+function cancelManageEditor(){
+  if(
+    manageEditorKind!=="point" ||
+    !manageEditorDraft ||
+    manageEditorDraft.isNew ||
+    !manageEditorDraft.editing ||
+    manageEditorSaving
+  ){
+    closeManageEditor();
+    return;
+  }
 
+  const draft=createPointDraft(
+    manageEditorDraft.id
+  );
+
+  if(!draft || draft.isNew){
+    closeManageEditor();
+    return;
+  }
+
+  manageEditorDraft=draft;
   drawManageEditor();
-
-  const veil=document.getElementById(
-    "manageEditorVeil"
-  );
-
-  prepareBottomSheetOpen(
-    manageEditorSheetElement,
-    "--sheet-drag"
-  );
-
-  manageEditorSheetElement.style.display="block";
-  manageEditorSheetElement.classList.remove("on");
-  manageEditorSheetElement.setAttribute("aria-hidden","false");
-  veil.setAttribute("aria-hidden","false");
-  setBackgroundInert(true);
-  void manageEditorSheetElement.offsetHeight;
-  document.body.classList.add("sheet-open");
-  veil.classList.add("on");
-  manageEditorSheetElement.classList.add("on");
-  requestAnimationFrame(()=>{
-    manageEditorSheetElement.scrollTop=0;
-    manageEditorSheetElement.focus({
-      preventScroll:true
-    });
-  });
+  manageEditorSheetElement.scrollTop=0;
 }
 
 function closeManageEditor(){
@@ -11510,7 +11551,7 @@ document
     "manageEditorCancel"
   )
   .onclick=
-    closeManageEditor;
+    cancelManageEditor;
 
 document
   .getElementById(

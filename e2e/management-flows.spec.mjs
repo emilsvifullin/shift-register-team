@@ -4,8 +4,53 @@ import {
 } from "@playwright/test";
 
 import {
+  ADMIN_SEED,
   openApp
 } from "./support/supabase-stub.mjs";
+
+function employeeWithShiftSeed(){
+  const seed=structuredClone(ADMIN_SEED);
+
+  seed.shifts=[
+    {
+      id:"shift-1",
+      employee_id:"employee-1",
+      shift_date:"2026-09-01",
+      point_id:"point-1",
+      shift_type:"main",
+      shk:200,
+      partial:false,
+      hours:null,
+      full_hours:12,
+      base_amount:3000,
+      pricing_snapshot:{
+        version:2,
+        fixed:true,
+        pricingType:"fixed",
+        rate:3000,
+        fullHours:12
+      },
+      note:"",
+      employee:{
+        id:"employee-1",
+        user_id:"user-1",
+        full_name:"Марина Абрамова",
+        status:"active"
+      },
+      point:{
+        id:"point-1",
+        code:"p1",
+        name:"Коммунальная 10",
+        active:true,
+        advance_enabled:true
+      },
+      bonuses:[],
+      penalties:[]
+    }
+  ];
+
+  return seed;
+}
 
 test.use({
   viewport:{width:390,height:844},
@@ -384,5 +429,241 @@ test(
       {up_to:350,rate:3000},
       {up_to:null,rate:6500}
     ]);
+  }
+);
+
+/*
+  Карточка сотрудника удаляется Edge-функцией admin-employee-auth: приложение
+  шлёт в неё обычный fetch (src/supabase.js, src/api/employees.js). Стаб
+  отвечает теми же кодами, что и настоящая функция.
+*/
+async function openEmployees(page){
+  await page.locator("#tab-manage").click();
+
+  await page
+    .locator('#app [data-manage-section="employees"]')
+    .click();
+
+  await expect(
+    page.locator("#employeeList")
+  ).toBeVisible();
+}
+
+test(
+  "an employee without shifts is deleted from the editor",
+  async({page})=>{
+    await openApp(page);
+    await openEmployees(page);
+
+    await page
+      .locator('[data-employee-id="employee-2"]')
+      .click();
+
+    await page.locator("#employeeSheetSave").click();
+    await page.locator("#employeeDelete").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Сотрудник удалён");
+
+    await expect(
+      page.locator('[data-employee-id="employee-2"]')
+    ).toHaveCount(0);
+
+    expect(
+      await page.evaluate(()=>
+        globalThis.__stubCalls
+          .filter(call=>
+            call.name==="admin-employee-auth" &&
+            call.args.action==="delete"
+          )
+          .length
+      )
+    ).toBe(1);
+  }
+);
+
+test(
+  "an employee with shifts is kept and the reason is explained",
+  async({page})=>{
+    await openApp(page,{
+      seed:employeeWithShiftSeed()
+    });
+
+    await openEmployees(page);
+
+    await page
+      .locator('[data-employee-id="employee-1"]')
+      .click();
+
+    await page.locator("#employeeSheetSave").click();
+    await page.locator("#employeeDelete").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("история смен");
+
+    await expect(
+      page.locator("#employeeName")
+    ).toBeVisible();
+
+    await page.locator("#employeeSheetCancel").click();
+    await page.locator("#employeeSheetCancel").click();
+
+    await expect(
+      page.locator('[data-employee-id="employee-1"]')
+    ).toHaveCount(1);
+  }
+);
+
+test(
+  "cancelling point edits returns to the point card",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+
+    await page
+      .locator('[data-point-id="point-1"]')
+      .click();
+
+    await expect(
+      page.locator("#manageEditorCancel")
+    ).toHaveText("Закрыть");
+
+    await page.locator("#manageEditorSave").click();
+
+    await expect(
+      page.locator("#manageEditorCancel")
+    ).toHaveText("Отмена");
+
+    await page.locator("#managePointName").fill("Другое название");
+    await page.locator("#manageEditorCancel").click();
+
+    /*
+      Карточка остаётся открытой в режиме просмотра, правки отброшены.
+    */
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator("#manageEditorCancel")
+    ).toHaveText("Закрыть");
+
+    await expect(
+      page.locator("#manageEditorBody")
+    ).toContainText("Коммунальная 10");
+
+    await expect(
+      page.locator("#managePointName")
+    ).toHaveCount(0);
+
+    await page.locator("#manageEditorCancel").click();
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).not.toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator('[data-point-id="point-1"]')
+    ).toContainText("Коммунальная 10");
+  }
+);
+
+test(
+  "a new point is still closed by cancel",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+
+    await page.locator("#pointAdd").click();
+
+    await expect(
+      page.locator("#manageEditorCancel")
+    ).toHaveText("Отмена");
+
+    await page.locator("#manageEditorCancel").click();
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).not.toHaveClass(/\bon\b/);
+  }
+);
+
+/*
+  Поля «ШК до» и «Ставка» занимают всю ширину строки. Место под кнопку
+  удаления держится, только когда строки можно удалять.
+*/
+test(
+  "tariff tier fields use the full row width",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+
+    await page
+      .locator('[data-point-id="point-1"]')
+      .click();
+
+    await page.locator("#manageEditorSave").click();
+    await page
+      .locator('[data-tariff-intent="edit-current"]')
+      .click();
+
+    const rows=page.locator("#manageEditorBody [data-tier-index]");
+
+    await expect(rows).toHaveCount(2);
+
+    const twoRows=await page.evaluate(()=>{
+      const row=document.querySelector(
+        "#manageEditorBody [data-tier-index]"
+      );
+
+      const style=getComputedStyle(row);
+
+      return {
+        content:row.getBoundingClientRect().width-
+          parseFloat(style.paddingLeft)-
+          parseFloat(style.paddingRight),
+        fields:row
+          .querySelector(".tariff-tier-fields")
+          .getBoundingClientRect().width,
+        spacers:row.querySelectorAll(
+          ".tariff-tier-remove-space"
+        ).length
+      };
+    });
+
+    expect(twoRows.spacers).toBe(0);
+    expect(Math.abs(twoRows.fields-twoRows.content))
+      .toBeLessThanOrEqual(1);
+
+    await page.locator("#tierAdd").click();
+
+    await expect(rows).toHaveCount(3);
+
+    /* С тремя строками колонка удаления снова нужна и выровнена. */
+    const threeRows=await page.evaluate(()=>{
+      const list=[...document.querySelectorAll(
+        "#manageEditorBody [data-tier-index]"
+      )];
+
+      return {
+        removes:document.querySelectorAll(
+          "#manageEditorBody .tariff-tier-remove"
+        ).length,
+        fieldWidths:list.map(row=>
+          Math.round(
+            row
+              .querySelector(".tariff-tier-fields")
+              .getBoundingClientRect().width
+          )
+        )
+      };
+    });
+
+    expect(threeRows.removes).toBe(2);
+    expect(new Set(threeRows.fieldWidths).size).toBe(1);
   }
 );

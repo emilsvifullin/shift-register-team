@@ -22,6 +22,22 @@ test.skip(
   "touch input is dispatched through CDP"
 );
 
+/*
+  Касание по элементу, который ещё едет в анимации перехода, промахивается:
+  координаты берутся до сдвига. Перед жестом и тапом ждём, пока экран
+  остановится.
+*/
+async function settle(page){
+  await expect.poll(()=>
+    page.evaluate(()=>
+      document.querySelectorAll('body > main[aria-hidden="true"][inert]').length+
+      document.getAnimations().filter(animation=>
+        animation.playState==="running"
+      ).length
+    )
+  ).toBe(0);
+}
+
 async function touchInput(page){
   const cdp=await page.context().newCDPSession(page);
 
@@ -44,6 +60,12 @@ async function touchInput(page){
         ]]);
       }
 
+      /*
+        Палец останавливается перед отрывом: без этого браузер запускает
+        инерционную прокрутку, и следующий тап лишь гасит её.
+      */
+      await new Promise(resolve=>setTimeout(resolve,80));
+      await send("touchMove",[to]);
       await send("touchEnd",[]);
     },
 
@@ -72,6 +94,7 @@ test(
     ).not.toHaveText(period);
 
     await page.waitForTimeout(450);
+    await settle(page);
     await input.tap(page.locator("#shiftAdd"));
 
     await expect(
@@ -94,9 +117,11 @@ test(
     );
 
     await expect(employees).toBeVisible();
+    await settle(page);
 
     await input.swipe([60,420],[320,424]);
     await page.waitForTimeout(200);
+    await settle(page);
 
     await expect(
       page.locator("#manageBack")
@@ -112,14 +137,14 @@ test(
       page.locator("#manageBack")
     ).toBeVisible();
 
-    await page.waitForTimeout(450);
+    await settle(page);
     await input.swipe([60,420],[320,424]);
 
     await expect(
       page.locator('#app [data-manage-section="points"]')
     ).toBeVisible();
 
-    await page.waitForTimeout(450);
+    await settle(page);
 
     await input.tap(
       page.locator('#app [data-manage-section="points"]')

@@ -4027,6 +4027,10 @@ function drawManageEditor(){
           `}
         `;
 
+    /*
+      Удаление ПВЗ — действие режима редактирования: в режиме просмотра
+      разрушительной кнопки нет, как и было до 7.0.
+    */
     setHTML(
       body,
       `
@@ -4053,10 +4057,6 @@ function drawManageEditor(){
       ${tariffSection}
 
       ${!manageEditorDraft.isNew ? `
-        <!--
-          Удаление — действие режима редактирования: в режиме просмотра
-          разрушительной кнопки нет, как и было до 7.0.
-        -->
         <button
           type="button"
           class="btn warn manage-point-delete"

@@ -127,3 +127,58 @@ test(
     ).toEqual({amount:"",comment:""});
   }
 );
+
+/*
+  Удаление смены идёт через RPC admin_delete_shift (src/api/shifts.js), а
+  удаление сотрудника — через Edge-функцию admin-employee-auth обычным
+  fetch. Подставной Supabase отвечает так же, как настоящий, поэтому здесь
+  проверяется именно код приложения.
+*/
+test(
+  "a saved shift can be deleted from its card",
+  async({page})=>{
+    await openApp(page);
+
+    await openNewShift(page);
+    await choose(page,"#f-point-open","point-1");
+    await choose(page,"#f-employee-open","employee-1");
+    await page.locator("#f-shk").fill("120");
+    await page.locator("#sheetSave").click();
+
+    const row=page.locator("#shiftListArea .sh");
+
+    await expect(row).toHaveCount(1);
+
+    await row.click();
+
+    await expect(
+      page.locator("#sheet")
+    ).toHaveClass(/\bon\b/);
+
+    /* Карточка смены открывается на просмотр: удаление — действие правки. */
+    await page.locator("#sheetSave").click();
+
+    await page.locator("#f-del").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Смена удалена");
+
+    await expect(row).toHaveCount(0);
+
+    expect(
+      await page.evaluate(()=>
+        globalThis.__stubCalls
+          .filter(call=>call.name==="admin_delete_shift")
+          .length
+      )
+    ).toBe(1);
+
+    expect(
+      await page.evaluate(()=>
+        globalThis.__stubDb.shifts.length
+      )
+    ).toBe(0);
+  }
+);

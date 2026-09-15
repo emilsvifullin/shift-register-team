@@ -11,6 +11,17 @@ export const ADMIN_SEED={
     id:"user-admin",
     role:"admin"
   },
+  /*
+    Аккаунт, которым подписан вход: у настоящего Supabase у сессии есть
+    почта и метаданные профиля, и экран «Данные» показывает их.
+  */
+  account:{
+    id:"user-admin",
+    email:"admin@example.test",
+    user_metadata:{
+      full_name:"Эмиль Сайфуллин"
+    }
+  },
   employees:[
     {
       id:"employee-1",
@@ -284,6 +295,19 @@ export function stubScript(seed){
 
       return tariff.id;
     },
+    admin_delete_shift(args){
+      const before=db.shifts.length;
+
+      db.shifts=db.shifts.filter(shift=>
+        shift.id!==args.p_shift_id
+      );
+
+      if(db.shifts.length===before){
+        throw new Error("shift_not_found");
+      }
+
+      return args.p_shift_id;
+    },
     admin_save_shift_v2(args){
       db.saved_shifts.push(args);
       db.shifts=db.shifts.filter(shift=>
@@ -351,7 +375,15 @@ export function stubScript(seed){
         return ok({
           session:{
             access_token:"stub-token",
-            user:{id:db.profile.id}
+            user:db.account || {id:db.profile.id}
+          }
+        });
+      },
+      refreshSession(){
+        return ok({
+          session:{
+            access_token:"stub-token",
+            user:db.account || {id:db.profile.id}
           }
         });
       },
@@ -408,6 +440,96 @@ export function stubScript(seed){
     removeChannel(){
       return Promise.resolve();
     }
+  };
+
+  /*
+    Удаление и заведение аккаунта сотрудника идут не через RPC, а обычным
+    fetch в Edge-функцию (src/supabase.js). Здесь она отвечает так же, как
+    настоящая: те же коды и те же тексты ошибок.
+  */
+  const employeeAuth=async body=>{
+    const employee=db.employees.find(item=>
+      item.id===body.employeeId
+    );
+
+    if(!employee){
+      return {status:404,payload:{error:"employee_not_found"}};
+    }
+
+    if(body.action==="delete"){
+      const hasHistory=db.shifts.some(shift=>
+        shift.employee_id===employee.id
+      );
+
+      if(hasHistory){
+        return {status:409,payload:{error:"employee_has_history"}};
+      }
+
+      db.employees=db.employees.filter(item=>
+        item.id!==employee.id
+      );
+
+      db.employee_points=db.employee_points.filter(item=>
+        item.employee_id!==employee.id
+      );
+
+      db.accounts=db.accounts.filter(item=>
+        item.user_id!==employee.user_id
+      );
+
+      return {status:200,payload:{deleted:true}};
+    }
+
+    const login=String(body.email || "")
+      .trim()
+      .toLowerCase();
+
+    if(!login){
+      return {
+        status:400,
+        payload:{error:"invalid_employee_auth_payload"}
+      };
+    }
+
+    const userId=employee.user_id ||
+      "user-"+(db.employees.indexOf(employee)+10);
+
+    employee.user_id=userId;
+
+    if(!db.accounts.some(item=>item.user_id===userId)){
+      db.accounts.push({user_id:userId,login});
+    }
+
+    return {status:200,payload:{userId}};
+  };
+
+  const originalFetch=globalThis.fetch.bind(globalThis);
+
+  globalThis.fetch=async(input,init)=>{
+    const url=String(
+      typeof input==="string" ? input : input?.url || ""
+    );
+
+    if(!url.includes("/functions/v1/admin-employee-auth")){
+      return originalFetch(input,init);
+    }
+
+    globalThis.__stubCalls.push({
+      name:"admin-employee-auth",
+      args:JSON.parse(init?.body || "{}")
+    });
+
+    const {status,payload}=await employeeAuth(
+      JSON.parse(init?.body || "{}")
+    );
+
+    return new Response(
+      JSON.stringify(payload),
+      {
+        status,
+        headers:{"content-type":"application/json"}
+      }
+    );
   };
 
   globalThis.supabase={

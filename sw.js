@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="b72d6d3c97140c9531fd1c8eec23fcde1ae9cc29aae126657c3031adafab3c01";
+const SHELL_FINGERPRINT="98479865d960af393e3487ba8db72aeea797c8c11d93211afddac0e4daa0f27d";
 
 const CACHE_PREFIX="sr-shell-";
 

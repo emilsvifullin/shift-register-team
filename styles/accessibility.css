@@ -142,12 +142,17 @@ nav.tabs button:focus:not(:focus-visible),
   Safari can briefly expose a focus-visible ring when focus is restored
   programmatically after a touch interaction. Keep DOM focus intact for
   accessibility, but render pointer/touch focus like native iOS controls.
+
+  Проверяется отсутствие клавиатуры, а не наличие указателя: до первого
+  ввода атрибута ещё нет, и программный фокус (восстановление после
+  закрытия листа, перезагрузка ради новой версии) иначе рисовал бы рамку
+  выделения на элементе, которого никто не нажимал.
 */
-body[data-input-modality="pointer"] button:focus,
-body[data-input-modality="pointer"] .period:focus,
-body[data-input-modality="pointer"] .sh:focus,
-body[data-input-modality="pointer"] [role="tab"]:focus,
-body[data-input-modality="pointer"] [role="option"]:focus{
+body:not([data-input-modality="keyboard"]) button:focus,
+body:not([data-input-modality="keyboard"]) .period:focus,
+body:not([data-input-modality="keyboard"]) .sh:focus,
+body:not([data-input-modality="keyboard"]) [role="tab"]:focus,
+body:not([data-input-modality="keyboard"]) [role="option"]:focus{
   outline:none !important;
   outline-width:0 !important;
   outline-offset:0 !important;

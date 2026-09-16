@@ -12,6 +12,10 @@ const productionStyles=[
   "styles/auth.css",
   "styles/platform.css",
   "styles/refinement.css",
+  "styles/interaction-core.css",
+  "styles/management.css",
+  "styles/motion-reference.css",
+  "styles/modal-motion-exact.css",
   "styles/interaction.css"
 ];
 
@@ -31,18 +35,21 @@ function appVersionFromConfig(source){
 }
 
 async function finalInteractionCss(){
-  const [entry,core,management]=await Promise.all([
-    read("styles/interaction.css"),
+  const [index,core,management]=await Promise.all([
+    read("index.html"),
     read("styles/interaction-core.css"),
     read("styles/management.css")
   ]);
 
-  const coreImport=entry.indexOf('@import url("./interaction-core.css")');
-  const managementImport=entry.indexOf('@import url("./management.css")');
+  const coreLink=index.indexOf('href="./styles/interaction-core.css"');
+  const managementLink=index.indexOf('href="./styles/management.css"');
 
-  assert.notEqual(coreImport,-1,"interaction core import must stay explicit");
-  assert.notEqual(managementImport,-1,"management import must stay explicit");
-  assert.ok(coreImport<managementImport,"management overrides must load after interaction core");
+  assert.notEqual(coreLink,-1,"interaction core must stay linked");
+  assert.notEqual(managementLink,-1,"management styles must stay linked");
+  assert.ok(
+    coreLink<managementLink,
+    "management overrides must load after interaction core"
+  );
 
   return `${core}\n${management}`;
 }
@@ -114,14 +121,38 @@ test("bottom dock clips page scrolling and keeps final navigation geometry consi
   assert.match(css,/#shiftFilterOpen\{[\s\S]*?width:100%[\s\S]*?min-height:52px/);
 });
 
-test("management detail keeps the chevron beside the page title and lets long lists use the free space",async()=>{
-  const management=await read("styles/management.css");
+/*
+  Кнопка возврата живёт в шапке как обычный элемент разметки, а не
+  телепортируется туда из #app через position:fixed. Проверяем и это,
+  и то, что длинные списки получают всю свободную высоту.
+*/
+test("management detail keeps a real header back control and lets long lists use the free space",async()=>{
+  const [management,html,app]=await Promise.all([
+    read("styles/management.css"),
+    read("index.html"),
+    read("src/app.js")
+  ]);
 
-  assert.match(management,/\.manage-back[\s\S]*?position:fixed/);
-  assert.match(management,/\.manage-back[\s\S]*?top:calc\(14px \+ env\(safe-area-inset-top\)\)/);
-  assert.match(management,/\.manage-back[\s\S]*?calc\(50% - 108px\)/);
-  assert.match(management,/\.manage-back[\s\S]*?visibility:visible[\s\S]*?opacity:1/);
-  assert.match(management,/\.manage-back svg[\s\S]*?stroke:currentColor/);
+  assert.match(
+    html,
+    /<header>[\s\S]*?id="manageBack"[\s\S]*?<\/header>/
+  );
+
+  assert.doesNotMatch(
+    management,
+    /\.manage-back[^{]*\{[^}]*position:fixed/
+  );
+
+  assert.match(
+    app,
+    /getElementById\(\s*"manageBack"\s*\)\s*\.hidden=!manageDetail/
+  );
+
+  assert.match(
+    management,
+    /body main\[data-manage-detail="true"\]\{/
+  );
+
   assert.match(management,/main:has\(#employeeList\),[\s\S]*?main:has\(#pointManageList\)[\s\S]*?padding-bottom:16px/);
   assert.match(management,/#employeeList,[\s\S]*?#pointManageList[\s\S]*?flex:1 1 auto/);
   assert.match(management,/#employeeList > \.manage-menu,[\s\S]*?#pointManageList > \.manage-menu[\s\S]*?height:auto[\s\S]*?max-height:100%[\s\S]*?flex:0 1 auto[\s\S]*?overflow-y:auto/);
@@ -133,25 +164,17 @@ test("management detail keeps the chevron beside the page title and lets long li
 test("standalone iOS shell uses the full app viewport and modal states remove the dock",async()=>{
   const css=await finalInteractionCss();
 
-  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?--app-shell-height:100vh/);
+  /*
+    Высота окна измеряется, а не берётся из 100vh: в iOS 100vh не
+    уменьшается, пока открыта клавиатура, и оболочка оказывается выше окна.
+    Документ тогда становится прокручиваемым, а нижняя панель здесь
+    привязана к документу и уезжает вверх вместе с прокруткой.
+  */
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?--app-shell-height:var\(--app-window-height,100vh\)/);
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?html,\s*body\{[\s\S]*?height:var\(--app-window-height,100vh\)/);
+  assert.doesNotMatch(css,/@media \(display-mode:standalone\)\{[\s\S]*?height:100vh/);
   assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.bottom-controls\{[\s\S]*?position:absolute;[\s\S]*?bottom:0/);
   assert.match(css,/body\.point-picker-open \.bottom-controls[\s\S]*?visibility:hidden[\s\S]*?pointer-events:none/);
-  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:100vh/);
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:var\(--app-window-height,100vh\)/);
 });
 
-test("PWA release includes the complete final interaction layer",async()=>{
-  const [sw,config]=await Promise.all([
-    read("sw.js"),
-    read("src/config.js")
-  ]);
-
-  const appVersion=appVersionFromConfig(config);
-
-  assert.ok(
-    sw.includes(`"sr-team-runtime-v${appVersion}"`),
-    "PWA cache version must follow APP_VERSION"
-  );
-  assert.match(sw,/"\.\/styles\/interaction-core\.css"/);
-  assert.match(sw,/"\.\/styles\/management\.css"/);
-  assert.match(sw,/"\.\/styles\/interaction\.css"/);
-});

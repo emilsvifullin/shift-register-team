@@ -108,8 +108,8 @@ async function installPicker(page){
     );
 }
 
-async function openPicker(page){
-  return page.evaluate(()=>{
+async function openPicker(page,{sampleFrames=0}={}){
+  return page.evaluate(sampleFrames=>{
     const element=
       document.getElementById("monthPicker");
 
@@ -129,13 +129,45 @@ async function openPicker(page){
     void element.offsetHeight;
     element.classList.add("on");
 
+    /*
+      Frame sampling must start in the same task as the open. Started from a
+      later Playwright call it begins one to three frames late, after the
+      staged reveal, and cannot see the first painted frame at all.
+      Registered after the open handlers' frame callbacks, each sample reads
+      the state that frame paints.
+    */
+    if(sampleFrames){
+      window.__monthPickerOpenFrames=
+        new Promise(resolve=>{
+          const samples=[];
+
+          const sample=()=>{
+            samples.push({
+              top:element.getBoundingClientRect().top,
+              display:getComputedStyle(element).display,
+              transform:getComputedStyle(element).transform,
+              visibility:getComputedStyle(element).visibility
+            });
+
+            if(samples.length>=sampleFrames){
+              resolve(samples);
+              return;
+            }
+
+            requestAnimationFrame(sample);
+          };
+
+          requestAnimationFrame(sample);
+        });
+    }
+
     return {
       top:element.getBoundingClientRect().top,
       viewportHeight:window.innerHeight,
       transform:getComputedStyle(element).transform,
       visibility:getComputedStyle(element).visibility
     };
-  });
+  },sampleFrames);
 }
 
 async function swipePickerClosed(page){
@@ -323,7 +355,9 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
   expect(closedState.drag).toBe("");
   expect(closedState.swipeClosing).toBeNull();
 
-  const immediate=await openPicker(page);
+  const immediate=await openPicker(page,{
+    sampleFrames:10
+  });
 
   /*
     The picker must remain compositor-hidden during the display:none -> block
@@ -340,33 +374,9 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
   );
 
   const reopenSamples=
-    await page.locator(PICKER)
-      .evaluate(element=>
-        new Promise(resolve=>{
-          const samples=[];
-          let remaining=10;
-
-          const sample=()=>{
-            samples.push({
-              top:element.getBoundingClientRect().top,
-              display:getComputedStyle(element).display,
-              transform:getComputedStyle(element).transform,
-              visibility:getComputedStyle(element).visibility
-            });
-
-            remaining-=1;
-
-            if(remaining<=0){
-              resolve(samples);
-              return;
-            }
-
-            requestAnimationFrame(sample);
-          };
-
-          requestAnimationFrame(sample);
-        })
-      );
+    await page.evaluate(()=>
+      window.__monthPickerOpenFrames
+    );
 
   expect(reopenSamples[0].visibility)
     .toBe("hidden");
@@ -376,14 +386,23 @@ test("month picker swipe close then reopen has no fully visible ghost frame",asy
       immediate.viewportHeight-2
     );
 
+  const firstVisible=
+    reopenSamples.find(sample=>
+      sample.visibility==="visible"
+    );
+
   expect(
-    reopenSamples
-      .slice(1)
-      .some(sample=>
-        sample.visibility==="visible"
-      ),
+    firstVisible,
     `month picker never became visible during staged reopen: ${JSON.stringify(reopenSamples)}`
-  ).toBe(true);
+  ).toBeTruthy();
+
+  /* The picker is revealed at the hidden pose, never at the open one. */
+  expect(
+    firstVisible.top,
+    `month picker was revealed above the viewport bottom: ${JSON.stringify(reopenSamples)}`
+  ).toBeGreaterThanOrEqual(
+    immediate.viewportHeight-2
+  );
 
   for(let index=1;index<reopenSamples.length;index++){
     const previous=reopenSamples[index-1];

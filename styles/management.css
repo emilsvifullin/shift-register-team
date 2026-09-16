@@ -57,68 +57,20 @@ body[data-active-tab="stats"] > main > .card:has(.stats-filter-row){
   background:transparent;
 }
 
-/* Детальные экраны управления используют оставшуюся высоту как рабочую область. */
-body[data-active-tab="manage"] main:has(> .manage-back){
+/*
+  Детальные экраны управления используют оставшуюся высоту как рабочую область.
+
+  Флаг стоит на самом #app, а не на body: слепок старого экрана во время
+  перехода сохраняет прежнее значение и не прыгает на 16px в первом кадре.
+  Заголовок раздела — первый ребёнок #app, поэтому его отступ задаётся через
+  #app: иначе его перебивает общее правило #app > .ml:first-child.
+*/
+body main[data-manage-detail="true"]{
   padding-top:calc(68px + env(safe-area-inset-top));
 }
 
-/* Кнопка назад визуально принадлежит верхней шапке и стоит слева от названия страницы. */
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-  position:fixed;
-  top:calc(14px + env(safe-area-inset-top));
-  left:max(
-    calc(var(--ui-gutter,16px) + env(safe-area-inset-left)),
-    calc(50% - 108px)
-  );
-  z-index:22;
-
-  width:44px;
-  height:44px;
-  min-height:44px;
-  margin:0;
-  padding:0;
-
-  display:grid;
-  place-items:center;
-
-  border:0;
-  border-radius:0;
-  background:transparent;
-  color:var(--ink2);
-  box-shadow:none;
-
-  visibility:visible;
-  opacity:1;
-  pointer-events:auto;
-
-  backdrop-filter:none;
-  -webkit-backdrop-filter:none;
-}
-
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back svg{
-  width:11px;
-  height:18px;
-  display:block;
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back span{
-  position:absolute;
-  width:1px;
-  height:1px;
-  padding:0;
-  margin:-1px;
-  overflow:hidden;
-  clip-path:inset(50%);
-  white-space:nowrap;
-  border:0;
-}
-
-body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back + .ml{
+body #app[data-manage-detail="true"] > .ml:first-child,
+body main[data-manage-detail="true"] > .ml:first-child{
   margin-top:8px;
   margin-left:3px;
 }
@@ -204,11 +156,6 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   margin-top:16px;
 }
 
-/* Удаление сотрудника доступно только после перехода в режим редактирования. */
-#employeeSheet #employeeDelete{
-  display:none !important;
-}
-
 /* Пустой каталог ПВЗ выглядит как нормальная карточка, а не тонкая пустая линия. */
 .employee-points-empty{
   width:100%;
@@ -258,33 +205,30 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
   cursor:default;
 }
 
-@media (hover:hover) and (pointer:fine){
-  body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back:hover{
-    color:var(--ink);
-  }
+/* Подпись под редактором тарифа объясняет, что именно изменится. */
+#manageEditorSheet .tariff-editor-help{
+  margin:7px 4px 0;
+  color:var(--ink3);
+  font-size:10.5px;
+  line-height:1.35;
 }
 
 @media (orientation:landscape) and (max-height:520px){
-  body[data-active-tab="manage"] main:has(> .manage-back){
+  body main[data-manage-detail="true"]{
     padding-top:calc(54px + env(safe-area-inset-top));
-  }
-
-  body[data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-    top:calc(6px + env(safe-area-inset-top));
   }
 }
 
 /*
-  В production видимый back-control живёт в штатной шапке. Исходная кнопка
-  остаётся в #app как действие для существующей логики и нажимается proxy-кнопкой.
-*/
-body[data-management-navigation="ready"][data-active-tab="manage"] main:has(> .manage-back) > .manage-back{
-  display:none !important;
-}
+  Возврат из раздела управления — штатная кнопка шапки и выглядит как до
+  7.0: прозрачная стрелка без круга.
 
-#prevM[data-manage-back-proxy="true"]{
-  visibility:visible !important;
-  pointer-events:auto !important;
+  Внутри header с backdrop-filter WebKit на 1–2 кадра рисует тёмный квадрат
+  44×44 вокруг прозрачной кнопки, если у неё появляется transform, тень или
+  фон (исправление #39). Поэтому ни касание, ни фокус указателем их не
+  добавляют; клавиатурный focus-visible остаётся за accessibility.css.
+*/
+#manageBack{
   border:0;
   border-radius:0;
   background:transparent !important;
@@ -293,41 +237,27 @@ body[data-management-navigation="ready"][data-active-tab="manage"] main:has(> .m
   appearance:none;
   -webkit-appearance:none;
   -webkit-tap-highlight-color:transparent;
-
-  /*
-    Не композить прозрачную кнопку отдельным transform-слоем внутри header
-    с backdrop-filter. WebKit иначе рисует на 1–2 кадра тёмный квадрат 44×44
-    вокруг стрелки во время touch-active.
-  */
   transform:none !important;
   transition:
     color var(--ui-base) ease,
     opacity var(--ui-base) ease !important;
 }
 
-#prevM[data-manage-back-proxy="true"] svg{
+#manageBack svg{
   width:11px;
   height:18px;
   stroke-width:1.8;
 }
 
-/*
-  Touch-state не должен создавать отдельный compositing layer или фон.
-  Клавиатурный focus-visible остаётся доступным через общий accessibility.css.
-*/
-#prevM[data-manage-back-proxy="true"].touch-active,
-#prevM[data-manage-back-proxy="true"]:active{
+#manageBack.touch-active,
+#manageBack:active{
   transform:none !important;
   background:transparent !important;
   box-shadow:none !important;
 }
 
-/*
-  На touch/pointer WebKit может кратко сфокусировать кнопку до обновления
-  input-modality. Любой не-клавиатурный фокус визуально полностью нейтрален.
-*/
-body:not([data-input-modality="keyboard"]) #prevM[data-manage-back-proxy="true"]:focus,
-body:not([data-input-modality="keyboard"]) #prevM[data-manage-back-proxy="true"]:focus-visible{
+body:not([data-input-modality="keyboard"]) #manageBack:focus,
+body:not([data-input-modality="keyboard"]) #manageBack:focus-visible{
   outline:none !important;
   outline-width:0 !important;
   outline-offset:0 !important;
@@ -337,7 +267,7 @@ body:not([data-input-modality="keyboard"]) #prevM[data-manage-back-proxy="true"]
 }
 
 @media (hover:hover) and (pointer:fine){
-  #prevM[data-manage-back-proxy="true"]:hover{
+  #manageBack:hover{
     color:var(--ink);
     background:transparent !important;
     transform:none !important;

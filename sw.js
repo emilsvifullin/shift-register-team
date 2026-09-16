@@ -1,102 +1,182 @@
-const CACHE_NAME=
-  "sr-team-runtime-v6.22.63";
+/*
+  Оболочка приложения кешируется целиком и по поколениям.
 
-const INDEX_FILE=
-  "./index.html";
+  Правила, которые здесь важны:
+
+  1. HTML, модули и стили всегда приходят из одного поколения кеша.
+     Прежний worker брал документ из сети, а модули из своего кеша:
+     после выкладки новая разметка запускалась со старым app.js, и так
+     повторялось при каждом открытии, пока приложение не закроют целиком.
+
+  2. Поколение либо собрано полностью и совпадает с отпечатком
+     SHELL_FINGERPRINT, либо установка проваливается и продолжает работать
+     прошлая версия. Файлы качаются мимо HTTP-кеша: GitHub Pages отдаёт
+     max-age=600, и без этого в новое поколение попадали старые файлы.
+
+  3. Новая версия не подменяет ресурсы под работающей вкладкой: момент
+     переключения выбирает страница (src/pwa.js). Исключение — переход с
+     поколений до 7.0: их страницы не умеют просить об обновлении, поэтому
+     такой переход worker завершает сам и перезагружает их окна.
+
+  Отпечаток пересчитывает `npm run stamp:sw`; tests/service-worker.test.js
+  падает, если его забыли обновить после правки любого файла оболочки.
+*/
+
+const VERSION="7.0.0";
+
+const SHELL_FINGERPRINT="73a6c15394e54a1c11a2ec0135f14bff84af4b0392d994e83ac9d0338da80d12";
+
+const CACHE_PREFIX="sr-shell-";
+
+const CACHE_NAME=`${CACHE_PREFIX}v${VERSION}-${SHELL_FINGERPRINT.slice(0,12)}`;
+
+/*
+  Кеши поколений до 7.0 назывались sr-team-runtime-v*. Их worker
+  перехватывал документы через сеть, а страница не отвечала на
+  сообщение об обновлении.
+*/
+const LEGACY_CACHE_PREFIX="sr-team-";
+
+const INDEX_FILE="./index.html";
 
 const SUPABASE_CDN_URL=
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
-const ASSETS=[
-  "./",
+const DOCUMENTS=[
   INDEX_FILE,
   "./login.html",
+  "./manifest.webmanifest"
+];
+
+const STYLES=[
   "./styles.css",
-  "./styles/platform.css",
   "./styles/accessibility.css",
   "./styles/motion.css",
   "./styles/workflow.css",
   "./styles/auth.css",
+  "./styles/platform.css",
   "./styles/refinement.css",
   "./styles/interaction-core.css",
   "./styles/management.css",
   "./styles/motion-reference.css",
   "./styles/modal-motion-exact.css",
-  "./styles/interaction.css",
-  "./src/ui/input-behavior.js",
-  "./manifest.webmanifest",
+  "./styles/interaction.css"
+];
+
+const SCRIPTS=[
+  "./src/frame-guard.js",
+  "./src/api/employees.js",
+  "./src/api/payouts.js",
+  "./src/api/points.js",
+  "./src/api/read.js",
+  "./src/api/realtime.js",
+  "./src/api/result.js",
+  "./src/api/shifts.js",
+  "./src/app.js",
+  "./src/auth.js",
   "./src/config.js",
   "./src/domain.js",
-  "./src/storage.js",
-  "./src/team.js",
-  "./src/api/result.js",
-  "./src/api/read.js",
-  "./src/api/employees.js",
-  "./src/api/realtime.js",
-  "./src/api/shifts.js",
-  "./src/api/points.js",
-  "./src/api/payouts.js",
-  "./src/team-domain.js",
-  "./src/workflow.js",
-  "./src/phone.js",
-  "./src/employee-ui.js",
-  "./src/picker-position.js",
-  "./src/platform-shell.js",
-  "./src/management-employee-points.js",
-  "./src/management-tap-intent.js",
-  "./src/management-navigation.js",
-  "./src/management-point-editor.js",
-  "./src/point-card-summaries.js",
-  "./src/reference-swipes.js",
-  "./src/team-motion.js",
+  "./src/format.js",
+  "./src/interactions.js",
+  "./src/login.js",
+  "./src/manage-swipe.js",
   "./src/modal-motion.js",
   "./src/month-picker-swipe.js",
-  "./src/swipe-close-guard.js",
+  "./src/phone.js",
+  "./src/picker-position.js",
+  "./src/platform-shell.js",
+  "./src/point-summary.js",
+  "./src/pwa.js",
+  "./src/reference-swipes.js",
+  "./src/render/dom-patch.js",
+  "./src/render/schedule.js",
+  "./src/storage.js",
   "./src/supabase.js",
-  "./src/auth.js",
-  "./src/frame-guard.js",
-  "./src/login.js",
-  "./src/app.js",
+  "./src/swipe-close-guard.js",
+  "./src/tariff-rules.js",
+  "./src/team-domain.js",
+  "./src/team-motion.js",
+  "./src/team.js",
+  "./src/ui/input-behavior.js",
+  "./src/workflow.js"
+];
+
+const ICONS=[
   "./icon-192.png",
   "./icon-512.png",
   "./icon-maskable-512.png"
 ];
 
-const REMOTE_ASSETS=[
-  SUPABASE_CDN_URL
+const ASSETS=[
+  ...DOCUMENTS,
+  ...STYLES,
+  ...SCRIPTS,
+  ...ICONS
 ];
 
-const ASSET_PATHS=
-  new Set(
-    ASSETS.map(path=>
-      new URL(
-        path,
-        self.registration.scope
-      ).pathname
-    )
+const scopeUrl=path=>
+  new URL(
+    path,
+    self.registration.scope
   );
 
-async function precache(
-  cache,
-  assets
-){
-  const results=
-    await Promise.allSettled(
-      assets.map(asset=>
-        cache.add(asset)
-      )
-    );
+const ASSET_PATHS=new Set(
+  ASSETS.map(path=>scopeUrl(path).pathname)
+);
 
-  const failed=
-    results.filter(result=>
-      result.status==="rejected"
-    );
+/*
+  Документы оболочки. Навигация на них отдаётся из кеша поколения, а
+  адрес "./" и "./index.html" — это один и тот же документ.
+*/
+const SHELL_DOCUMENTS=new Map([
+  [scopeUrl("./").pathname,INDEX_FILE],
+  [scopeUrl(INDEX_FILE).pathname,INDEX_FILE],
+  [scopeUrl("./login.html").pathname,"./login.html"]
+]);
 
-  if(failed.length){
-    console.warn(
-      `Не удалось кешировать ${failed.length} ресурсов`
-    );
+/*
+  Отпечаток поколения: SHA-256 по путям и байтам всех файлов оболочки в
+  порядке ASSETS. Тот же расчёт делает scripts/stamp-sw.mjs; тест сверяет,
+  что оба дают одинаковый результат.
+*/
+async function shellFingerprint(readAsset){
+  const encoder=new TextEncoder();
+  const parts=[];
+
+  for(const path of ASSETS){
+    const bytes=await readAsset(path);
+
+    if(!bytes){
+      return null;
+    }
+
+    parts.push(encoder.encode(`${path}\n`));
+    parts.push(new Uint8Array(bytes));
   }
+
+  const size=parts.reduce((total,part)=>total+part.byteLength,0);
+  const bytes=new Uint8Array(size);
+  let offset=0;
+
+  for(const part of parts){
+    bytes.set(part,offset);
+    offset+=part.byteLength;
+  }
+
+  const digest=await crypto.subtle.digest("SHA-256",bytes);
+
+  return Array.from(
+    new Uint8Array(digest),
+    byte=>byte.toString(16).padStart(2,"0")
+  ).join("");
+}
+
+async function hasLegacyGeneration(){
+  const names=await caches.keys();
+
+  return names.some(name=>
+    name.startsWith(LEGACY_CACHE_PREFIX)
+  );
 }
 
 self.addEventListener(
@@ -104,22 +184,60 @@ self.addEventListener(
   event=>{
     event.waitUntil(
       (async()=>{
-        const cache=
-          await caches.open(
-            CACHE_NAME
-          );
+        const cache=await caches.open(CACHE_NAME);
 
-        await precache(
-          cache,
-          ASSETS
+        const cachedFingerprint=()=>shellFingerprint(
+          async path=>{
+            const response=await cache.match(path);
+            return response ? response.arrayBuffer() : null;
+          }
         );
 
-        await precache(
-          cache,
-          REMOTE_ASSETS
-        );
+        /*
+          Если изменился только сам worker, поколение с тем же отпечатком
+          уже собрано и проверено — его не качаем заново и не трогаем.
+        */
+        if(await cachedFingerprint()!==SHELL_FINGERPRINT){
+          try{
+            /*
+              addAll атомарен: если хотя бы один файл недоступен, установка
+              проваливается. cache:"reload" идёт мимо HTTP-кеша браузера.
+            */
+            await cache.addAll(
+              ASSETS.map(path=>
+                new Request(path,{cache:"reload"})
+              )
+            );
 
-        await self.skipWaiting();
+            const fingerprint=await cachedFingerprint();
+
+            /*
+              Сразу после выкладки CDN может ещё отдавать часть старых
+              файлов. Смешанное поколение не устанавливается: браузер
+              повторит попытку при следующей проверке обновления.
+            */
+            if(fingerprint!==SHELL_FINGERPRINT){
+              throw new Error(
+                `Оболочка ${VERSION} собрана не полностью: ${fingerprint}`
+              );
+            }
+          }catch(error){
+            await caches.delete(CACHE_NAME);
+            throw error;
+          }
+        }
+
+        /*
+          Внешний CDN не должен ронять установку: без него приложение
+          всё равно стартует, а запрос повторится при первом обращении.
+        */
+        await cache
+          .add(SUPABASE_CDN_URL)
+          .catch(()=>{});
+
+        if(await hasLegacyGeneration()){
+          await self.skipWaiting();
+        }
       })()
     );
   }
@@ -130,44 +248,73 @@ self.addEventListener(
   event=>{
     event.waitUntil(
       (async()=>{
-        const names=
-          await caches.keys();
+        const legacy=await hasLegacyGeneration();
+        const names=await caches.keys();
 
         await Promise.all(
           names
-            .filter(
-              name=>
-                name!==CACHE_NAME
+            .filter(name=>
+              name!==CACHE_NAME &&
+              (
+                name.startsWith(CACHE_PREFIX) ||
+                name.startsWith(LEGACY_CACHE_PREFIX)
+              )
             )
-            .filter(
-              name=>
-                name.startsWith(
-                  "sr-team-"
-                )
-            )
-            .map(name=>
-              caches.delete(name)
-            )
+            .map(name=>caches.delete(name))
         );
 
         await self.clients.claim();
+
+        if(!legacy){
+          return;
+        }
+
+        /*
+          Окна прежнего поколения запущены со смешанной оболочкой и не
+          перезагрузятся сами. Навигация на тот же адрес пройдёт уже через
+          этот worker и соберёт страницу из одного поколения.
+
+          Навигацию нельзя ждать внутри waitUntil: её запрос обслуживается
+          только активированным worker, а активация ждала бы навигацию —
+          взаимная блокировка и в WebKit, и в Chromium.
+
+          Адрес берётся без #фрагмента: переход на тот же адрес с фрагментом
+          браузер выполняет как прокрутку к якорю, без перезагрузки. Вкладку
+          приложение восстановит из сохранённого состояния интерфейса.
+        */
+        const windows=await self.clients.matchAll({
+          type:"window"
+        });
+
+        for(const client of windows){
+          const target=new URL(client.url);
+          target.hash="";
+
+          client
+            .navigate(target.href)
+            .catch(()=>null);
+        }
       })()
     );
   }
 );
 
-function fetchWithTimeout(
-  request,
-  timeoutMs=5000
-){
-  const controller=
-    new AbortController();
+self.addEventListener(
+  "message",
+  event=>{
+    if(event.data?.type==="activate-update"){
+      void self.skipWaiting();
+    }
+  }
+);
 
-  const timer=
-    setTimeout(
-      ()=>controller.abort(),
-      timeoutMs
-    );
+function fetchWithTimeout(request,timeoutMs=5000){
+  const controller=new AbortController();
+
+  const timer=setTimeout(
+    ()=>controller.abort(),
+    timeoutMs
+  );
 
   return fetch(
     request,
@@ -175,38 +322,29 @@ function fetchWithTimeout(
       cache:"no-store",
       signal:controller.signal
     }
-  ).finally(
-    ()=>clearTimeout(timer)
-  );
+  ).finally(()=>clearTimeout(timer));
 }
 
-async function cacheFirst(
-  request
-){
-  const cache=
-    await caches.open(
-      CACHE_NAME
-    );
+async function cacheFirst(request,{store=false}={}){
+  const cache=await caches.open(CACHE_NAME);
 
-  const cached=
-    await cache.match(
-      request,
-      {
-        ignoreSearch:true
-      }
-    );
+  const cached=await cache.match(
+    request,
+    {ignoreSearch:true}
+  );
 
   if(cached){
     return cached;
   }
 
   try{
-    const response=
-      await fetchWithTimeout(
-        request
-      );
+    const response=await fetchWithTimeout(request);
 
-    if(response.ok){
+    /*
+      Своё поколение дописывать нельзя: файл из сети может оказаться уже
+      из следующей выкладки. Дописывается только внешний supabase-js.
+    */
+    if(store && response.ok){
       await cache.put(
         request,
         response.clone()
@@ -219,108 +357,49 @@ async function cacheFirst(
   }
 }
 
-async function navigationResponse(
-  request
-){
-  const cache=
-    await caches.open(
-      CACHE_NAME
-    );
+async function shellDocument(request,path){
+  const cache=await caches.open(CACHE_NAME);
+
+  const cached=await cache.match(path);
+
+  if(cached){
+    return cached;
+  }
 
   try{
-    const response=
-      await fetchWithTimeout(
-        request
-      );
-
-    if(response.ok){
-      const contentType=
-        response.headers.get(
-          "content-type"
-        ) || "";
-
-      if(
-        contentType.includes(
-          "text/html"
-        )
-      ){
-        await cache.put(
-          request,
-          response.clone()
-        );
-      }
-    }
-
-    return response;
+    return await fetchWithTimeout(request);
   }catch{
-    const cached=
-      await cache.match(
-        request,
-        {
-          ignoreSearch:true
-        }
-      );
-
-    if(cached){
-      return cached;
-    }
-
-    const requestUrl=
-      new URL(request.url);
-
-    const scope=
-      new URL(
-        self.registration.scope
-      );
-
-    const indexUrl=
-      new URL(
-        INDEX_FILE,
-        scope
-      );
-
-    if(
-      requestUrl.pathname===
-        scope.pathname ||
-      requestUrl.pathname===
-        indexUrl.pathname
-    ){
-      return (
-        await cache.match(
-          INDEX_FILE
-        )
-      ) || Response.error();
-    }
-
     return Response.error();
+  }
+}
+
+async function navigationResponse(request){
+  try{
+    return await fetchWithTimeout(request);
+  }catch{
+    const cache=await caches.open(CACHE_NAME);
+
+    return (
+      await cache.match(INDEX_FILE)
+    ) || Response.error();
   }
 }
 
 self.addEventListener(
   "fetch",
   event=>{
-    const request=
-      event.request;
+    const request=event.request;
 
     if(request.method!=="GET"){
       return;
     }
 
-    const url=
-      new URL(request.url);
+    const url=new URL(request.url);
+    const scope=new URL(self.registration.scope);
 
-    const scope=
-      new URL(
-        self.registration.scope
-      );
-
-    if(
-      REMOTE_ASSETS.includes(
-        url.href
-      )
-    ){
+    if(url.href===SUPABASE_CDN_URL){
       event.respondWith(
-        cacheFirst(request)
+        cacheFirst(request,{store:true})
       );
 
       return;
@@ -331,17 +410,19 @@ self.addEventListener(
     }
 
     if(request.mode==="navigate"){
+      const shellPath=SHELL_DOCUMENTS.get(url.pathname);
+
       event.respondWith(
-        navigationResponse(request)
+        shellPath
+          ? shellDocument(request,shellPath)
+          : navigationResponse(request)
       );
 
       return;
     }
 
     if(ASSET_PATHS.has(url.pathname)){
-      event.respondWith(
-        cacheFirst(request)
-      );
+      event.respondWith(cacheFirst(request));
     }
   }
 );

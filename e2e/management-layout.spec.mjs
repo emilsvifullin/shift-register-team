@@ -59,8 +59,8 @@ test("management back chevron stays aligned and employee rows use five-card rhyt
       (periodBox.y+periodBox.height/2)
     )
   ).toBeLessThanOrEqual(1);
-  expect(backBox.x).toBeGreaterThan(70);
-  expect(backBox.x+backBox.width).toBeLessThan(periodBox.x+periodBox.width/2);
+  expect(backBox.x).toBeGreaterThan(0);
+  expect(backBox.x+backBox.width).toBeLessThanOrEqual(periodBox.x+1);
   expect(Math.abs(labelBox.x-menuBox.x)).toBeLessThanOrEqual(8);
 
   expect(
@@ -99,42 +99,35 @@ test("management back chevron stays aligned and employee rows use five-card rhyt
     document.body.append(benchmark);
 
     const point=benchmark.querySelector(".point-manage-row");
-    const employeeCopy=employee.querySelector(".manage-row-copy");
-    const pointCopy=point.querySelector(".manage-row-copy");
-    const employeeTitle=employee.querySelector(".manage-row-title");
-    const pointTitle=point.querySelector(".manage-row-title");
-    const employeeDetail=employee.querySelector(".manage-row-detail");
-    const pointDetail=point.querySelector(".manage-row-detail");
-    const employeeStyle=getComputedStyle(employee);
-    const pointStyle=getComputedStyle(point);
 
     const result={
       employeeHeight:employee.getBoundingClientRect().height,
       pointHeight:point.getBoundingClientRect().height,
-      employeePaddingTop:employeeStyle.paddingTop,
-      pointPaddingTop:pointStyle.paddingTop,
-      employeePaddingBottom:employeeStyle.paddingBottom,
-      pointPaddingBottom:pointStyle.paddingBottom,
-      employeeGap:getComputedStyle(employeeCopy).gap,
-      pointGap:getComputedStyle(pointCopy).gap,
-      employeeTitleLineHeight:getComputedStyle(employeeTitle).lineHeight,
-      pointTitleLineHeight:getComputedStyle(pointTitle).lineHeight,
-      employeeDetailLineHeight:getComputedStyle(employeeDetail).lineHeight,
-      pointDetailLineHeight:getComputedStyle(pointDetail).lineHeight
+      employeeGap:getComputedStyle(
+        employee.querySelector(".manage-row-copy")
+      ).gap,
+      pointGap:getComputedStyle(
+        point.querySelector(".manage-row-copy")
+      ).gap
     };
 
     benchmark.remove();
     return result;
   });
 
-  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeGreaterThanOrEqual(4.5);
-  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeLessThanOrEqual(5.5);
-  expect(rowMetrics.employeePaddingTop).toBe(rowMetrics.pointPaddingTop);
-  expect(rowMetrics.employeePaddingBottom).toBe(rowMetrics.pointPaddingBottom);
+  /*
+    Плитка сотрудника того же размера, что плитка ПВЗ, и не ниже её — рядом
+    со списком ПВЗ она не выглядит сжатой, — но три строки внутри разведены
+    шире: 5.5px против 3px. Отступы и высоту строк сотрудник задаёт сам
+    (styles/interaction.css, у ПВЗ они из refinement.css), поэтому
+    сравнивается итоговая высота плитки, а не каждое свойство по отдельности.
+    Если сделать плитку выше, пятая плитка перестаёт целиком помещаться в
+    окно списка на iPhone — это проверяет employee-card-spacing.spec.mjs.
+  */
+  expect(rowMetrics.employeeHeight).toBeGreaterThanOrEqual(rowMetrics.pointHeight);
+  expect(rowMetrics.employeeHeight-rowMetrics.pointHeight).toBeLessThanOrEqual(2);
   expect(rowMetrics.employeeGap).toBe("5.5px");
   expect(rowMetrics.pointGap).toBe("3px");
-  expect(rowMetrics.employeeTitleLineHeight).toBe(rowMetrics.pointTitleLineHeight);
-  expect(rowMetrics.employeeDetailLineHeight).toBe(rowMetrics.pointDetailLineHeight);
 
   const menuBottom=menuBox.y+menuBox.height;
   const gap=dockBox.y-menuBottom;

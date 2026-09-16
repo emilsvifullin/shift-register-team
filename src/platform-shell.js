@@ -122,11 +122,21 @@ export function viewportMetrics({
     )
   );
 
+  const windowHeight=Math.max(
+    1,
+    Math.round(
+      innerHeight ||
+      visualViewport?.height ||
+      height
+    )
+  );
+
   return {
     width,
     height,
     top,
-    left
+    left,
+    windowHeight
   };
 }
 
@@ -161,6 +171,21 @@ function setViewportVariables(
   root.style.setProperty(
     "--app-viewport-left",
     `${metrics.left}px`
+  );
+
+  /*
+    Высота окна приложения — это layout viewport, а не видимая область:
+    клавиатура окно не уменьшает, она его закрывает. Установленное
+    приложение раньше брало эту высоту из статического 100vh, который в
+    iOS остаётся высотой окна без клавиатуры. Пока клавиатура открыта,
+    оболочка оказывалась выше окна, документ становился прокручиваемым, и
+    iOS прокручивал его, чтобы показать поле. Нижняя панель в установленном
+    приложении позиционируется относительно документа (position:absolute),
+    поэтому уезжала вверх вместе с прокруткой и иногда там и оставалась.
+  */
+  root.style.setProperty(
+    "--app-window-height",
+    `${metrics.windowHeight}px`
   );
 }
 

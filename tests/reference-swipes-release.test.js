@@ -8,38 +8,6 @@ const read=path=>
     "utf8"
   );
 
-function escapeRegExp(value){
-  return value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-}
-
-test("reference horizontal swipes are bootstrapped and precached",()=>{
-  const frameGuard=read("src/frame-guard.js");
-  const config=read("src/config.js");
-  const serviceWorker=read("sw.js");
-  const packageJson=JSON.parse(read("package.json"));
-  const version=escapeRegExp(packageJson.version);
-
-  assert.match(
-    frameGuard,
-    /\.\/reference-swipes\.js/
-  );
-
-  assert.match(
-    serviceWorker,
-    /\.\/src\/reference-swipes\.js/
-  );
-
-  assert.match(
-    config,
-    new RegExp(`APP_VERSION = "${version}"`)
-  );
-
-  assert.match(
-    serviceWorker,
-    new RegExp(`sr-team-runtime-v${version}`)
-  );
-});
-
 test("main month touch swipe keeps the exact shift-register thresholds",()=>{
   const app=read("src/app.js");
 

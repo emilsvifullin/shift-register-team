@@ -168,7 +168,25 @@ test("header swipe release continues downward without an upward rebound",async({
     samples.push(await sheetTop(page));
   }
 
+  const viewportHeight=
+    await page.evaluate(()=>window.innerHeight);
+
   for(let index=1;index<samples.length;index++){
+    /*
+      A slow run can sample after the 420ms release has ended. The sheet
+      then settles from the release end (height + 40px) into its closed pose
+      (100% + 24px), 16px higher but still below the viewport. Only movement
+      that can be seen counts as a rebound.
+    */
+    if(
+      Math.min(
+        samples[index-1],
+        samples[index]
+      )>=viewportHeight
+    ){
+      continue;
+    }
+
     expect(
       samples[index],
       `sheet moved upward after release: ${samples.join(", ")}`

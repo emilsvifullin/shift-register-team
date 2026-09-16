@@ -27,24 +27,58 @@ function includesDuration(value,seconds){
     .includes(`${seconds}s`);
 }
 
-async function referenceAnimations(locator){
-  return locator.evaluate(element=>
-    element
-      .getAnimations()
-      .filter(animation=>
-        String(animation.id || "")
+/*
+  Анимации записываются в момент создания. Раньше тест читал
+  getAnimations() через фиксированную паузу после открытия или закрытия, а
+  modal-motion отменяет анимацию сразу по окончании: на медленной машине
+  CI 300-миллисекундная анимация прозрачности успевала закончиться до
+  чтения, и тест падал, хотя движение было верным.
+*/
+test.beforeEach(async({page})=>{
+  await page.addInitScript(()=>{
+    const animate=Element.prototype.animate;
+
+    window.__startedAnimations=[];
+
+    Element.prototype.animate=function(...args){
+      const animation=animate.apply(this,args);
+
+      window.__startedAnimations.push({
+        element:this,
+        animation
+      });
+
+      return animation;
+    };
+  });
+});
+
+async function animationMark(page){
+  return page.evaluate(()=>
+    window.__startedAnimations.length
+  );
+}
+
+async function referenceAnimations(locator,since=0){
+  return locator.evaluate((element,since)=>
+    window.__startedAnimations
+      .slice(since)
+      .filter(entry=>
+        entry.element===element &&
+        String(entry.animation.id || "")
           .startsWith(
             "shift-register-modal-"
           )
       )
-      .map(animation=>({
+      .map(({animation})=>({
         id:String(animation.id || ""),
         duration:Number(
           animation.effect
             .getTiming()
             .duration
         )
-      }))
+      })),
+    since
   );
 }
 
@@ -127,12 +161,15 @@ test("reference motion timings match shift-register and animate visibly",async({
   expect(includesDuration(timings.toast,.22)).toBe(true);
   expect(timings.monthVariable).toBe("320ms");
 
+  const openMark=await animationMark(page);
+
   await page.locator("#openSheet").click();
   await page.waitForTimeout(90);
 
   const openingAnimations=
     await referenceAnimations(
-      page.locator("#sheet")
+      page.locator("#sheet"),
+      openMark
     );
 
   expect(openingAnimations).toContainEqual({
@@ -162,12 +199,15 @@ test("reference motion timings match shift-register and animate visibly",async({
     fullPage:false
   });
 
+  const closeMark=await animationMark(page);
+
   await page.locator("#closeSheet").click();
   await page.waitForTimeout(60);
 
   const closingAnimations=
     await referenceAnimations(
-      page.locator("#sheet")
+      page.locator("#sheet"),
+      closeMark
     );
 
   expect(closingAnimations).toContainEqual({
@@ -209,6 +249,8 @@ test("every sliding window opens and closes with the same reference speed",async
     const locator=
       page.locator(surface.selector);
 
+    const openMark=await animationMark(page);
+
     await openSurface(
       page,
       surface.selector
@@ -217,7 +259,7 @@ test("every sliding window opens and closes with the same reference speed",async
     await page.waitForTimeout(90);
 
     const openingAnimations=
-      await referenceAnimations(locator);
+      await referenceAnimations(locator,openMark);
 
     const openingTransform=
       openingAnimations.find(animation=>
@@ -263,6 +305,8 @@ test("every sliding window opens and closes with the same reference speed",async
       surface.transformDuration+80
     );
 
+    const closeMark=await animationMark(page);
+
     await closeSurface(
       page,
       surface.selector
@@ -271,7 +315,7 @@ test("every sliding window opens and closes with the same reference speed",async
     await page.waitForTimeout(60);
 
     const closingAnimations=
-      await referenceAnimations(locator);
+      await referenceAnimations(locator,closeMark);
 
     const closingTransform=
       closingAnimations.find(animation=>
@@ -332,6 +376,8 @@ test("PВZ editor cannot be hidden before its 480ms close motion finishes",async
   await openSurface(page,selector);
   await page.waitForTimeout(600);
 
+  const closeMark=await animationMark(page);
+
   await page.evaluate(selector=>{
     const element=
       document.querySelector(selector);
@@ -366,7 +412,7 @@ test("PВZ editor cannot be hidden before its 480ms close motion finishes",async
     .not.toBe("matrix(1, 0, 0, 1, 0, 0)");
 
   const animations=
-    await referenceAnimations(locator);
+    await referenceAnimations(locator,closeMark);
 
   expect(animations).toContainEqual({
     id:"shift-register-modal-transform",

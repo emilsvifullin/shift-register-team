@@ -219,6 +219,15 @@ header{
   place-items:center;
 }
 
+/*
+  Авторское display у кнопок шапки перебивает display:none из UA-стилей,
+  поэтому атрибут hidden нужно уважать явно: иначе скрытая кнопка
+  продолжает занимать слот и сдвигает заголовок с центра.
+*/
+.nav button[hidden]{
+  display:none;
+}
+
 .nav button svg{
   width:12px;
   height:16px;
@@ -732,53 +741,10 @@ nav.tabs button.on{
   stroke-linejoin:round;
 }
 
-.manage-back{
-  min-height:36px;
-  margin:
-    2px
-    0
-    8px
-    -4px;
-
-  padding:
-    0
-    8px
-    0
-    4px;
-
-  display:inline-flex;
-  align-items:center;
-  gap:7px;
-
-  border:0;
-  border-radius:10px;
-
-  background:transparent;
-  color:var(--ink2);
-
-  font-size:13px;
-  font-weight:500;
-
-  cursor:pointer;
-
-  appearance:none;
-  -webkit-appearance:none;
-
-  transition:
-    opacity .12s ease,
-    background-color .16s ease;
-}
-
-.manage-back svg{
-  width:8px;
-  height:14px;
-
-  fill:none;
-  stroke:currentColor;
-  stroke-width:1.5;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
+/*
+  Кнопка возврата из раздела управления — обычный элемент шапки и
+  выглядит как остальные её стрелки: геометрию и цвет задаёт .nav button.
+*/
 
 .manage-placeholder{
   padding:20px 18px;
@@ -805,11 +771,6 @@ nav.tabs button.on{
   box-shadow:
     inset 0 0 0 999px
     var(--tint) !important;
-}
-
-.manage-back.touch-active{
-  opacity:.58;
-  box-shadow:none !important;
 }
 
 .manage-loading,

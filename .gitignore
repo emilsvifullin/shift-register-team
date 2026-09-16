@@ -1,5 +1,6 @@
 supabase/.temp/
 node_modules/
+.iphone-debug/
 test-results/
 playwright-report/
 coverage/

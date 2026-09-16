@@ -534,9 +534,13 @@ test(
 
     await page.locator("#manageEditorSave").click();
 
+    /*
+      Отказ вернёт в карточку, а не закроет её, поэтому кнопка называется
+      «Назад» — так же, как при редактировании сотрудника.
+    */
     await expect(
       page.locator("#manageEditorCancel")
-    ).toHaveText("Отмена");
+    ).toHaveText("Назад");
 
     await page.locator("#managePointName").fill("Другое название");
     await page.locator("#manageEditorCancel").click();
@@ -665,5 +669,56 @@ test(
 
     expect(threeRows.removes).toBe(2);
     expect(new Set(threeRows.fieldWidths).size).toBe(1);
+  }
+);
+
+/*
+  Лист забирает фокус на следующем кадре после открытия. Человек успевает
+  коснуться поля раньше этого кадра: тогда фокус обязан остаться у поля,
+  иначе перерисовка возьмёт значение поля без фокуса из разметки и набранное
+  пропадёт. Кадр здесь задержан намеренно — на телефоне под нагрузкой он
+  приходит так же поздно.
+*/
+test(
+  "a sheet opening does not take focus away from a field already in use",
+  async({page})=>{
+    await openApp(page);
+
+    await page.addInitScript(()=>{});
+
+    await page.evaluate(()=>{
+      const raf=window.requestAnimationFrame;
+
+      window.requestAnimationFrame=callback=>
+        raf(()=>setTimeout(()=>callback(performance.now()),120));
+    });
+
+    await openPoints(page);
+    await page.locator("#pointAdd").click();
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await page.locator("#managePointName").fill("Тестовый ПВЗ");
+
+    /*
+      Отложенный кадр листа приходит уже после ввода.
+    */
+    await page.waitForTimeout(400);
+
+    expect(
+      await page.locator("#managePointName").inputValue()
+    ).toBe("Тестовый ПВЗ");
+
+    await expect(
+      page.locator("#managePointName")
+    ).toBeFocused();
+
+    await page.locator("#manageEditorSave").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("ПВЗ сохранён");
   }
 );

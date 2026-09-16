@@ -677,6 +677,27 @@ function setBackgroundInert(enabled){
     });
 }
 
+/*
+  Лист забирает фокус на следующем кадре после открытия. Если человек успел
+  коснуться поля внутри листа раньше, чем этот кадр наступил, фокус остаётся
+  у него: иначе ввод продолжается в поле без фокуса, а реконсилятор при
+  следующей перерисовке берёт значение такого поля из разметки — набранное
+  пропадало вместе с ним.
+*/
+function focusSheetSurface(sheet){
+  if(
+    sheet.contains(
+      sheet.ownerDocument.activeElement
+    )
+  ){
+    return;
+  }
+
+  sheet.focus({
+    preventScroll:true
+  });
+}
+
 function prepareBottomSheetOpen(
   element,
   dragProperty
@@ -2921,7 +2942,7 @@ function openShiftFilterSheet(){
   shiftFilterSheetElement.classList.add("on");
   requestAnimationFrame(()=>{
     shiftFilterSheetElement.scrollTop=0;
-    shiftFilterSheetElement.focus({preventScroll:true});
+    focusSheetSurface(shiftFilterSheetElement);
   });
 }
 
@@ -3088,9 +3109,7 @@ function openEmployeeFilterSheet(){
   requestAnimationFrame(()=>{
     sheet.scrollTop=0;
 
-    sheet.focus({
-      preventScroll:true
-    });
+    focusSheetSurface(sheet);
   });
 }
 
@@ -3917,12 +3936,24 @@ function updateManageEditorHeader(){
     !manageEditorDraft.isNew &&
     !manageEditorDraft.editing;
 
+  /*
+    Отказ от правок существующего ПВЗ возвращает в его карточку, а не
+    закрывает лист, поэтому кнопка называется «Назад» — как у сотрудника.
+    «Отмена» остаётся только у нового ПВЗ, где отказ закрывает лист.
+  */
+  const editingExisting=
+    manageEditorDraft &&
+    !manageEditorDraft.isNew &&
+    manageEditorDraft.editing;
+
   document.getElementById(
     "manageEditorCancel"
   ).textContent=
     viewing
       ? "Закрыть"
-      : "Отмена";
+      : editingExisting
+        ? "Назад"
+        : "Отмена";
 
   document.getElementById(
     "manageEditorSave"
@@ -4153,9 +4184,7 @@ function openManageEditor(kind,id=null){
   manageEditorSheetElement.classList.add("on");
   requestAnimationFrame(()=>{
     manageEditorSheetElement.scrollTop=0;
-    manageEditorSheetElement.focus({
-      preventScroll:true
-    });
+    focusSheetSurface(manageEditorSheetElement);
   });
 }
 
@@ -5824,9 +5853,7 @@ function openEmployeeEditor(
   requestAnimationFrame(()=>{
     sheet.scrollTop=0;
 
-    sheet.focus({
-      preventScroll:true
-    });
+    focusSheetSurface(sheet);
   });
 }
 
@@ -6706,9 +6733,7 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
         "transition"
       );
 
-      sheet.focus({
-        preventScroll:true
-      });
+      focusSheetSurface(sheet);
     });
   }else{
     requestAnimationFrame(()=>{
@@ -6717,9 +6742,7 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
         restoredScrollTop
       );
 
-      sheet.focus({
-        preventScroll:true
-      });
+      focusSheetSurface(sheet);
     });
   }
 

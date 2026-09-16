@@ -56,7 +56,8 @@ test(
         width:390,
         height:613,
         top:42,
-        left:0
+        left:0,
+        windowHeight:932
       }
     );
   }
@@ -81,7 +82,8 @@ test(
         width:390,
         height:844,
         top:0,
-        left:0
+        left:0,
+        windowHeight:844
       }
     );
   }
@@ -106,7 +108,8 @@ test(
         width:195,
         height:422,
         top:12,
-        left:8
+        left:8,
+        windowHeight:844
       }
     );
   }
@@ -124,7 +127,8 @@ test(
         width:1440,
         height:900,
         top:0,
-        left:0
+        left:0,
+        windowHeight:900
       }
     );
 
@@ -134,8 +138,35 @@ test(
         width:1,
         height:1,
         top:0,
-        left:0
+        left:0,
+        windowHeight:1
       }
     );
+  }
+);
+
+/*
+  Клавиатура не уменьшает окно приложения, она его закрывает: высота окна
+  берётся из layout viewport, а не из видимой области. Иначе оболочка
+  установленного приложения оказывается выше окна, документ становится
+  прокручиваемым, и привязанная к документу нижняя панель уезжает вверх.
+*/
+test(
+  "the window height ignores a keyboard covering the visible area",
+  ()=>{
+    const metrics=viewportMetrics({
+      visualViewport:{
+        width:402,
+        height:567,
+        offsetTop:78,
+        offsetLeft:0,
+        scale:1
+      },
+      innerWidth:402,
+      innerHeight:878
+    });
+
+    assert.equal(metrics.height,567);
+    assert.equal(metrics.windowHeight,878);
   }
 );

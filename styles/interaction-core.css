@@ -590,16 +590,23 @@ body.date-picker-open .bottom-controls{
   iOS standalone может сообщать visualViewport ниже фактического окна приложения.
   В PWA shell привязывается к полному layout viewport, а внутренние overlay по-прежнему
   используют visualViewport для клавиатуры и zoom.
+
+  Layout viewport берётся измеренным (--app-window-height, src/platform-shell.js),
+  а не через 100vh: в iOS 100vh — это высота окна без клавиатуры, она не
+  уменьшается, пока клавиатура открыта. Оболочка тогда оказывалась выше окна,
+  документ становился прокручиваемым, и нижняя панель, привязанная здесь к
+  документу, уезжала вверх вместе с прокруткой. 100vh остаётся запасным
+  значением до первого измерения.
 */
 @media (display-mode:standalone){
   :root{
-    --app-shell-height:100vh;
+    --app-shell-height:var(--app-window-height,100vh);
   }
 
   html,
   body{
-    height:100vh;
-    min-height:100vh;
+    height:var(--app-window-height,100vh);
+    min-height:var(--app-window-height,100vh);
   }
 
   .bottom-controls{
@@ -616,7 +623,7 @@ body.date-picker-open .bottom-controls{
     right:0;
     bottom:auto;
     left:0;
-    height:100vh;
+    height:var(--app-window-height,100vh);
   }
 }
 

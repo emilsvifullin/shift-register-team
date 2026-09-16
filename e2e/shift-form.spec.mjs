@@ -182,3 +182,59 @@ test(
     ).toBe(0);
   }
 );
+
+/*
+  Подогнанная высота списка — инлайновая геометрия рантайма. Реконсилятор
+  переиспользует узлы, поэтому после удаления последней смены тот же узел
+  становится карточкой пустого списка. Чужая высота на нём делала карточку
+  ниже, чем при первом открытии экрана, и вместе с ней поднималось всё, что
+  ниже. Здесь измеряется именно геометрия, а не наличие атрибута.
+*/
+test(
+  "the empty list keeps its own height after the last shift is deleted",
+  async({page})=>{
+    await openApp(page);
+
+    const emptyCard=page.locator(
+      "#shiftListArea .card"
+    );
+
+    const before=await emptyCard.evaluate(card=>({
+      height:Math.round(
+        card.getBoundingClientRect().height*100
+      )/100,
+      pinned:card.style.height+card.style.flex
+    }));
+
+    expect(before.pinned).toBe("");
+
+    await openNewShift(page);
+    await choose(page,"#f-point-open","point-1");
+    await choose(page,"#f-employee-open","employee-1");
+    await page.locator("#f-shk").fill("120");
+    await page.locator("#sheetSave").click();
+
+    const row=page.locator("#shiftListArea .sh");
+
+    await expect(row).toHaveCount(1);
+
+    await row.click();
+    await page.locator("#sheetSave").click();
+    await page.locator("#f-del").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(row).toHaveCount(0);
+
+    await expect(async()=>{
+      const after=await emptyCard.evaluate(card=>({
+        height:Math.round(
+          card.getBoundingClientRect().height*100
+        )/100,
+        pinned:card.style.height+card.style.flex
+      }));
+
+      expect(after.pinned).toBe("");
+      expect(after.height).toBe(before.height);
+    }).toPass({timeout:4000});
+  }
+);

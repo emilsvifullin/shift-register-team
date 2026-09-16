@@ -1139,7 +1139,36 @@ function render(){
   );
 }
 
+/*
+  Подогнанная высота списка смен — инлайновая геометрия, которую ставит
+  рантайм. Снимать её нужно с того узла, которому она была поставлена, а не
+  с того, что сейчас подходит под селектор: реконсилятор переиспользует узлы,
+  и после удаления последней смены этот же узел становится карточкой
+  «В этом месяце смен пока нет» — уже без класса .shift-window. Прежний
+  код искал .shift-window заново, не находил его и оставлял чужую высоту:
+  карточка пустого списка была на 16px ниже, чем при первом открытии.
+*/
+let fittedShiftFrame=null;
+
+function releaseShiftWindowFit(){
+  if(!fittedShiftFrame){
+    return;
+  }
+
+  fittedShiftFrame.style.removeProperty(
+    "flex"
+  );
+
+  fittedShiftFrame.style.removeProperty(
+    "height"
+  );
+
+  fittedShiftFrame=null;
+}
+
 function fitShiftWindow(){
+  releaseShiftWindowFit();
+
   if(tab!=="shifts"){
     return;
   }
@@ -1160,14 +1189,6 @@ function fitShiftWindow(){
   ){
     return;
   }
-
-  frame.style.removeProperty(
-    "flex"
-  );
-
-  frame.style.removeProperty(
-    "height"
-  );
 
   const available=
     scroller.clientHeight;
@@ -1237,6 +1258,8 @@ function fitShiftWindow(){
 
   frame.style.height=
     `${targetHeight}px`;
+
+  fittedShiftFrame=frame;
 }
 
 function serverStateCard(){

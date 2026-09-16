@@ -164,9 +164,17 @@ test("management detail keeps a real header back control and lets long lists use
 test("standalone iOS shell uses the full app viewport and modal states remove the dock",async()=>{
   const css=await finalInteractionCss();
 
-  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?--app-shell-height:100vh/);
+  /*
+    Высота окна измеряется, а не берётся из 100vh: в iOS 100vh не
+    уменьшается, пока открыта клавиатура, и оболочка оказывается выше окна.
+    Документ тогда становится прокручиваемым, а нижняя панель здесь
+    привязана к документу и уезжает вверх вместе с прокруткой.
+  */
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?--app-shell-height:var\(--app-window-height,100vh\)/);
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?html,\s*body\{[\s\S]*?height:var\(--app-window-height,100vh\)/);
+  assert.doesNotMatch(css,/@media \(display-mode:standalone\)\{[\s\S]*?height:100vh/);
   assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.bottom-controls\{[\s\S]*?position:absolute;[\s\S]*?bottom:0/);
   assert.match(css,/body\.point-picker-open \.bottom-controls[\s\S]*?visibility:hidden[\s\S]*?pointer-events:none/);
-  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:100vh/);
+  assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:var\(--app-window-height,100vh\)/);
 });
 

@@ -510,7 +510,35 @@ nav.tabs button.touch-active,
 :root{
   --bottom-tabs-height:52px;
   --bottom-dock-gap:6px;
-  --bottom-dock-safe:max(8px,env(safe-area-inset-bottom));
+
+  /*
+    Отступ панели от нижней системной зоны телефона.
+
+    iOS отдаёт окно приложению двумя разными способами, и панель обязана
+    вставать одинаково в обоих. Если окно доходит до нижнего края экрана,
+    полоса Home Indicator лежит внутри него и приходит через
+    env(safe-area-inset-bottom). Если окно уже обрезано по безопасной
+    области, та же полоса лежит за его нижней границей, а env даёт ноль.
+
+    Поэтому запас под панелью — это системная зона плюс собственный зазор,
+    а не «системная зона или зазор, что больше». Прежнее
+    max(8px,env(safe-area-inset-bottom)) в первом случае прижимало панель
+    вплотную к полосе Home Indicator, во втором оставляло над ней 8px, и
+    одна и та же панель стояла на экране по-разному. Со сложением она в
+    обоих случаях стоит на --bottom-dock-clearance выше системной зоны.
+
+    Сам зазор взят у iOS: плавающая панель Safari стоит на 2px выше зоны
+    Home Indicator, нижняя кнопка системного приложения такой же высоты
+    52px — на 4px (замерено на iPhone 17 Pro Max, iOS 26.5). Берём меньшее
+    из двух: панель разделов и так самая нижняя полоса приложения, и лишняя
+    высота здесь отнимается у списка над ней.
+  */
+  --bottom-dock-clearance:2px;
+  --bottom-dock-safe:calc(
+    env(safe-area-inset-bottom) +
+    var(--bottom-dock-clearance)
+  );
+
   --bottom-dock-space:calc(
     var(--bottom-tabs-height) +
     var(--bottom-dock-gap) +
@@ -529,6 +557,16 @@ nav.tabs button.touch-active,
     calc(8px + env(safe-area-inset-left));
   align-items:flex-start;
   background:var(--bg);
+}
+
+/*
+  Под указателем мыши нижней системной зоны нет: под панелью остаётся
+  только край окна, и зазор до него задаётся дизайном, а не телефоном.
+*/
+@media (hover:hover) and (pointer:fine){
+  :root{
+    --bottom-dock-clearance:10px;
+  }
 }
 
 nav.tabs{

@@ -223,3 +223,159 @@ test(
     expect(shell.mainBottom).toBeLessThanOrEqual(shell.dockTop+1);
   }
 );
+
+/*
+  Панель разделов обязана стоять относительно нижней системной зоны
+  телефона одинаково, как бы iOS ни выдала окно.
+
+  Окно приходит двумя способами: либо оно доходит до нижнего края экрана и
+  полоса Home Indicator лежит внутри него (env(safe-area-inset-bottom)=34),
+  либо оно уже обрезано по безопасной области и та же полоса лежит за его
+  границей (env=0). Запас под панелью поэтому складывается из системной
+  зоны и собственного зазора: при «или что больше» панель в первом случае
+  прижималась к полосе вплотную, а во втором висела над ней на 8px.
+
+  Зазор равен 2px — столько же оставляет над этой зоной плавающая панель
+  Safari (замерено на iPhone 17 Pro Max,
+  iOS 26.5). Движки safe-area не эмулируют, поэтому env() подменяется
+  константой в тех же правилах, что уходят в production.
+*/
+const SCREEN_HEIGHT=956;
+const HOME_INDICATOR=34;
+const DOCK_CLEARANCE=2;
+
+async function withBottomInset(page,inset){
+  for(const file of [
+    "styles.css",
+    "styles/refinement.css",
+    "styles/interaction-core.css",
+    "styles/management.css"
+  ]){
+    await page.route(`**/${file}`,async route=>{
+      const response=await route.fetch();
+      const css=await response.text();
+
+      await route.fulfill({
+        status:200,
+        contentType:"text/css; charset=utf-8",
+        body:css.replaceAll(
+          "env(safe-area-inset-bottom)",
+          inset
+        )
+      });
+    });
+  }
+}
+
+async function dockGeometry(page){
+  return page.evaluate(()=>{
+    const tabs=
+      document.querySelector("nav.tabs")
+        .getBoundingClientRect();
+
+    const dock=
+      document.querySelector(".bottom-controls")
+        .getBoundingClientRect();
+
+    const main=
+      document.querySelector("main")
+        .getBoundingClientRect();
+
+    const card=
+      document.querySelector("#app .card,#app .manage-row");
+
+    const cardRect=
+      card
+        ? card.getBoundingClientRect()
+        : null;
+
+    return {
+      windowHeight:Math.round(
+        parseFloat(
+          getComputedStyle(document.documentElement).height
+        )
+      ),
+      reserve:Math.round(dock.bottom-tabs.bottom),
+      dockBottom:Math.round(dock.bottom),
+      tabsBottom:Math.round(tabs.bottom),
+      tabsLeft:Math.round(tabs.left),
+      tabsRight:Math.round(window.innerWidth-tabs.right),
+      cardLeft:cardRect
+        ? Math.round(cardRect.left)
+        : null,
+      cardRight:cardRect
+        ? Math.round(window.innerWidth-cardRect.right)
+        : null,
+      contentGap:Math.round(dock.top-main.bottom),
+      overflow:
+        document.documentElement.scrollHeight-
+        document.documentElement.clientHeight
+    };
+  });
+}
+
+test(
+  "the dock keeps one distance to the home indicator in both window layouts",
+  async({page})=>{
+    const seen=[];
+
+    for(const layout of [
+      {
+        inset:`${HOME_INDICATOR}px`,
+        windowHeight:SCREEN_HEIGHT,
+        belowWindow:0
+      },
+      {
+        inset:"0px",
+        windowHeight:SCREEN_HEIGHT-HOME_INDICATOR,
+        belowWindow:HOME_INDICATOR
+      }
+    ]){
+      const context=
+        await page.context().browser().newContext({
+          viewport:{
+            width:440,
+            height:layout.windowHeight
+          },
+          hasTouch:true
+        });
+
+      const phone=await context.newPage();
+
+      await withBottomInset(phone,layout.inset);
+      await phone.goto(FIXTURE);
+      await installLongView(phone,"shifts");
+
+      const box=await dockGeometry(phone);
+
+      /* Панель целиком внутри окна и не заводит прокрутку документа. */
+      expect(box.dockBottom).toBeLessThanOrEqual(box.windowHeight);
+      expect(box.overflow).toBe(0);
+
+      /* Содержимое заканчивается ровно у её верхней кромки. */
+      expect(Math.abs(box.contentGap)).toBeLessThanOrEqual(1);
+
+      /* Боковые отступы совпадают с рабочей шириной карточек. */
+      expect(box.tabsLeft).toBe(box.cardLeft);
+      expect(box.tabsRight).toBe(box.cardRight);
+
+      /* Запас под панелью — системная зона плюс собственный зазор. */
+      expect(box.reserve).toBe(
+        Number.parseInt(layout.inset,10)+DOCK_CLEARANCE
+      );
+
+      seen.push(
+        box.windowHeight-box.tabsBottom+layout.belowWindow
+      );
+
+      await context.close();
+    }
+
+    /*
+      Итог: в обеих раскладках нижняя кромка панели стоит на одной и той
+      же высоте над нижним краем экрана — на зазор выше системной зоны.
+    */
+    expect(seen[0]).toBe(seen[1]);
+    expect(seen[0]).toBe(HOME_INDICATOR+DOCK_CLEARANCE);
+  }
+);

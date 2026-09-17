@@ -103,6 +103,24 @@ test("bottom dock clips page scrolling and keeps final navigation geometry consi
   const css=await finalInteractionCss();
 
   assert.match(css,/--bottom-dock-space:calc\(/);
+
+  /*
+    Запас под панелью складывается из системной зоны и собственного зазора.
+    С «системная зона или зазор, что больше» одна и та же панель вставала
+    по-разному: когда полоса Home Indicator внутри окна, панель прижималась
+    к ней вплотную, а когда окно уже обрезано по безопасной области —
+    висела над ней на величину зазора.
+  */
+  assert.match(
+    css,
+    /--bottom-dock-safe:calc\([\s\S]*?env\(safe-area-inset-bottom\)[\s\S]*?\+[\s\S]*?--bottom-dock-clearance/
+  );
+
+  assert.doesNotMatch(
+    css,
+    /--bottom-dock-safe:max\(/,
+    "a max() reserve makes the dock sit differently in the two window layouts"
+  );
   assert.match(css,/--app-shell-height:100dvh/);
   assert.doesNotMatch(css,/--app-shell-height:max\(/);
   assert.match(css,/\.bottom-controls\{[\s\S]*?bottom:0;[\s\S]*?background:var\(--bg\)/);

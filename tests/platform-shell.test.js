@@ -170,3 +170,78 @@ test(
     assert.equal(metrics.windowHeight,878);
   }
 );
+
+/*
+  Высота окна берётся из прямого измерения layout viewport, а не из
+  window.innerHeight. В установленном на домашний экран приложении iOS
+  сообщает innerHeight ниже окна на верхнюю safe-area: собранная по такому
+  значению оболочка заканчивалась выше нижней границы экрана, под нижней
+  панелью оставалась пустая полоса, а список терял столько же высоты.
+*/
+test(
+  "a measured layout viewport outranks an under-reporting innerHeight",
+  ()=>{
+    const metrics=viewportMetrics({
+      visualViewport:{
+        width:440,
+        height:956,
+        offsetTop:0,
+        offsetLeft:0,
+        scale:1
+      },
+      innerWidth:440,
+      innerHeight:894,
+      layoutHeight:956
+    });
+
+    assert.equal(metrics.windowHeight,956);
+  }
+);
+
+/*
+  Измерение остаётся ведущим и когда окно действительно меньше: в
+  установленном приложении клавиатура уменьшает само окно, и оболочка
+  обязана уменьшиться вместе с ним, иначе документ станет прокручиваемым.
+*/
+test(
+  "a measured layout viewport also wins when the window really shrank",
+  ()=>{
+    const metrics=viewportMetrics({
+      visualViewport:{
+        width:440,
+        height:878,
+        offsetTop:0,
+        offsetLeft:0,
+        scale:1
+      },
+      innerWidth:440,
+      innerHeight:956,
+      layoutHeight:878
+    });
+
+    assert.equal(metrics.windowHeight,878);
+  }
+);
+
+/*
+  До первого измерения и там, где его нет, остаётся прежнее значение.
+*/
+test(
+  "the window height falls back to innerHeight without a measurement",
+  ()=>{
+    const metrics=viewportMetrics({
+      visualViewport:{
+        width:440,
+        height:956,
+        offsetTop:0,
+        offsetLeft:0,
+        scale:1
+      },
+      innerWidth:440,
+      innerHeight:894,
+      layoutHeight:0
+    });
+
+    assert.equal(metrics.windowHeight,894);
+  }
+);

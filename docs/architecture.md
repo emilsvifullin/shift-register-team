@@ -25,6 +25,15 @@ follows tab selection and the end of booting to keep the URL in sync,
 `src/ui/input-behavior.js` marks new fields with anti-autofill attributes
 (the reconciler keeps them).
 
+`src/platform-shell.js` also owns one element of its own, outside `#app`:
+an invisible `.app-viewport-probe` stretched across the window with
+`position:fixed`. Its height is the layout viewport the engine actually
+lays fixed elements against, which `window.innerHeight` does not always
+report — in an installed iOS app it comes back short by the top safe
+area, and the shell ended that far above the bottom of the screen. A
+`ResizeObserver` on the probe keeps the measurement fresh where iOS sends
+no `resize`.
+
 The project used to break this rule in seven modules at once. Each one
 observed the DOM, re-fetched data the application already had, and
 patched the markup of the one before it — including two stylesheets

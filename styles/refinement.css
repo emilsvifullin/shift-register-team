@@ -275,11 +275,27 @@ nav.tabs button{
   max-width:var(--ui-calendar-max);
 }
 
-.sheet,
+.sheet{
+  transform:translate3d(0,calc(100% + 28px),0);
+}
+
+/*
+  Окна-карточки приподняты над нижней границей экрана на safe-area, поэтому
+  их закрытая поза уводит вниз ещё и этот отступ. Иначе верхняя кромка
+  остаётся на экране после анимации.
+*/
 .point-picker,
 .month-picker,
 .date-picker{
-  transform:translate3d(0,calc(100% + 28px),0);
+  transform:translate3d(
+    0,
+    calc(
+      100% +
+      28px +
+      env(safe-area-inset-bottom)
+    ),
+    0
+  );
 }
 
 .sheet.on,

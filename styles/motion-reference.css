@@ -63,7 +63,11 @@
   #pointPicker.on:not(.app-picker-anchored){
     transform:translate3d(
       0,
-      calc(100% + 24px),
+      calc(
+        100% +
+        24px +
+        env(safe-area-inset-bottom)
+      ),
       0
     );
     opacity:.96;

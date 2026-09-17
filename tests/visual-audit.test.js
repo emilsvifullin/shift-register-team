@@ -178,3 +178,149 @@ test("standalone iOS shell uses the full app viewport and modal states remove th
   assert.match(css,/@media \(display-mode:standalone\)[\s\S]*?\.point-veil[\s\S]*?height:var\(--app-window-height,100vh\)/);
 });
 
+
+function squash(source){
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g,"")
+    .replace(/\s+/g,"");
+}
+
+/*
+  Закрытая поза окна обязана увести его целиком за нижнюю границу экрана.
+
+  Окна-карточки приподняты над краем на env(safe-area-inset-bottom), поэтому
+  этот же отступ входит в ход закрытия. Без него на iPhone с домашним
+  индикатором picker не доезжал до края: нижняя часть уходила, а верхняя
+  кромка с ручкой оставалась на экране и пропадала отдельным кадром вместе
+  с display:none.
+*/
+test("bottom-anchored windows travel past their own safe-area offset",async()=>{
+  const [base,refinement,startingStyle,exact,motion]=await Promise.all([
+    read("styles.css"),
+    read("styles/refinement.css"),
+    read("styles/motion-reference.css"),
+    read("styles/modal-motion-exact.css"),
+    read("src/modal-motion.js")
+  ]);
+
+  const hidden=
+    "transform:translate3d(0,calc(100%+24px+env(safe-area-inset-bottom)),0)";
+
+  for(const [name,selector,source] of [
+    ["styles.css point picker",".point-picker{",base],
+    ["styles.css date picker",".date-picker{",base],
+    ["styles.css month picker",".month-picker{",base],
+    ["exact point picker",".point-picker:not(.app-picker-anchored){",exact],
+    ["exact date picker",".date-picker{",exact],
+    ["exact month picker",".month-picker{",exact]
+  ]){
+    const block=squash(source).split(selector)[1]?.split("}")[0] || "";
+
+    assert.ok(
+      block.includes(hidden),
+      `${name} must clear its own safe-area offset when closing`
+    );
+  }
+
+  const startingPose=squash(startingStyle);
+
+  assert.ok(
+    startingPose.includes(
+      "#pointPicker.on:not(.app-picker-anchored){transform:translate3d(0,calc(100%+24px+env(safe-area-inset-bottom)),0)"
+    ),
+    "the point picker entrance must start from the same hidden pose"
+  );
+
+  const refined=squash(refinement);
+
+  assert.ok(
+    refined.includes(
+      ".point-picker,.month-picker,.date-picker{transform:translate3d(0,calc(100%+28px+env(safe-area-inset-bottom)),0)"
+    ),
+    "the refinement layer must not restore a pose without the safe-area offset"
+  );
+
+  /*
+    Ход закрытия ведёт анимация из modal-motion.js, поэтому safe-area должна
+    быть и в ней. Лист стоит вплотную к краю (bottom:0), ему отступ не нужен.
+  */
+  assert.equal(
+    motion.split(
+      "translate3d(0,calc(100% + 24px + env(safe-area-inset-bottom)),0)"
+    ).length-1,
+    3,
+    "point, date and month pickers close past the safe area"
+  );
+
+  assert.equal(
+    motion.split(
+      '"translate3d(0,calc(100% + 24px),0)"'
+    ).length-1,
+    1,
+    "only the edge-to-edge sheet closes without the safe-area offset"
+  );
+});
+
+/*
+  Ограничение ширины значения написано для строки «подпись — значение».
+  Вложенная стопка значений (плитка выплаты) образует свой блок шириной по
+  содержимому, и процент отмерялся уже от него: «15 000 ₽» обрезалось до
+  «15 0…» рядом с более длинной подписью состояния.
+*/
+test("the row value width guard stays on the row's own value",async()=>{
+  const css=await finalInteractionCss();
+
+  assert.match(css,/\.row > \.v\{[\s\S]*?max-width:58%/);
+  assert.doesNotMatch(
+    css,
+    /(^|[^>])\s\.row \.v\{/,
+    "a descendant selector would clamp nested payout values again"
+  );
+});
+
+/*
+  Поля формы выплаты держат 16px: iOS увеличивает страницу при фокусе в
+  поле меньше 16px и после этого не возвращает масштаб.
+*/
+test("payout editor fields cannot trigger the iOS focus zoom",async()=>{
+  const workflow=await read("styles/workflow.css");
+  const app=await read("src/app.js");
+  const block=squash(workflow).split(".payout-field-input{")[1]?.split("}")[0] || "";
+
+  assert.ok(
+    block.includes("font-size:16px"),
+    "payout fields must set their own 16px size instead of inheriting the label"
+  );
+
+  assert.doesNotMatch(
+    workflow,
+    /\.payout-editor input\{[\s\S]*?font:inherit/,
+    "font:inherit re-inherits the 12px label size"
+  );
+
+  assert.doesNotMatch(
+    app,
+    /id="payoutDate"[^>]*type="date"/,
+    "the payout date uses the application date picker, not the native control"
+  );
+
+  assert.match(
+    app,
+    /data-payout-date-open/,
+    "the payout date opens the shared date picker"
+  );
+});
+
+/*
+  Высота оболочки измеряется по layout viewport: window.innerHeight в
+  установленном приложении iOS ниже окна на верхнюю safe-area.
+*/
+test("the installed shell measures the layout viewport it is laid out against",async()=>{
+  const css=await finalInteractionCss();
+  const shell=await read("src/platform-shell.js");
+
+  assert.match(css,/\.app-viewport-probe\{[\s\S]*?position:fixed;[\s\S]*?top:0;[\s\S]*?bottom:0/);
+  assert.match(shell,/app-viewport-probe/);
+  assert.match(shell,/layoutHeight:\s*\n?\s*probeLayoutHeight\(probe\)/);
+  assert.match(shell,/ResizeObserver/);
+});

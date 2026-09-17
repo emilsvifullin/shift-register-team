@@ -74,7 +74,8 @@ function reliableVisualViewport({
 export function viewportMetrics({
   visualViewport=null,
   innerWidth=0,
-  innerHeight=0
+  innerHeight=0,
+  layoutHeight=0
 }={}){
   const useVisualViewport=
     reliableVisualViewport({
@@ -122,9 +123,26 @@ export function viewportMetrics({
     )
   );
 
+  /*
+    Высота окна приложения — это layout viewport: та же величина, от которой
+    движок считает position:fixed и vh. window.innerHeight совпадает с ней не
+    везде. В установленном на домашний экран приложении iOS сообщает
+    innerHeight ниже окна на верхнюю safe-area, и оболочка вместе с нижней
+    панелью заканчивалась на эту величину выше нижней границы экрана.
+
+    Поэтому приоритет отдан прямому измерению layout viewport
+    (installPlatformShell), а innerHeight остаётся запасным значением, пока
+    измерения ещё нет.
+  */
+  const measured=
+    Number(layoutHeight)>0
+      ? Number(layoutHeight)
+      : 0;
+
   const windowHeight=Math.max(
     1,
     Math.round(
+      measured ||
       innerHeight ||
       visualViewport?.height ||
       height
@@ -140,9 +158,66 @@ export function viewportMetrics({
   };
 }
 
+const VIEWPORT_PROBE_CLASS=
+  "app-viewport-probe";
+
+/*
+  Измеритель layout viewport.
+
+  Элемент растянут position:fixed от верхней до нижней границы окна, поэтому
+  его высота по определению равна той области, относительно которой движок
+  раскладывает fixed-элементы и считает vh. Это и есть высота, до которой
+  должна доходить оболочка и её нижняя панель.
+*/
+function installViewportProbe(
+  documentRef
+){
+  if(!documentRef.body){
+    return null;
+  }
+
+  const existing=
+    documentRef.querySelector(
+      `.${VIEWPORT_PROBE_CLASS}`
+    );
+
+  if(existing){
+    return existing;
+  }
+
+  const probe=
+    documentRef.createElement("div");
+
+  probe.className=VIEWPORT_PROBE_CLASS;
+
+  probe.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  documentRef.body.append(probe);
+
+  return probe;
+}
+
+function probeLayoutHeight(
+  probe
+){
+  const height=
+    probe
+      ?.getBoundingClientRect?.()
+      .height || 0;
+
+  return Number.isFinite(height) &&
+    height>0
+    ? height
+    : 0;
+}
+
 function setViewportVariables(
   root,
-  windowRef
+  windowRef,
+  probe
 ){
   const metrics=viewportMetrics({
     visualViewport:
@@ -150,7 +225,9 @@ function setViewportVariables(
     innerWidth:
       windowRef.innerWidth,
     innerHeight:
-      windowRef.innerHeight
+      windowRef.innerHeight,
+    layoutHeight:
+      probeLayoutHeight(probe)
   });
 
   root.style.setProperty(
@@ -182,6 +259,12 @@ function setViewportVariables(
     iOS прокручивал его, чтобы показать поле. Нижняя панель в установленном
     приложении позиционируется относительно документа (position:absolute),
     поэтому уезжала вверх вместе с прокруткой и иногда там и оставалась.
+
+    Затем эту же высоту брали из window.innerHeight — и в установленном
+    приложении она оказалась ниже окна на верхнюю safe-area: оболочка
+    заканчивалась на её величину выше нижней границы экрана, под нижней
+    панелью оставалась пустая полоса, а список терял столько же высоты.
+    Поэтому высота измеряется напрямую по layout viewport.
   */
   root.style.setProperty(
     "--app-window-height",
@@ -743,6 +826,9 @@ export function installPlatformShell({
   const root=
     documentRef.documentElement;
 
+  const viewportProbe=
+    installViewportProbe(documentRef);
+
   let viewportFrame=0;
 
   const queueViewportSync=()=>{
@@ -756,12 +842,33 @@ export function installPlatformShell({
 
         setViewportVariables(
           root,
-          windowRef
+          windowRef,
+          viewportProbe
         );
       });
   };
 
   queueViewportSync();
+
+  /*
+    Окно приложения меняет размер и без события resize: iOS не обязан
+    присылать его установленному приложению, когда раскладывает окно после
+    запуска или убирает клавиатуру. Наблюдатель за измерителем реагирует на
+    само изменение области, поэтому измеренная высота не может остаться
+    от прошлой раскладки.
+  */
+  const probeObserver=
+    viewportProbe &&
+    typeof windowRef.ResizeObserver===
+      "function"
+      ? new windowRef.ResizeObserver(
+          queueViewportSync
+        )
+      : null;
+
+  probeObserver?.observe(
+    viewportProbe
+  );
 
   windowRef.addEventListener(
     "resize",
@@ -809,6 +916,9 @@ export function installPlatformShell({
     cleanupTabs();
     cleanupTransientFocus();
     cleanupInputModality();
+
+    probeObserver?.disconnect();
+    viewportProbe?.remove();
 
     windowRef.removeEventListener(
       "resize",

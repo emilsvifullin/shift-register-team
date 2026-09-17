@@ -125,3 +125,114 @@ test(
     expect(afterScroll.dockBelowShell).toBe(0);
   }
 );
+
+/*
+  Высота окна измеряется по layout viewport, а не берётся из
+  window.innerHeight.
+
+  В установленном приложении iOS сообщает innerHeight ниже окна на верхнюю
+  safe-area. Оболочка, собранная по такому значению, заканчивается выше
+  нижней границы экрана: под нижней панелью остаётся пустая полоса, а список
+  теряет ровно столько же высоты. На снимках iPhone 16 Pro Max панель стояла
+  на 62 пикселя выше края — ровно на верхнюю safe-area этого устройства.
+
+  Движок такого расхождения не создаёт, поэтому innerHeight подменяется
+  до запуска приложения.
+*/
+test(
+  "the installed shell trusts the measured window, not an under-reporting innerHeight",
+  async({page})=>{
+    await page.addInitScript(()=>{
+      Object.defineProperty(
+        window,
+        "innerHeight",
+        {
+          configurable:true,
+          get:()=>894
+        }
+      );
+    });
+
+    await openInstalled(page);
+
+    const shell=await page.evaluate(()=>{
+      const root=document.documentElement;
+      const dock=document.querySelector(".bottom-controls");
+      const main=document.querySelector("main");
+
+      return {
+        innerHeight:window.innerHeight,
+        probe:Math.round(
+          document
+            .querySelector(".app-viewport-probe")
+            .getBoundingClientRect()
+            .height
+        ),
+        windowVariable:getComputedStyle(root)
+          .getPropertyValue("--app-window-height")
+          .trim(),
+        shellHeight:Math.round(
+          parseFloat(getComputedStyle(root).height)
+        ),
+        dockBottom:Math.round(
+          dock.getBoundingClientRect().bottom
+        ),
+        mainHeight:Math.round(
+          main.getBoundingClientRect().height
+        ),
+        dockSpace:Math.round(
+          dock.getBoundingClientRect().height
+        ),
+        overflow:root.scrollHeight-root.clientHeight
+      };
+    });
+
+    expect(shell.innerHeight).toBe(894);
+    expect(shell.probe).toBe(956);
+    expect(shell.windowVariable).toBe("956px");
+    expect(shell.shellHeight).toBe(956);
+    expect(shell.dockBottom).toBe(956);
+    expect(shell.overflow).toBe(0);
+
+    /*
+      Возвращённые пиксели достаются списку, а не пустоте под панелью:
+      содержимое занимает всё окно, кроме самой панели.
+    */
+    expect(shell.mainHeight).toBe(
+      956-shell.dockSpace
+    );
+
+    expect(shell.mainHeight).toBeGreaterThan(
+      894-shell.dockSpace
+    );
+  }
+);
+
+/*
+  Окно установленного приложения действительно уменьшается, когда
+  открывается клавиатура: оболочка обязана уменьшиться вместе с ним, иначе
+  документ снова станет прокручиваемым.
+*/
+test(
+  "the measured shell follows a window that really shrinks",
+  async({page})=>{
+    await openInstalled(page);
+
+    await page.setViewportSize({
+      width:402,
+      height:878
+    });
+
+    await expect.poll(()=>page.evaluate(()=>
+      document.documentElement.style
+        .getPropertyValue("--app-window-height")
+        .trim()
+    )).toBe("878px");
+
+    const covered=await page.evaluate(shellState);
+
+    expect(covered.shellHeight).toBe(878);
+    expect(covered.overflow).toBe(0);
+    expect(covered.dockBelowShell).toBe(0);
+  }
+);

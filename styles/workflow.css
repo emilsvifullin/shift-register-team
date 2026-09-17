@@ -212,6 +212,7 @@
   margin:11px 16px 0;
   padding:11px 0;
   display:flex;
+  align-items:baseline;
   justify-content:space-between;
   gap:12px;
   border-top:1px solid var(--line);
@@ -219,7 +220,13 @@
   font-size:11.5px;
 }
 
+/* Подпись состояния уступает место сумме, а не наоборот. */
+.payout-progress > span{
+  min-width:0;
+}
+
 .payout-progress strong{
+  flex:none;
   color:var(--ink);
   font-weight:550;
   white-space:nowrap;
@@ -287,7 +294,7 @@
   background:var(--surf);
 }
 
-.payout-editor label{
+.payout-field{
   min-width:0;
   display:grid;
   grid-template-columns:108px minmax(0,1fr);
@@ -297,16 +304,82 @@
   font-size:12px;
 }
 
-.payout-editor input{
-  min-width:0;
+/*
+  Поле формы задаёт свой размер текста, а не наследует 12px подписи.
+  iOS увеличивает страницу при фокусе в поле меньше 16px и после этого
+  не возвращает масштаб: дальше вся страница остаётся увеличенной.
+*/
+.payout-field-input{
   width:100%;
-  padding:8px 9px;
+  min-width:0;
+  max-width:100%;
+  min-height:44px;
+  padding:10px 12px;
+
   border:1px solid var(--line2);
-  border-radius:9px;
+  border-radius:10px;
   outline:0;
+
   background:var(--tint-soft);
   color:var(--ink);
-  font:inherit;
+
+  font-family:inherit;
+  font-size:16px;
+  line-height:1.25;
+  text-align:left;
+
+  appearance:none;
+  -webkit-appearance:none;
+}
+
+.payout-field-input.amount{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+.payout-field-input::placeholder{
+  color:var(--ink3);
+}
+
+/*
+  Дата выбирается тем же календарём, что и остальные даты приложения.
+  Нативное поле type=date на iOS не укладывается в отведённую ширину
+  и показывает дату в английском формате, чужом для остальных экранов.
+*/
+.payout-date{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  cursor:pointer;
+
+  transition:
+    background-color .18s ease,
+    border-color .18s ease;
+}
+
+/* Нажатие отзывается так же, как у остальных строк-кнопок приложения. */
+.payout-date.touch-active{
+  background:var(--tint);
+}
+
+@media (hover:hover) and (pointer:fine){
+  .payout-date:hover{
+    background:var(--tint);
+  }
+}
+
+.payout-date::after{
+  content:"";
+
+  width:7px;
+  height:7px;
+  flex:none;
+
+  border-right:1.5px solid var(--ink3);
+  border-bottom:1.5px solid var(--ink3);
+
+  transform:rotate(45deg) translateY(-2px);
 }
 
 .payout-editor-actions{
@@ -423,20 +496,29 @@
     padding-right:11px;
   }
 
+  /*
+    Сумма больше не делит ширину с подписью состояния, поэтому на телефоне
+    подписи хватает места целиком: «Частично выплачено» перестало
+    обрезаться на середине слова.
+  */
   .payout-status{
-    max-width:105px;
+    max-width:min(34vw,150px);
     overflow:hidden;
     text-overflow:ellipsis;
   }
 
-  .payout-editor label{
+  .payout-field{
     grid-template-columns:1fr;
-    gap:5px;
+    gap:6px;
   }
 }
 
 @media (prefers-reduced-motion:reduce){
   .payout-expanded{
     animation:none;
+  }
+
+  .payout-date{
+    transition:none;
   }
 }

@@ -1518,10 +1518,45 @@ function payoutRecords(employeeId,kind){
   ).sort((a,b)=>b.paid_on.localeCompare(a.paid_on));
 }
 
+/*
+  Состояние выплаты описывается фактическими данными.
+
+  Нулевая или отрицательная сумма к выплате — это не «не выплачено», а
+  отсутствие выплаты: платить нечего. Раньше такая строка попадала в общую
+  ветку и сообщала о невыплаченном нуле.
+*/
 function payoutStateLabel(progress){
   if(progress.complete) return "Выплачено";
   if(progress.paid>0) return "Частично выплачено";
+  if(progress.due<=0) return "Без выплаты";
   return "Не выплачено";
+}
+
+/*
+  Строка итога в раскрытой выплате отвечает на вопрос «сколько ещё должны»,
+  поэтому показывает остаток, а не выплаченную часть. Пара «Не выплачено
+  0 ₽ из 15 000 ₽» описывала ровно противоположное фактическому состоянию:
+  невыплаченными оставались все 15 000 ₽.
+*/
+function payoutRemainderLabel(progress){
+  if(progress.complete) return "Выплачено";
+  if(progress.paid>0) return "Осталось выплатить";
+  if(progress.due<=0) return "Без выплаты";
+  return "Не выплачено";
+}
+
+function payoutRemainderValue(progress){
+  if(progress.complete){
+    return progress.overpaid>0
+      ? `${money(progress.paid)} · переплата ${money(progress.overpaid)}`
+      : money(progress.paid);
+  }
+
+  if(progress.paid>0){
+    return `${money(progress.remaining)} из ${money(progress.due)}`;
+  }
+
+  return money(progress.due);
 }
 
 function resolvedPenaltyPayoutKind(
@@ -1616,7 +1651,12 @@ function payoutSourceRows(shiftsList,kind){
   }).join("");
 }
 
-function payoutExpandedHTML({kind,due,employee,statsShifts,summaryHTML}){
+/*
+  Состав суммы уже стоит на самой плитке выплаты и остаётся на экране в
+  раскрытом виде, поэтому внутри раскрытого блока он не повторяется: там
+  разворачиваются только смены, из которых сумма собрана.
+*/
+function payoutExpandedHTML({kind,due,employee,statsShifts}){
   if(expandedPayoutKind!==kind) return "";
   const records=payoutRecords(employee?.id,kind);
   const progress=paymentProgress(due,records);
@@ -1625,12 +1665,11 @@ function payoutExpandedHTML({kind,due,employee,statsShifts,summaryHTML}){
     <div class="payout-expanded">
       <div class="payout-breakdown">
         <div class="payout-detail-title">Из чего сформирована сумма</div>
-        ${summaryHTML}
         <div class="payout-source-list">${payoutSourceRows(statsShifts,kind)}</div>
       </div>
       <div class="payout-progress">
-        <span>${payoutStateLabel(progress)}</span>
-        <strong>${money(progress.paid)} из ${money(progress.due)}</strong>
+        <span>${payoutRemainderLabel(progress)}</span>
+        <strong>${payoutRemainderValue(progress)}</strong>
       </div>
       ${records.length ? `
         <div class="payout-history">
@@ -1646,9 +1685,18 @@ function payoutExpandedHTML({kind,due,employee,statsShifts,summaryHTML}){
       ${isAdmin && employee ? `
         ${editor ? `
           <div class="payout-editor">
-            <label><span>Сумма</span><input id="payoutAmount" type="text" inputmode="decimal" value="${esc(editor.amount)}"></label>
-            <label><span>Дата выплаты</span><input id="payoutDate" type="date" value="${esc(editor.paidOn)}"></label>
-            <label><span>Комментарий</span><input id="payoutComment" type="text" maxlength="500" value="${esc(editor.comment)}" placeholder="Необязательно"></label>
+            <label class="payout-field">
+              <span>Сумма</span>
+              <input id="payoutAmount" class="payout-field-input amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="${esc(editor.amount)}">
+            </label>
+            <div class="payout-field">
+              <span>Дата выплаты</span>
+              <button type="button" class="payout-field-input payout-date" data-payout-date-open>${esc(dateLabel(editor.paidOn))}</button>
+            </div>
+            <label class="payout-field">
+              <span>Комментарий</span>
+              <input id="payoutComment" class="payout-field-input" type="text" maxlength="500" autocomplete="off" enterkeyhint="done" value="${esc(editor.comment)}" placeholder="Необязательно">
+            </label>
             <div class="payout-editor-actions">
               <button type="button" class="btn" data-payout-cancel>Отмена</button>
               <button type="button" class="btn primary" data-payout-save ${payoutSaving ? "disabled" : ""}>Сохранить</button>
@@ -1676,7 +1724,7 @@ function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
           <span class="v ${due<0 ? "neg" : ""}">${money(due)}</span>
         </div>
       </button>
-      ${payoutExpandedHTML({kind,due,employee,statsShifts,summaryHTML:content})}
+      ${payoutExpandedHTML({kind,due,employee,statsShifts})}
     </div>
   `;
 }
@@ -7262,11 +7310,16 @@ function openDatePicker(
     !manageEditorDraft
   ) return;
 
+  if(
+    target==="payout" &&
+    !payoutEditor
+  ) return;
+
   datePickerTarget=target;
 
   if(target==="shift"){
     readForm();
-  }else{
+  }else if(target==="tariff"){
     readManageEditor();
   }
 
@@ -7283,8 +7336,10 @@ function openDatePicker(
   datePickerValue=
     target==="shift"
       ? draft.date
-      : manageEditorDraft
-          .effectiveFrom;
+      : target==="payout"
+        ? payoutEditor.paidOn
+        : manageEditorDraft
+            .effectiveFrom;
   dateCalendarCursor=datePickerValue.slice(0,7);
   closeDateJump();
   drawDatePicker();
@@ -7326,6 +7381,16 @@ function closeDatePicker(){
 }
 
 function selectDate(ymd){
+  if(datePickerTarget==="payout"){
+    if(!payoutEditor) return;
+
+    payoutEditor.paidOn=ymd;
+
+    closeDatePicker();
+    render();
+    return;
+  }
+
   if(datePickerTarget==="tariff"){
     if(!manageEditorDraft) return;
 
@@ -12820,7 +12885,6 @@ app.addEventListener(
   event=>{
     if(payoutEditor && event.target instanceof HTMLInputElement){
       if(event.target.id==="payoutAmount") payoutEditor.amount=event.target.value;
-      if(event.target.id==="payoutDate") payoutEditor.paidOn=event.target.value;
       if(event.target.id==="payoutComment") payoutEditor.comment=event.target.value;
     }
 
@@ -12885,6 +12949,11 @@ app.addEventListener("click",async event=>{
       };
       render();
     }
+    return;
+  }
+
+  if(button.hasAttribute("data-payout-date-open")){
+    openDatePicker("payout");
     return;
   }
 

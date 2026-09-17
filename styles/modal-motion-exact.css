@@ -51,11 +51,18 @@
     visibility 0s;
 }
 
-/* Mobile choice picker */
+/*
+  Mobile choice picker.
+
+  Ход закрытия включает env(safe-area-inset-bottom), потому что на этот же
+  отступ окно приподнято над нижней границей экрана. Иначе на iPhone с
+  домашним индикатором верхняя кромка окна остаётся видимой после анимации
+  и исчезает отдельно от остального окна.
+*/
 .point-picker:not(.app-picker-anchored){
   transform:translate3d(
     0,
-    calc(100% + 24px),
+    calc(100% + 24px + env(safe-area-inset-bottom)),
     0
   );
 

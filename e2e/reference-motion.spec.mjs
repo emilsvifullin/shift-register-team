@@ -506,3 +506,111 @@ test("reduced motion leaves every sliding window immediately usable",async({page
     },surface.selector);
   }
 });
+
+/*
+  Закрытие обязано увести окно целиком за нижнюю границу экрана до того, как
+  его скроют display:none.
+
+  Окна-карточки приподняты над краем на env(safe-area-inset-bottom), и у
+  picker выбора этот отступ не входил в ход закрытия. На iPhone с домашним
+  индикатором нижняя часть уезжала, а верхняя кромка с ручкой оставалась на
+  экране до конца анимации и пропадала отдельным кадром.
+
+  Ни один движок не умеет подставлять safe-area, поэтому env() заменяется
+  константой в тех же правилах и в той же анимации, что уходят в production.
+*/
+const SAFE_AREA_INSET="34px";
+
+async function withSafeAreaInset(page){
+  const patched=[
+    "styles.css",
+    "styles/refinement.css",
+    "styles/interaction-core.css",
+    "styles/motion-reference.css",
+    "styles/modal-motion-exact.css"
+  ];
+
+  for(const file of patched){
+    await page.route(`**/${file}`,async route=>{
+      const response=await route.fetch();
+      const css=await response.text();
+
+      await route.fulfill({
+        status:200,
+        contentType:"text/css; charset=utf-8",
+        body:css.replaceAll(
+          "env(safe-area-inset-bottom)",
+          SAFE_AREA_INSET
+        )
+      });
+    });
+  }
+
+  await page.route("**/src/modal-motion.js",async route=>{
+    const response=await route.fetch();
+    const source=await response.text();
+
+    await route.fulfill({
+      status:200,
+      contentType:"text/javascript; charset=utf-8",
+      body:source.replaceAll(
+        "env(safe-area-inset-bottom)",
+        SAFE_AREA_INSET
+      )
+    });
+  });
+}
+
+test(
+  "a closing window leaves the screen before it is hidden, safe area included",
+  async({page})=>{
+    await withSafeAreaInset(page);
+
+    await page.goto(FIXTURE);
+    await page.waitForLoadState("networkidle");
+
+    for(const surface of SLIDING_SURFACES){
+      await openSurface(page,surface.selector);
+      await page.waitForTimeout(
+        surface.transformDuration+60
+      );
+
+      const resting=
+        await page
+          .locator(surface.selector)
+          .evaluate(element=>
+            element.getBoundingClientRect().top
+          );
+
+      expect(
+        resting,
+        `${surface.selector} must be on screen before closing`
+      ).toBeLessThan(844);
+
+      await closeSurface(page,surface.selector);
+      await page.waitForTimeout(
+        surface.transformDuration+10
+      );
+
+      const visible=
+        await page
+          .locator(surface.selector)
+          .evaluate(element=>
+            window.innerHeight-
+            element.getBoundingClientRect().top
+          );
+
+      expect(
+        visible,
+        `${surface.selector} must clear the screen before display:none`
+      ).toBeLessThanOrEqual(0);
+
+      await page.evaluate(selector=>{
+        const element=
+          document.querySelector(selector);
+
+        element.style.display="none";
+      },surface.selector);
+    }
+  }
+);

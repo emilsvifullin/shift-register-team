@@ -32,9 +32,15 @@ function modalSpec(element){
       return null;
     }
 
+    /*
+      Picker стоит над нижней границей экрана на safe-area, поэтому ход
+      закрытия включает её так же, как у датапикера. Без неё на iPhone с
+      домашним индикатором окно не доезжало до края: верхняя кромка
+      оставалась видимой и пропадала отдельным кадром вместе с display:none.
+    */
     return {
       hiddenTransform:
-        "translate3d(0,calc(100% + 24px),0)",
+        "translate3d(0,calc(100% + 24px + env(safe-area-inset-bottom)),0)",
       openTransform:
         "translate3d(0,0,0)",
       transformDuration:420,

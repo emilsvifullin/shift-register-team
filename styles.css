@@ -1839,9 +1839,17 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
   border-radius:22px;
   box-shadow:var(--shadow);
 
+  /*
+    Закрытая поза обязана убрать окно за нижнюю границу экрана целиком.
+    Picker стоит на отступе от низа, в который входит env(safe-area-inset-bottom),
+    поэтому этот же отступ входит и в ход закрытия. Без него на iPhone с
+    домашним индикатором сдвига не хватало на высоту индикатора: нижняя
+    панель картинки уезжала, а верхняя кромка с ручкой оставалась на экране
+    до момента display:none и пропадала отдельным кадром.
+  */
   transform:translate3d(
     0,
-    calc(100% + 24px),
+    calc(100% + 24px + env(safe-area-inset-bottom)),
     0
   );
 

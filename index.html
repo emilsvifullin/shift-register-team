@@ -19,7 +19,23 @@ html{
 
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<!--
+  Установленное приложение намеренно не просит полупрозрачный статус-бар.
+
+  С apple-mobile-web-app-status-bar-style=black-translucent iOS выдаёт окно
+  во весь экран, но layout viewport при этом остаётся высотой «экран минус
+  статус-бар» и прижат к верхнему краю. Нижние пиксели экрана по высоте
+  статус-бара просто не входят в страницу: оболочка заканчивается выше края,
+  под нижней панелью разделов остаётся пустая полоса, и изнутри страницы её
+  не закрыть — рисовать там нечем. На iPhone 16 Pro Max это ровно 62 пикселя.
+
+  Без этой строки окно выдаётся по тем же правилам, что и вкладка Safari:
+  viewport начинается под статус-баром и заканчивается у нижнего края
+  экрана. Верх приложения не сдвигается — оно поднимается на те же 62
+  пикселя, на которые перестаёт отступать env(safe-area-inset-top), — а
+  фон статус-бара iOS берёт из theme-color, то есть из цвета темы.
+-->
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app https://rxosovinouuonwrrzigs.supabase.co wss://rxosovinouuonwrrzigs.supabase.co; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'">
 

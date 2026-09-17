@@ -191,3 +191,52 @@ test(
   }
 );
 
+
+/*
+  Установленное приложение не просит полупрозрачный статус-бар.
+
+  С apple-mobile-web-app-status-bar-style=black-translucent iOS выдаёт окно
+  во весь экран, но layout viewport оставляет высотой «экран минус
+  статус-бар» и прижимает к верхнему краю. Нижние пиксели экрана по высоте
+  статус-бара выпадают из страницы: оболочка заканчивается выше нижнего
+  края, под нижней панелью разделов остаётся пустая полоса, и закрыть её
+  изнутри страницы нечем — рисовать там не на чем. Измерено на iPhone
+  16 Pro Max: ровно 62 пикселя, высота его статус-бара.
+
+  Оба документа оболочки должны оставаться без этой строки, иначе полоса
+  вернётся вместе с ней.
+*/
+test(
+  "the installed shell never asks iOS for a translucent status bar",
+  async()=>{
+    for(const document of ["index.html","login.html"]){
+      const source=await read(document);
+
+      assert.doesNotMatch(
+        source,
+        /<meta[^>]*apple-mobile-web-app-status-bar-style/,
+        `${document} must not request a status bar style`
+      );
+
+      /*
+        Полноэкранный режим остаётся: без него iOS открывает ярлык
+        как обычную вкладку Safari.
+      */
+      assert.match(
+        source,
+        /<meta[\s\S]{0,40}name="apple-mobile-web-app-capable"[\s\S]{0,40}content="yes"/,
+        `${document} must stay installable as a web app`
+      );
+
+      /*
+        Фон статус-бара iOS берёт из theme-color, поэтому обе темы
+        обязаны его объявлять.
+      */
+      assert.match(
+        source,
+        /name="theme-color"/,
+        `${document} must declare a theme colour for the status bar`
+      );
+    }
+  }
+);

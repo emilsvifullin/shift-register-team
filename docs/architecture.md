@@ -28,11 +28,18 @@ follows tab selection and the end of booting to keep the URL in sync,
 `src/platform-shell.js` also owns one element of its own, outside `#app`:
 an invisible `.app-viewport-probe` stretched across the window with
 `position:fixed`. Its height is the layout viewport the engine actually
-lays fixed elements against, which `window.innerHeight` does not always
-report — in an installed iOS app it comes back short by the top safe
-area, and the shell ended that far above the bottom of the screen. A
-`ResizeObserver` on the probe keeps the measurement fresh where iOS sends
-no `resize`.
+lays fixed elements against, and a `ResizeObserver` on it keeps the
+measurement fresh where iOS sends no `resize` — an installed app's window
+really is resized by the keyboard, and the shell has to follow it or the
+document starts scrolling under a dock that is anchored to it.
+
+The shell can only ever fill the window iOS hands it, so the window has to
+be asked for correctly. `index.html` deliberately carries no
+`apple-mobile-web-app-status-bar-style`: `black-translucent` hands an
+installed app a full-screen window whose layout viewport stays one status
+bar shorter and stays pinned to the top, which leaves the bottom of the
+screen outside the page entirely. No measurement inside the page can
+recover those pixels.
 
 The project used to break this rule in seven modules at once. Each one
 observed the DOM, re-fetched data the application already had, and

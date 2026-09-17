@@ -27,10 +27,12 @@
     content="yes"
   >
 
-  <meta
-    name="apple-mobile-web-app-status-bar-style"
-    content="black-translucent"
-  >
+  <!--
+    Полупрозрачный статус-бар не запрашивается: в установленном приложении
+    iOS отдаёт под него окно во весь экран, но layout viewport оставляет
+    высотой «экран минус статус-бар» и прижимает к верху, из-за чего низ
+    экрана выпадает из страницы. Подробности — index.html.
+  -->
 
   <meta
     name="referrer"

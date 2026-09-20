@@ -1861,8 +1861,8 @@ select option{direction:ltr;background:var(--surf);color:var(--ink)}
     opacity;
 
   transition:
-    transform .42s cubic-bezier(.4,0,.2,1),
-    opacity .27s ease;
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease;
 }
 
 .point-picker.on{
@@ -2131,8 +2131,8 @@ body.point-picker-open .sheet{
     opacity;
 
   transition:
-    transform .42s cubic-bezier(.4,0,.2,1),
-    opacity .27s ease;
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease;
 }
 
 .date-picker.on{
@@ -2486,10 +2486,15 @@ nav.tabs button.touch-active,
     0
   );
 
-  will-change:transform;
+  opacity:.96;
+
+  will-change:
+    transform,
+    opacity;
 
   transition:
-    transform .42s cubic-bezier(.4,0,.2,1);
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease;
 
   padding:0 12px 14px;
 
@@ -2503,6 +2508,8 @@ nav.tabs button.touch-active,
     var(--month-drag, 0px),
     0
   );
+
+  opacity:1;
 }
 
 body.month-picker-open{

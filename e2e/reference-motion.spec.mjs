@@ -9,9 +9,9 @@ const SLIDING_SURFACES=Object.freeze([
   {selector:"#employeeFilterSheet", transformDuration:480, opacityDuration:300},
   {selector:"#shiftFilterSheet", transformDuration:480, opacityDuration:300},
   {selector:"#manageEditorSheet", transformDuration:480, opacityDuration:300},
-  {selector:"#pointPicker", transformDuration:420, opacityDuration:270},
-  {selector:"#monthPicker", transformDuration:420, opacityDuration:0},
-  {selector:"#datePicker", transformDuration:420, opacityDuration:270}
+  {selector:"#pointPicker", transformDuration:480, opacityDuration:300},
+  {selector:"#monthPicker", transformDuration:480, opacityDuration:300},
+  {selector:"#datePicker", transformDuration:480, opacityDuration:300}
 ]);
 
 test.use({
@@ -155,8 +155,12 @@ test("reference motion timings match shift-register and animate visibly",async({
 
   expect(includesDuration(timings.sheet,.48)).toBe(true);
   expect(includesDuration(timings.veil,.34)).toBe(true);
-  expect(includesDuration(timings.point,.42)).toBe(true);
-  expect(includesDuration(timings.month,.42)).toBe(true);
+  /*
+    Все выезжающие снизу поверхности идут по одному контракту 480/300:
+    листы и окна выбора не должны ощущаться как разные интерфейсы.
+  */
+  expect(includesDuration(timings.point,.48)).toBe(true);
+  expect(includesDuration(timings.month,.48)).toBe(true);
   expect(includesDuration(timings.confirm,.24)).toBe(true);
   expect(includesDuration(timings.toast,.22)).toBe(true);
   expect(timings.monthVariable).toBe("320ms");

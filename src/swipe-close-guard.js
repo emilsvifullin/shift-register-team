@@ -1,6 +1,14 @@
 const SWIPE_ANIMATION_ID="header-swipe-dismiss";
 const REFERENCE_PREFIX="shift-register-modal-";
-const CLOSE_DURATION=420;
+const CLOSE_DURATION=480;
+
+/*
+  Возврат на место — короткая поправка, а не роспуск окна: оно и путь
+  проходит небольшой, и смысл у движения другой. Столько же занимает
+  возврат в окне выбора месяца (src/month-picker-swipe.js), так что оба
+  жеста ощущаются одинаково.
+*/
+const SNAP_DURATION=260;
 const CLOSE_EASING="cubic-bezier(.4,0,.2,1)";
 
 const SURFACES=Object.freeze({
@@ -237,7 +245,7 @@ function snapBack(state){
   const {element,config}=state;
 
   element.style.transition=
-    `transform ${CLOSE_DURATION}ms ${CLOSE_EASING}`;
+    `transform ${SNAP_DURATION}ms ${CLOSE_EASING}`;
 
   void element.offsetHeight;
 
@@ -257,7 +265,7 @@ function snapBack(state){
         config.drag
       );
     }
-  },CLOSE_DURATION+24);
+  },SNAP_DURATION+24);
 
   snapTimers.set(element,timer);
 }

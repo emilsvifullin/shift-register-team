@@ -10,6 +10,13 @@ const reducedMotion=()=>Boolean(
   ).matches
 );
 
+/*
+  Все выезжающие снизу поверхности движутся по одному контракту: 480мс на
+  сдвиг, 300мс на прозрачность, одна кривая. Раньше листы шли на 480/300, а
+  окна выбора — на 420/270, а окно месяца ещё и вовсе без прозрачности.
+  Небольшие окна выбора из-за этого читались как другой, более резкий
+  интерфейс: у них и путь короче, и время меньше, и проявления нет.
+*/
 function modalSpec(element){
   if(element.classList.contains("sheet")){
     return {
@@ -43,8 +50,8 @@ function modalSpec(element){
         "translate3d(0,calc(100% + 24px + env(safe-area-inset-bottom)),0)",
       openTransform:
         "translate3d(0,0,0)",
-      transformDuration:420,
-      opacityDuration:270,
+      transformDuration:480,
+      opacityDuration:300,
       hiddenOpacity:.96
     };
   }
@@ -55,8 +62,8 @@ function modalSpec(element){
         "translate3d(0,calc(100% + 24px + env(safe-area-inset-bottom)),0)",
       openTransform:
         "translate3d(0,0,0)",
-      transformDuration:420,
-      opacityDuration:270,
+      transformDuration:480,
+      opacityDuration:300,
       hiddenOpacity:.96
     };
   }
@@ -67,9 +74,9 @@ function modalSpec(element){
         "translate3d(0,calc(100% + 24px + env(safe-area-inset-bottom)),0)",
       openTransform:
         "translate3d(0,0,0)",
-      transformDuration:420,
-      opacityDuration:0,
-      hiddenOpacity:1
+      transformDuration:480,
+      opacityDuration:300,
+      hiddenOpacity:.96
     };
   }
 

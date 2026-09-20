@@ -159,7 +159,7 @@ test("header swipe release continues downward without an upward rebound",async({
           : null;
       });
 
-  expect(activeAnimation).toBe(420);
+  expect(activeAnimation).toBe(480);
 
   const samples=[draggedTop];
 
@@ -173,7 +173,7 @@ test("header swipe release continues downward without an upward rebound",async({
 
   for(let index=1;index<samples.length;index++){
     /*
-      A slow run can sample after the 420ms release has ended. The sheet
+      A slow run can sample after the 480ms release has ended. The sheet
       then settles from the release end (height + 40px) into its closed pose
       (100% + 24px), 16px higher but still below the viewport. Only movement
       that can be seen counts as a rebound.

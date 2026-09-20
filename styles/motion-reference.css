@@ -30,14 +30,17 @@
 .date-picker{
   will-change:transform,opacity;
   transition:
-    transform .42s var(--reference-motion-sheet),
-    opacity .27s ease;
+    transform .48s var(--reference-motion-sheet),
+    opacity .30s ease;
 }
 
 .month-picker{
-  will-change:transform;
+  will-change:
+    transform,
+    opacity;
   transition:
-    transform .42s var(--reference-motion-sheet);
+    transform .48s var(--reference-motion-sheet),
+    opacity .30s ease;
 }
 
 /*
@@ -86,7 +89,8 @@
     );
   }
 
-  #datePicker.on{
+  #datePicker.on,
+  #monthPicker.on{
     opacity:.96;
   }
 

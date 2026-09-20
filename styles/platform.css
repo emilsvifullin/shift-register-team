@@ -38,14 +38,6 @@ main{
     padding-left:24px;
   }
 
-  body[data-active-tab="data"] main{
-    max-width:800px;
-  }
-
-  body[data-active-tab="manage"] main{
-    max-width:1040px;
-  }
-
   nav.tabs{
     min-width:390px;
     justify-content:center;
@@ -103,16 +95,6 @@ main{
   .calc{
     user-select:text;
     -webkit-user-select:text;
-  }
-}
-
-@media (min-width:1280px) and (hover:hover) and (pointer:fine){
-  :root{
-    --desktop-content:960px;
-  }
-
-  body[data-active-tab="manage"] main{
-    max-width:1120px;
   }
 }
 

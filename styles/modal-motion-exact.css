@@ -71,8 +71,8 @@
   will-change:transform,opacity;
 
   transition:
-    transform .42s cubic-bezier(.4,0,.2,1),
-    opacity .27s ease;
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease;
 }
 
 .point-picker.on:not(.app-picker-anchored){
@@ -103,8 +103,8 @@
   will-change:transform,opacity;
 
   transition:
-    transform .42s cubic-bezier(.4,0,.2,1),
-    opacity .27s ease;
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease;
 }
 
 .date-picker.on{
@@ -130,10 +130,15 @@
     0
   );
 
-  will-change:transform;
+  opacity:.96;
+
+  will-change:
+    transform,
+    opacity;
 
   transition:
-    transform .42s cubic-bezier(.4,0,.2,1);
+    transform .48s cubic-bezier(.4,0,.2,1),
+    opacity .30s ease;
 }
 
 .month-picker.on{
@@ -142,6 +147,8 @@
     var(--month-drag, 0px),
     0
   );
+
+  opacity:1;
 }
 
 /* Veils */

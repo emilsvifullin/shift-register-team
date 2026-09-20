@@ -122,10 +122,17 @@ nav.tabs button{
   align-items:center;
 }
 
-/* Защита от горизонтального переполнения на узких и складных экранах. */
+/*
+  Защита от горизонтального переполнения на узких и складных экранах.
+
+  main сюда не входит: её ширину задаёт мера контента, а max-width:100%
+  из этого слоя перебивала её как более позднее правило той же
+  специфичности. Раздел «Смены» из-за этого растягивался на всю ширину
+  монитора, пока остальные разделы держались своей меры. Содержимое main
+  не переполняет её и без этого: у неё overflow-x:hidden.
+*/
 html,
 body,
-main,
 header,
 .bottom-controls{
   max-width:100%;
@@ -566,6 +573,50 @@ nav.tabs button.touch-active,
 @media (hover:hover) and (pointer:fine){
   :root{
     --bottom-dock-clearance:10px;
+  }
+}
+
+/*
+  На большом экране навигация перестаёт быть плавающим островом.
+
+  Пилюля с собственным фоном, рамкой и тенью — форма для телефона, где
+  панель висит над содержимым в зоне большого пальца. На мониторе она
+  читалась как чужой мобильный элемент: узкая полоса по центру, ничем не
+  связанная с колонкой контента. Здесь это нижний бар страницы: линия
+  сверху отделяет его от содержимого, а вкладки выровнены по той же мере
+  ширины, что и сам контент. Подсветка выбранной вкладки остаётся
+  прежней — язык интерфейса не меняется.
+
+  Геометрия панели при этом та же самая: высота по-прежнему
+  --bottom-dock-space, поэтому расчёт высоты main не расходится с ней.
+*/
+@media (min-width:900px) and (hover:hover) and (pointer:fine){
+  :root{
+    --bottom-dock-gap:10px;
+  }
+
+  .bottom-controls{
+    border-top:1px solid var(--line);
+  }
+
+  nav.tabs{
+    width:min(100%,var(--desktop-content));
+    max-width:var(--desktop-content);
+    padding:0;
+    gap:4px;
+
+    border-color:transparent;
+    background:transparent;
+    box-shadow:none;
+
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+  }
+
+  nav.tabs button{
+    flex:0 0 auto;
+    min-width:112px;
+    padding:0 18px;
   }
 }
 

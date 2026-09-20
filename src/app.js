@@ -1140,6 +1140,12 @@ function render(){
 }
 
 /*
+  Окно снимается с экрана после того, как движение закончилось, а не под
+  конец него: контракт выезжающих поверхностей — 480мс на сдвиг.
+*/
+const MODAL_HIDE_DELAY=520;
+
+/*
   Подогнанная высота списка смен — инлайновая геометрия, которую ставит
   рантайм. Снимать её нужно с того узла, которому она была поставлена, а не
   с того, что сейчас подходит под селектор: реконсилятор переиспользует узлы,
@@ -1149,6 +1155,61 @@ function render(){
   карточка пустого списка была на 16px ниже, чем при первом открытии.
 */
 let fittedShiftFrame=null;
+
+/*
+  Подгонка — инлайновая высота, и она устаревает.
+
+  Окно списка растягивается флексом, но подогнанная высота прибивает его
+  к числу строк, помещавшихся в момент последней отрисовки. Когда окно
+  становится выше — при изменении размера, входе и выходе из полноэкранного
+  режима — флекс уже даёт место, а прибитая высота его не отдаёт: под
+  последней сменой остаётся пустой участок до нижней панели. Когда окно
+  становится ниже, та же высота уводит список под панель. Снималось это
+  только следующей перерисовкой, отсюда и «внезапно занял место».
+
+  Поэтому за доступной высотой следит наблюдатель: подгонка пересчитывается
+  тогда же, когда меняется место под список. Наблюдаем контейнер, а не само
+  окно списка: его высоту флекс держит независимо от подогнанной, поэтому
+  пересчёт не может вызвать сам себя.
+*/
+let shiftFitObserver=null;
+let observedShiftArea=null;
+let shiftFitFrame=0;
+
+function queueShiftWindowFit(){
+  if(shiftFitFrame){
+    return;
+  }
+
+  shiftFitFrame=
+    requestAnimationFrame(()=>{
+      shiftFitFrame=0;
+      fitShiftWindow();
+    });
+}
+
+function observeShiftWindowArea(area){
+  if(
+    typeof ResizeObserver!=="function" ||
+    area===observedShiftArea
+  ){
+    return;
+  }
+
+  if(!shiftFitObserver){
+    shiftFitObserver=
+      new ResizeObserver(
+        queueShiftWindowFit
+      );
+  }
+
+  shiftFitObserver.disconnect();
+  observedShiftArea=area;
+
+  if(area){
+    shiftFitObserver.observe(area);
+  }
+}
 
 function releaseShiftWindowFit(){
   if(!fittedShiftFrame){
@@ -1170,8 +1231,15 @@ function fitShiftWindow(){
   releaseShiftWindowFit();
 
   if(tab!=="shifts"){
+    observeShiftWindowArea(null);
     return;
   }
+
+  observeShiftWindowArea(
+    app.querySelector(
+      "#shiftListArea"
+    )
+  );
 
   const frame=
     app.querySelector(
@@ -7377,7 +7445,7 @@ function closeDatePicker(){
     picker.style.removeProperty("--date-drag");
     picker.style.removeProperty("transition");
     if(previousFocus && document.contains(previousFocus)) previousFocus.focus();
-  },460);
+  },MODAL_HIDE_DELAY);
 }
 
 function selectDate(ymd){
@@ -7752,7 +7820,7 @@ function closePointPicker(){
 
   pointPickerHideTimer=setTimeout(
     finishClose,
-    460
+    MODAL_HIDE_DELAY
   );
 }
 
@@ -8581,7 +8649,7 @@ function closeMonthPicker(){
     picker.style.removeProperty("--month-drag");
     picker.style.removeProperty("transition");
     if(previousFocus && document.contains(previousFocus)) previousFocus.focus();
-  },460);
+  },MODAL_HIDE_DELAY);
 }
 
 let monthTransitionRunning=false;
@@ -9301,16 +9369,11 @@ function bindYearSwipe(
         y:e.clientY,
         time:performance.now(),
         axis:null,
-        moved:false
+        moved:false,
+        captured:false
       };
 
       e.stopPropagation();
-
-      try{
-        element.setPointerCapture(
-          e.pointerId
-        );
-      }catch{}
     }
   );
 
@@ -9362,6 +9425,26 @@ function bindYearSwipe(
 
       if(swipe.axis!=="x"){
         return;
+      }
+
+      /*
+        Указатель захватывается только когда жест уже стал горизонтальным.
+
+        Захват на pointerdown перенаправлял на окно все последующие
+        события указателя вместе с производным click: кнопка под пальцем
+        получала pointerdown, а pointerup и click уходили самому окну.
+        Внутри окна выбора месяца и панели выбора года в календаре из-за
+        этого не работало ничего — ни месяцы, ни стрелки года, ни
+        «Текущий месяц», ни «Отмена» с «Готово».
+      */
+      if(!swipe.captured){
+        swipe.captured=true;
+
+        try{
+          element.setPointerCapture(
+            e.pointerId
+          );
+        }catch{}
       }
 
       swipe.moved=true;
@@ -9741,9 +9824,14 @@ function bindBottomSheetDismiss({
     element.style.transition="none";
   };
 
+  /*
+    Возврат на место — короткая поправка: столько же занимает возврат в
+    остальных жестах приложения (src/swipe-close-guard.js,
+    src/month-picker-swipe.js). Роспуск окна идёт своим, длинным ходом.
+  */
   const snapBack=()=>{
     element.style.transition=
-      "transform .42s cubic-bezier(.4,0,.2,1)";
+      "transform .26s cubic-bezier(.4,0,.2,1)";
 
     requestAnimationFrame(()=>{
       element.style.setProperty(
@@ -9764,7 +9852,7 @@ function bindBottomSheetDismiss({
           dragProperty
         );
       }
-    },440);
+    },284);
   };
 
   const resetInteraction=()=>{

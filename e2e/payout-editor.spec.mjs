@@ -328,8 +328,20 @@ test(
     const dateField=page
       .locator("[data-payout-date-open]");
 
-    await expect(dateField)
-      .toHaveText("17 сентября 2026");
+    /*
+      Новая отметка по умолчанию датирована сегодняшним днём, поэтому
+      ожидаемая подпись считается от текущей даты, а не записана числом:
+      иначе тест держался бы ровно один день.
+    */
+    const today=new Intl.DateTimeFormat("ru-RU",{
+      day:"numeric",
+      month:"long",
+      year:"numeric"
+    })
+      .format(new Date())
+      .replace(/\s*г\.$/u,"");
+
+    await expect(dateField).toHaveText(today);
 
     await dateField.click();
 

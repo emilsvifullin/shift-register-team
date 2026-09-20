@@ -173,8 +173,14 @@ test(
   }
 );
 
+/*
+  На большом экране навигация — нижний бар страницы, а не плавающая
+  пилюля: она отделена линией, идёт в той же мере ширины, что и контент,
+  и не носит собственных фона, рамки и тени, которые нужны только
+  телефону.
+*/
 test(
-  "desktop tab bar stays centered with equal sections",
+  "the desktop tab bar belongs to the page instead of floating over it",
   async({page})=>{
     await page.setViewportSize({
       width:1440,
@@ -184,26 +190,54 @@ test(
     await page.goto(FIXTURE);
 
     const metrics=
-      await page.locator("nav.tabs")
-        .evaluate(nav=>({
-          width:nav.getBoundingClientRect().width,
+      await page.evaluate(()=>{
+        const nav=
+          document.querySelector("nav.tabs");
+
+        const dock=
+          document.querySelector(".bottom-controls");
+
+        const main=
+          document.querySelector("main");
+
+        const navRect=
+          nav.getBoundingClientRect();
+
+        const navStyle=
+          getComputedStyle(nav);
+
+        const dockStyle=
+          getComputedStyle(dock);
+
+        return {
+          navWidth:Math.round(navRect.width),
+          mainWidth:Math.round(
+            main.getBoundingClientRect().width
+          ),
           viewport:window.innerWidth,
-          buttons:Array.from(
-            nav.querySelectorAll("button")
-          ).map(button=>
-            button.getBoundingClientRect().width
-          )
-        }));
+          leftGap:Math.round(navRect.left),
+          rightGap:Math.round(
+            window.innerWidth-navRect.right
+          ),
+          navBackground:navStyle.backgroundColor,
+          navShadow:navStyle.boxShadow,
+          dockBorder:dockStyle.borderTopWidth
+        };
+      });
 
-    expect(metrics.width).toBeLessThanOrEqual(520);
-    expect(metrics.width).toBeGreaterThan(440);
+    /* Та же мера ширины, что и у контента. */
+    expect(metrics.navWidth).toBe(metrics.mainWidth);
 
-    const first=metrics.buttons[0];
+    /* И по-прежнему по центру окна. */
+    expect(
+      Math.abs(metrics.leftGap-metrics.rightGap)
+    ).toBeLessThanOrEqual(1);
 
-    for(const width of metrics.buttons){
-      expect(Math.abs(width-first))
-        .toBeLessThan(1.5);
-    }
+    /* Бар отделён линией, а не собственной подложкой с тенью. */
+    expect(metrics.dockBorder).not.toBe("0px");
+    expect(metrics.navBackground)
+      .toBe("rgba(0, 0, 0, 0)");
+    expect(metrics.navShadow).toBe("none");
   }
 );
 
@@ -277,5 +311,72 @@ test(
     expect(pickerBox.width).toBeLessThanOrEqual(520);
     expect(dayBox.height).toBeLessThanOrEqual(46);
     expect(dayBox.width).toBeGreaterThan(dayBox.height+10);
+  }
+);
+
+/*
+  Раньше каждый раздел жил по своим правилам ширины: «Смены» тянулись на
+  весь монитор, потому что защитное main{max-width:100%} из более позднего
+  слоя отменяло desktop-ограничение, «Управление» держалось 960–1020px, а
+  «Итоги» и «Данные» — 760px. При переключении вкладок менялся масштаб
+  всего интерфейса.
+
+  Теперь мера одна на все разделы, она растёт вместе с окном и
+  останавливается на пределе читаемости строки.
+*/
+test(
+  "every section shares one content measure that grows with the window",
+  async({page})=>{
+    const measures=[];
+
+    for(const width of [1024,1440,1920]){
+      await page.setViewportSize({
+        width,
+        height:900
+      });
+
+      await page.goto(FIXTURE);
+
+      const perTab=[];
+
+      for(const tab of [
+        "tab-shifts",
+        "tab-stats",
+        "tab-manage",
+        "tab-data"
+      ]){
+        await page.locator(`#${tab}`).click();
+
+        await expect(
+          page.locator("body")
+        ).toHaveAttribute(
+          "data-active-tab",
+          tab.replace("tab-","")
+        );
+
+        perTab.push(
+          await page.evaluate(()=>Math.round(
+            document.querySelector("main")
+              .getBoundingClientRect().width
+          ))
+        );
+      }
+
+      /* Один и тот же масштаб во всех разделах. */
+      for(const value of perTab){
+        expect(value).toBe(perTab[0]);
+      }
+
+      /* Колонка не занимает весь монитор и не жмётся в узкую полосу. */
+      expect(perTab[0]).toBeLessThan(width-120);
+      expect(perTab[0]).toBeGreaterThanOrEqual(700);
+
+      measures.push(perTab[0]);
+    }
+
+    /* Мера растёт вместе с окном и упирается в предел. */
+    expect(measures[1]).toBeGreaterThan(measures[0]);
+    expect(measures[2]).toBeGreaterThanOrEqual(measures[1]);
+    expect(measures[2]).toBeLessThanOrEqual(1080);
   }
 );

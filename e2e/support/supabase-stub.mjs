@@ -308,6 +308,9 @@ export function stubScript(seed){
 
       return args.p_shift_id;
     },
+    admin_save_shift_v3(args){
+      return rpc.admin_save_shift_v2(args);
+    },
     admin_save_shift_v2(args){
       db.saved_shifts.push(args);
       db.shifts=db.shifts.filter(shift=>
@@ -341,6 +344,8 @@ export function stubScript(seed){
           fullHours:12
         },
         note:args.p_note,
+        base_amount_override_reason:
+          args.p_base_amount_reason ?? null,
         employee:{
           id:employee.id,
           user_id:employee.user_id,

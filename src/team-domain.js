@@ -688,6 +688,9 @@ export function mapServerShift(
       baseAmount!==calculatedBase
         ? baseAmount
         : "",
+    baseOverrideReason:
+      row.base_amount_override_reason ||
+      "",
     pricing
   };
 }

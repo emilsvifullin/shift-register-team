@@ -1,0 +1,256 @@
+/*
+  Продолжение плитки: поиск, списки, календарь и дополнительные поля,
+  которые раскрываются внутри своей же карточки.
+
+  Визуальный язык здесь не новый — это те же строки, разделители,
+  скругления и цвета, что и в остальных карточках. Меняется только то,
+  откуда берётся содержимое: не из отдельного окна снизу, а из самой
+  плитки.
+*/
+
+.field-reveal{
+  display:grid;
+  grid-template-rows:0fr;
+
+  transition:grid-template-rows
+    .32s cubic-bezier(.32,.72,0,1);
+}
+
+.field-reveal.on{
+  grid-template-rows:1fr;
+}
+
+.field-reveal-body{
+  min-height:0;
+  overflow:hidden;
+}
+
+/*
+  Свёрнутое продолжение не участвует ни в раскладке, ни в переходе: иначе
+  его верхний разделитель виден полоской над закрытой строкой.
+*/
+.field-reveal:not(.on) .field-reveal-body > *{
+  visibility:hidden;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .field-reveal{
+    transition:none;
+  }
+}
+
+/* Строка, из которой растёт продолжение, отмечена стрелкой. */
+.point-row[aria-expanded]{
+  position:relative;
+}
+
+.point-row[aria-expanded] .point-value{
+  padding-right:17px;
+}
+
+.point-row[aria-expanded]::after{
+  content:"";
+  position:absolute;
+  right:16px;
+  top:50%;
+
+  width:6px;
+  height:6px;
+
+  border-right:1.5px solid var(--ink3);
+  border-bottom:1.5px solid var(--ink3);
+
+  transform:translateY(-70%) rotate(45deg);
+
+  transition:transform .32s cubic-bezier(.32,.72,0,1);
+}
+
+.point-row[aria-expanded="true"]::after{
+  transform:translateY(-30%) rotate(-135deg);
+}
+
+/* Поиск внутри плитки — та же строка карточки, что и остальные. */
+.inline-search{
+  height:44px;
+  margin:0;
+  padding:0 16px;
+
+  display:flex;
+  align-items:center;
+  gap:10px;
+
+  border:0;
+  border-top:1px solid var(--line);
+  border-radius:0;
+  background:var(--tint);
+  color:var(--ink3);
+  cursor:text;
+}
+
+.inline-search svg{
+  width:16px;
+  height:16px;
+  flex:none;
+
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.6;
+  stroke-linecap:round;
+}
+
+.inline-search input{
+  flex:1;
+  min-width:0;
+  height:100%;
+  padding:0;
+
+  border:0;
+  background:transparent;
+  color:var(--ink);
+
+  appearance:none;
+  -webkit-appearance:none;
+
+  direction:ltr;
+  text-align:left;
+  font-size:16px;
+  letter-spacing:-.2px;
+}
+
+.inline-search input::-webkit-search-cancel-button{
+  -webkit-appearance:none;
+}
+
+.inline-options{
+  max-height:min(46vh,320px);
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+}
+
+.inline-options .point-option{
+  padding:12px 16px;
+  font-size:14px;
+}
+
+.inline-options .point-option:first-child{
+  border-top:1px solid var(--line);
+}
+
+.inline-empty{
+  padding:14px 16px;
+  border-top:1px solid var(--line);
+
+  font-size:13px;
+  color:var(--ink3);
+}
+
+/* Календарь внутри плитки. */
+.inline-calendar{
+  padding:12px 14px 14px;
+  border-top:1px solid var(--line);
+}
+
+.inline-calendar .date-calendar-head{
+  margin-bottom:10px;
+}
+
+.inline-calendar .date-today{
+  width:100%;
+  margin-top:12px;
+  padding:11px;
+
+  border:1px solid var(--line2);
+  border-radius:12px;
+  background:var(--tint);
+  color:var(--ink);
+
+  font-size:14px;
+  font-weight:500;
+  cursor:pointer;
+}
+
+.inline-calendar-jump{
+  padding-top:2px;
+}
+
+.inline-calendar-jump-year{
+  display:grid;
+  grid-template-columns:42px 1fr 42px;
+  align-items:center;
+  gap:8px;
+  margin-bottom:10px;
+
+  text-align:center;
+  font-size:17px;
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+  color:var(--ink);
+}
+
+/* Дополнительные поля внутри той же плитки. */
+.field-reveal .row:first-child,
+.field-reveal .segbox:first-child{
+  border-top:1px solid var(--line);
+}
+
+.field-reveal-note{
+  padding:11px 16px 13px;
+  border-top:1px solid var(--line);
+
+  font-size:12px;
+  line-height:1.45;
+  color:var(--ink3);
+}
+
+/*
+  Плитка с переключателем сверху и полями под ним: у сегмента остаётся
+  свой внутренний отступ, а продолжение идёт вровень с краями карточки.
+*/
+.card.reveal-box{
+  padding:0;
+}
+
+.card.reveal-box > .segbox{
+  padding:5px;
+}
+
+/* Границы и ставки — часть плитки тарифа, а не отдельная карточка. */
+.tariff-tiers-head{
+  padding:13px 16px 4px;
+  border-top:1px solid var(--line);
+
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.19em;
+  text-transform:uppercase;
+  color:var(--ink3);
+}
+
+.tariff-box .tariff-tiers{
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+
+.tariff-tier-add-row{
+  padding:0 12px 12px;
+}
+
+.tariff-tier-add-row .btn{
+  margin-top:8px;
+}
+
+/* «Аккаунт» — один компонент: переключатель и поля в общей плитке. */
+.employee-account-box .employee-account-mode{
+  margin:0;
+}
+
+/*
+  «Действует с» длиннее «Даты» и «Пункта», под которые рассчитана колонка
+  подписи в карточке смены: в плитке тарифа она шире, иначе подпись
+  обрезается до «Дейст…».
+*/
+.tariff-box .point-row .t{
+  width:96px;
+}

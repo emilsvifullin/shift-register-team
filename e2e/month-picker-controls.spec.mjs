@@ -103,19 +103,29 @@ test(
   }
 );
 
+/*
+  Дата смены раскрывается внутри своей плитки, поэтому модальный календарь
+  остался там, где продолжения плитки не хватает: «Действует с» у тарифа.
+  Панель года проверяется именно на нём.
+*/
 test(
   "the year panel inside the calendar answers a click as well",
   async({page})=>{
     await openApp(page);
 
-    await page.locator("#tab-shifts").click();
-    await page.locator("#shiftAdd").click();
+    await page.locator("#tab-manage").click();
+
+    await page
+      .locator('#app [data-manage-section="points"]')
+      .click();
+
+    await page.locator("#pointAdd").click();
 
     await expect(
-      page.locator("#sheet")
+      page.locator("#manageEditorSheet")
     ).toHaveClass(/\bon\b/);
 
-    await page.locator("#f-date-open").click();
+    await page.locator("#manageTariffDateOpen").click();
 
     await expect(
       page.locator("#datePicker")

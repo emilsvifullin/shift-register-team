@@ -22,6 +22,7 @@ const SHIFT_SELECT=`
   hours,
   full_hours,
   base_amount,
+  base_amount_override_reason,
   pricing_snapshot,
   note,
   employee:employees!shifts_employee_id_fkey(

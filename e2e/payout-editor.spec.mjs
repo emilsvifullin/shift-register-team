@@ -77,9 +77,10 @@ async function openStats(page,payouts=[]){
   await openApp(page,{seed:payoutSeed(payouts)});
 
   await page.locator("#tab-stats").click();
+
+  /* Сотрудник выбирается внутри плитки «Сотрудник», без окна снизу. */
   await page.locator("#statsEmployeeOpen").click();
-  await page.locator(".point-option").first().click();
-  await page.locator("#pointDone").click();
+  await page.locator("[data-stats-employee]").first().click();
 
   await expect(
     page.locator('[data-payout-toggle="first_half"]')

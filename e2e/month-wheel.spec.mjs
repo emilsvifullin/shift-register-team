@@ -298,25 +298,24 @@ test(
   async({page})=>{
     await openApp(page,{seed:shiftsSeed()});
 
-    await page.locator("#tab-shifts").click();
-    await page.locator("#shiftAdd").click();
+    await page.locator("#tab-manage").click();
 
-    await expect(
-      page.locator("#sheet")
-    ).toHaveClass(/\bon\b/);
+    await page
+      .locator('#app [data-manage-section="points"]')
+      .click();
 
-    await page.locator("#f-date-open").click();
+    await page.locator("#pointAdd").click();
+    await page.locator("#manageTariffDateOpen").click();
 
     await expect(
       page.locator("#datePicker")
     ).toHaveClass(/\bon\b/);
 
     const month=page.locator("#datePickerMonth");
+    const start=await month.textContent();
 
-    await expect(month).toHaveText(/Сентябрь 2026/);
-
-    await trackpadSwipe(page,".date-grid",{direction:1});
-    await expect(month).toHaveText(/Октябрь 2026/);
+    await trackpadSwipe(page,"#dateGrid",{direction:1});
+    await expect(month).not.toHaveText(start);
 
     await month.click();
 
@@ -325,11 +324,59 @@ test(
     ).toHaveClass(/\bon\b/);
 
     const jumpYear=page.locator("#dateJumpYear");
-
-    await expect(jumpYear).toHaveText("2026");
+    const startYear=await jumpYear.textContent();
 
     await trackpadSwipe(page,"#dateJumpMonths",{direction:1});
-    await expect(jumpYear).toHaveText("2027");
+
+    await expect(jumpYear).toHaveText(
+      String(Number(startYear)+1)
+    );
+  }
+);
+
+/*
+  Календарь, раскрытый внутри плитки «Смена», листается тем же жестом:
+  переезд из отдельного окна не должен был отнять у даты способ, который
+  уже работал.
+*/
+test(
+  "a trackpad swipe works in the calendar opened inside the shift card",
+  async({page})=>{
+    await openApp(page,{seed:shiftsSeed()});
+
+    await page.locator("#tab-shifts").click();
+    await page.locator("#shiftAdd").click();
+
+    await expect(
+      page.locator("#sheet")
+    ).toHaveClass(/\bon\b/);
+
+    const row=page.locator("#f-date-open");
+
+    await row.click();
+    await expect(row).toHaveAttribute("aria-expanded","true");
+
+    const month=page.locator(
+      ".inline-calendar .date-calendar-title"
+    );
+
+    await expect(month).toHaveText(/Сентябрь 2026/);
+
+    await trackpadSwipe(
+      page,
+      ".inline-calendar .date-grid",
+      {direction:1}
+    );
+
+    await expect(month).toHaveText(/Октябрь 2026/);
+
+    await trackpadSwipe(
+      page,
+      ".inline-calendar .date-grid",
+      {direction:-1}
+    );
+
+    await expect(month).toHaveText(/Сентябрь 2026/);
   }
 );
 

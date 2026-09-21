@@ -155,19 +155,20 @@ body[data-active-tab="stats"] #app > .ml:has(+ .card .stats-filter-row){
   display:none;
 }
 
+/*
+  Раньше плитку здесь «раздевали», а рамку, фон и скругление носила сама
+  строка: одиночный контрол, открывающий окно снизу, выглядел так
+  аккуратнее. Теперь список сотрудников раскрывается внутри этой плитки,
+  и рамка снова нужна ей самой — иначе раскрытое вываливается за её края
+  на страницу.
+*/
 body[data-active-tab="stats"] #app > .card:has(.stats-filter-row){
   margin-bottom:12px;
-  overflow:visible;
-  border:0;
-  background:transparent;
 }
 
 body[data-active-tab="stats"] .stats-filter-row{
   min-height:50px;
   padding:10px 14px;
-  border:1px solid var(--line2);
-  border-radius:14px;
-  background:var(--surf);
 }
 
 body[data-active-tab="stats"] .stats-filter-row .t{

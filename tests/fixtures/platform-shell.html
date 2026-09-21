@@ -224,9 +224,16 @@
     function renderFixture(name){
       app.innerHTML=fixtureView(name);
 
+      /*
+        Рамку, скругление и фон в «Итогах» носит плитка, а не строка:
+        список сотрудников раскрывается внутри неё, и он обязан лежать в
+        её границах. Признак того, что стили раздела применились до
+        первой отрисовки, берём отсюда же.
+      */
       const statsRow=app.querySelector(".stats-filter-row");
-      const statsStyle=statsRow
-        ? getComputedStyle(statsRow)
+      const statsCard=statsRow?.closest(".card");
+      const statsStyle=statsCard
+        ? getComputedStyle(statsCard)
         : null;
 
       const snapshot={

@@ -31,6 +31,10 @@ const ERROR_MESSAGES=Object.freeze({
     "Проверьте сумму оплаты за смену",
   shift_base_amount_comment_required:
     "Укажите причину изменения оплаты в комментарии к смене",
+  shift_base_amount_reason_required:
+    "Укажите причину корректировки оклада",
+  invalid_shift_base_amount_reason:
+    "Причина корректировки не должна быть длиннее 500 символов",
   employee_creation_rollback_forbidden:
     "Нельзя отменить создание сотрудника: карточка уже используется",
   employee_deletion_pending:

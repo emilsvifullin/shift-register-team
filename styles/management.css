@@ -52,9 +52,6 @@ body[data-active-tab="stats"] > main > .ml:has(+ .card .stats-filter-row){
 
 body[data-active-tab="stats"] > main > .card:has(.stats-filter-row){
   margin-bottom:12px;
-  overflow:visible;
-  border:0;
-  background:transparent;
 }
 
 /*

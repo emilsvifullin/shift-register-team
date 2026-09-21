@@ -87,6 +87,10 @@ import {
 } from "./wheel-gesture.js";
 
 import {
+  fieldRevealHTML
+} from "./field-reveal.js";
+
+import {
   installInputBehavior
 } from "./ui/input-behavior.js";
 
@@ -166,6 +170,23 @@ let cursor=ymOf(new Date());
 let draft=null;
 let shiftSheetMode="create";
 let shiftOriginalDraft=null;
+
+/*
+  Дата, пункт и сотрудник раскрываются внутри карточки «Смена». Открытой
+  может быть только одна строка: две раскрытые подряд превращают карточку
+  в ленту и теряют связь с тем, что человек сейчас выбирает.
+*/
+let shiftInlineField=null;
+let shiftInlineQuery="";
+let shiftDateCursor="";
+let shiftDateJumpOpen=false;
+let shiftDateJumpYear=0;
+
+function resetShiftInline(){
+  shiftInlineField=null;
+  shiftInlineQuery="";
+  shiftDateJumpOpen=false;
+}
 let storageRevision=null;
 let loadError=null;
 let sheetPreviousFocus=null;
@@ -233,6 +254,13 @@ let legacyMigrationEmployeeId="";
 let legacyMigrationRunning=false;
 let legacyMigrationProgress="";
 let statsEmployeeId="";
+
+/*
+  Список сотрудников для итогов раскрывается внутри своей плитки, поэтому
+  его состояние живёт рядом с выбранным значением, а не в отдельном окне.
+*/
+let statsEmployeeOpen=false;
+let statsEmployeeQuery="";
 let manageEditorKind=null;
 let manageEditorDraft=null;
 let manageEditorSaving=false;
@@ -2199,6 +2227,7 @@ function viewStats(){
             type="button"
             class="row point-row stats-filter-row"
             id="statsEmployeeOpen"
+            aria-expanded="${statsEmployeeOpen ? "true" : "false"}"
             aria-label="Сотрудник для итогов: ${esc(statsEmployeeLabel)}"
             ${
               availableStatsEmployees.length
@@ -2211,6 +2240,40 @@ function viewStats(){
               ${esc(statsEmployeeLabel)}
             </div>
           </button>
+
+          ${fieldRevealHTML({
+            key:"statsEmployeeReveal",
+            open:statsEmployeeOpen,
+            body:inlineChoiceHTML({
+              options:
+                availableStatsEmployees
+                  .map(employee=>({
+                    value:employee.id,
+                    label:
+                      employee.full_name+
+                      (
+                        employee.status==="inactive"
+                          ? " · архив"
+                          : ""
+                      ),
+                    searchText:[
+                      employee.full_name,
+                      employee.phone,
+                      employee.transfer_phone,
+                      employee.transfer_bank,
+                      employee.transfer_recipient,
+                      employeeAccountEmail(
+                        employee
+                      )
+                    ].filter(Boolean).join(" ")
+                  })),
+              value:statsEmployeeId,
+              attribute:"data-stats-employee",
+              searchId:"statsEmployeeSearch",
+              searchQuery:statsEmployeeQuery,
+              searchLabel:"Поиск сотрудника"
+            })
+          })}
         </div>
       `
       : "";
@@ -3535,11 +3598,7 @@ function tariffHistoryItemHTML(
           <button type="button" class="tariff-inline-close" data-tariff-edit-cancel>Отмена</button>
         </div>
         <div class="tariff-history-edit-body">
-          <div class="card segbox"><div class="seg">
-            <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
-            <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
-          </div></div>
-          ${tariffDraftFields()}
+          ${tariffBoxHTML()}
           <button type="button" class="btn b tariff-inline-save" data-tariff-edit-save>Сохранить тариф</button>
         </div>
       </div>
@@ -4146,21 +4205,13 @@ function drawManageEditor(){
       manageEditorDraft.isNew
         ? `
           <div class="ml">Тариф</div>
-          <div class="card segbox"><div class="seg">
-            <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
-            <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
-          </div></div>
-          ${tariffDraftFields()}
+          ${tariffBoxHTML()}
         `
         : `
           <div class="ml">Тариф</div>
           ${manageEditorDraft.tariffOpen ? `
             <div class="tariff-current-editor">
-              <div class="card segbox"><div class="seg">
-                <button type="button" data-pricing-type="fixed" class="${manageEditorDraft.pricingType==="fixed" ? "on" : ""}">Фикс</button>
-                <button type="button" data-pricing-type="shk_tiers" class="${manageEditorDraft.pricingType==="shk_tiers" ? "on" : ""}">По ШК</button>
-              </div></div>
-              ${tariffDraftFields()}
+              ${tariffBoxHTML()}
               <div class="tariff-editor-help">
                 ${esc(
                   tariffIntentHelp(
@@ -4253,9 +4304,26 @@ function drawManageEditor(){
   }
 }
 
-function tariffDraftFields(){
+/*
+  Тариф — один компонент: переключатель сверху, под ним внутри той же
+  плитки только те параметры, которые относятся к выбранному варианту.
+  Ставка принадлежит «Фиксу», границы — «По ШК», а «Действует с» общее для
+  обоих и потому стоит первым.
+*/
+function tariffBoxHTML(){
+  const fixed=
+    manageEditorDraft.pricingType===
+      "fixed";
+
   return `
-    <div class="card employee-editor">
+    <div class="card reveal-box tariff-box">
+      <div class="segbox">
+        <div class="seg">
+          <button type="button" data-pricing-type="fixed" class="${fixed ? "on" : ""}">Фикс</button>
+          <button type="button" data-pricing-type="shk_tiers" class="${fixed ? "" : "on"}">По ШК</button>
+        </div>
+      </div>
+
       <button
         type="button"
         class="row point-row"
@@ -4266,20 +4334,34 @@ function tariffDraftFields(){
           ${esc(dateLabel(manageEditorDraft.effectiveFrom))}
         </div>
       </button>
-      ${manageEditorDraft.pricingType==="fixed" ? `
-        <label class="row">
-          <div class="t">Ставка</div>
-          <input type="text" inputmode="decimal" id="manageFixedRate" value="${esc(manageEditorDraft.fixedRate)}">
-        </label>
-      ` : ""}
+
+      ${fieldRevealHTML({
+        key:"tariffFixedReveal",
+        open:fixed,
+        body:`
+          <label class="row">
+            <div class="t">Ставка</div>
+            <input type="text" inputmode="decimal" id="manageFixedRate" value="${esc(manageEditorDraft.fixedRate)}">
+          </label>
+        `
+      })}
+
+      ${fieldRevealHTML({
+        key:"tariffTiersReveal",
+        open:!fixed,
+        body:`
+          <div class="tariff-tiers-head">Границы и ставки</div>
+
+          <div class="tariff-tiers">
+            ${tierEditorHTML(manageEditorDraft.tiers)}
+          </div>
+
+          <div class="tariff-tier-add-row">
+            <button type="button" class="btn" id="tierAdd">Добавить границу</button>
+          </div>
+        `
+      })}
     </div>
-    ${manageEditorDraft.pricingType==="shk_tiers" ? `
-      <div class="ml">Границы и ставки</div>
-      <div class="card tariff-tiers">
-        ${tierEditorHTML(manageEditorDraft.tiers)}
-      </div>
-      <button type="button" class="btn" id="tierAdd">Добавить границу</button>
-    ` : ""}
   `;
 }
 
@@ -5313,95 +5395,97 @@ function drawEmployeeSheet(){
       Аккаунт
     </div>
 
-    ${
-      employeeDraft.userId
-        ? ""
-        : `
-          <div class="card segbox employee-account-mode">
-            <div class="seg">
-              <button
-                type="button"
-                data-employee-account-mode="none"
-                class="${employeeDraft.accountEnabled ? "" : "on"}"
-              >
-                Без аккаунта
-              </button>
-
-              <button
-                type="button"
-                data-employee-account-mode="create"
-                class="${employeeDraft.accountEnabled ? "on" : ""}"
-              >
-                Создать аккаунт
-              </button>
-            </div>
-          </div>
-        `
-    }
-
-    ${
-      employeeDraft.userId ||
-      employeeDraft.accountEnabled
-        ? `
-          <div class="card employee-editor">
-            <label class="row employee-account-row">
-              <div class="t">Почта</div>
-              <input
-                type="email"
-                id="employeeEmail"
-                autocomplete="off"
-                autocapitalize="none"
-                autocorrect="off"
-                spellcheck="false"
-                value="${esc(employeeDraft.email || "")}"
-                aria-label="Почта сотрудника"
-              >
-            </label>
-
-            <div class="row employee-password-row">
-              <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
-
-              <div class="employee-password-control">
-                <div class="employee-secret-input">
-                  <input
-                    type="text"
-                    id="employeePassword"
-                    autocomplete="off"
-                    autocapitalize="none"
-                    autocorrect="off"
-                    spellcheck="false"
-                    data-1p-ignore="true"
-                    data-lpignore="true"
-                    data-form-type="other"
-                    value="${esc(employeeDraft.password || "")}"
-                    aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
-                  >
-
-                  <span
-                    class="employee-secret-mask"
-                    aria-hidden="true"
-                  >${"•".repeat((employeeDraft.password || "").length)}</span>
-                </div>
+    <div class="card reveal-box employee-account-box">
+      ${
+        employeeDraft.userId
+          ? ""
+          : `
+            <div class="segbox employee-account-mode">
+              <div class="seg">
+                <button
+                  type="button"
+                  data-employee-account-mode="none"
+                  class="${employeeDraft.accountEnabled ? "" : "on"}"
+                >
+                  Без аккаунта
+                </button>
 
                 <button
                   type="button"
-                  class="employee-password-toggle"
-                  id="employeePasswordToggle"
-                  aria-label="Показать пароль"
-                  aria-pressed="false"
+                  data-employee-account-mode="create"
+                  class="${employeeDraft.accountEnabled ? "on" : ""}"
                 >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
-                    <circle cx="12" cy="12" r="2.7"></circle>
-                    <path class="employee-password-slash" d="M4 4l16 16"></path>
-                  </svg>
+                  Создать аккаунт
                 </button>
               </div>
             </div>
+          `
+      }
+
+      ${fieldRevealHTML({
+        key:"employeeAccountReveal",
+        open:Boolean(
+          employeeDraft.userId ||
+          employeeDraft.accountEnabled
+        ),
+        body:`
+          <label class="row employee-account-row">
+            <div class="t">Почта</div>
+            <input
+              type="email"
+              id="employeeEmail"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              value="${esc(employeeDraft.email || "")}"
+              aria-label="Почта сотрудника"
+            >
+          </label>
+
+          <div class="row employee-password-row">
+            <div class="t">${employeeDraft.userId ? "Новый пароль" : "Пароль"}</div>
+
+            <div class="employee-password-control">
+              <div class="employee-secret-input">
+                <input
+                  type="text"
+                  id="employeePassword"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck="false"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
+                  data-form-type="other"
+                  value="${esc(employeeDraft.password || "")}"
+                  aria-label="${employeeDraft.userId ? "Новый пароль сотрудника" : "Пароль сотрудника"}"
+                >
+
+                <span
+                  class="employee-secret-mask"
+                  aria-hidden="true"
+                >${"•".repeat((employeeDraft.password || "").length)}</span>
+              </div>
+
+              <button
+                type="button"
+                class="employee-password-toggle"
+                id="employeePasswordToggle"
+                aria-label="Показать пароль"
+                aria-pressed="false"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path>
+                  <circle cx="12" cy="12" r="2.7"></circle>
+                  <path class="employee-password-slash" d="M4 4l16 16"></path>
+                </svg>
+              </button>
+            </div>
           </div>
         `
-        : ""
-    }
+      })}
+    </div>
 
     <div class="employee-help">
       ${employeeDraft.userId
@@ -6751,6 +6835,8 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
   const sheet=document.getElementById("sheet");
   const savedShift=shifts.find(item=>item.id===id);
 
+  resetShiftInline();
+
   if(!savedShift && !isAdmin){
     return;
   }
@@ -6796,6 +6882,7 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
           partial:false,
           hours:"",
           baseOverride:"",
+          baseOverrideReason:"",
           baseOverrideMode:
             "tariff",
           bonuses:[],
@@ -6908,6 +6995,7 @@ function closeSheet(){
   draft=null;
   shiftOriginalDraft=null;
   shiftSheetMode="create";
+  resetShiftInline();
   saveUIState();
   if(!activeModal()) setBackgroundInert(false);
 
@@ -6940,6 +7028,7 @@ function shiftDraftChanged(){
     draft.shk!=="" ||
     draft.partial ||
     draft.baseOverride!=="" ||
+    draft.baseOverrideReason?.trim() ||
     draft.bonuses?.length ||
     draft.penalties?.length ||
     draft.note?.trim()
@@ -6999,17 +7088,260 @@ let dateJumpValue="";
 let dateSwipe=null;
 let dateSwipeBlockClick=false;
 
-function drawDatePicker(){
-  const [year,month]=dateCalendarCursor.split("-").map(Number);
+/*
+  Поиск и список, раскрытые внутри плитки. Оформление здесь то же, что у
+  строк карточки: разделители, отступы и подсветка выбранного совпадают с
+  остальным приложением — от отдельного окна остаётся только содержимое.
+*/
+function inlineSearchHTML({
+  id,
+  value,
+  label
+}){
+  return `
+    <label class="inline-search">
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="5.5"></circle>
+        <path d="M12.5 12.5L17 17"></path>
+      </svg>
 
-  document.getElementById("datePickerMonth").textContent=
-    MONTHS[month-1]+" "+year;
+      <input
+        type="search"
+        id="${id}"
+        value="${esc(value || "")}"
+        placeholder="Поиск"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="${esc(label)}"
+      >
+    </label>
+  `;
+}
 
-  document.getElementById("datePrev").disabled=dateCalendarCursor===`${MIN_YEAR}-01`;
-  document.getElementById("dateNext").disabled=dateCalendarCursor===`${MAX_YEAR}-12`;
+/*
+  Поле поиска забирает фокус только там, где есть аппаратная клавиатура:
+  на телефоне раскрытие списка не должно поднимать клавиатуру поверх него.
+*/
+function focusInlineSearch(id){
+  if(
+    !window.matchMedia(
+      "(hover:hover) and (pointer:fine)"
+    ).matches
+  ){
+    return;
+  }
 
-  const firstDay=new Date(year,month-1,1,12);
-  const mondayOffset=(firstDay.getDay()+6)%7;
+  requestAnimationFrame(()=>{
+    document
+      .getElementById(id)
+      ?.focus({preventScroll:true});
+  });
+}
+
+function inlineOptionsHTML({
+  options,
+  value,
+  attribute
+}){
+  if(!options.length){
+    return `
+      <div class="inline-empty">
+        Ничего не найдено
+      </div>
+    `;
+  }
+
+  return `
+    <div class="inline-options">
+      ${options.map(option=>`
+        <button
+          type="button"
+          class="point-option ${option.value===value?"on":""}"
+          ${attribute}="${esc(option.value)}"
+        >
+          <span class="point-check">
+            ${option.value===value?"\u2713":""}
+          </span>
+
+          <span class="point-name">
+            ${esc(option.label)}
+          </span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function inlineChoiceHTML({
+  options,
+  value,
+  attribute,
+  searchId,
+  searchQuery,
+  searchLabel,
+  searchable=true
+}){
+  const visible=
+    searchable
+      ? filterChoiceOptions(
+          options,
+          searchQuery
+        )
+      : options;
+
+  return `
+    ${searchable && options.length>5
+      ? inlineSearchHTML({
+          id:searchId,
+          value:searchQuery,
+          label:searchLabel
+        })
+      : ""}
+
+    ${inlineOptionsHTML({
+      options:visible,
+      value,
+      attribute
+    })}
+  `;
+}
+
+/*
+  Календарь внутри плитки: те же навигация, сетка и переход к месяцу и
+  году, что и в модальном окне, только без самого окна.
+*/
+function inlineCalendarHTML({
+  cursor,
+  selected,
+  jumpOpen,
+  jumpYear,
+  prefix
+}){
+  const [year,month]=
+    cursor.split("-").map(Number);
+
+  if(jumpOpen){
+    return `
+      <div class="inline-calendar">
+        <div class="inline-calendar-jump">
+          <div class="inline-calendar-jump-year">
+            <button
+              type="button"
+              class="date-calendar-nav"
+              data-${prefix}-jump-year="-1"
+              aria-label="Предыдущий год"
+              ${jumpYear<=MIN_YEAR?"disabled":""}
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M13 4L7 10L13 16"></path>
+              </svg>
+            </button>
+
+            <span>${jumpYear}</span>
+
+            <button
+              type="button"
+              class="date-calendar-nav"
+              data-${prefix}-jump-year="1"
+              aria-label="Следующий год"
+              ${jumpYear>=MAX_YEAR?"disabled":""}
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M7 4L13 10L7 16"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="date-jump-months">
+            ${calendarMonthsHTML(
+              jumpYear,
+              cursor,
+              `data-${prefix}-month`
+            )}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="inline-calendar">
+      <div class="date-calendar-head">
+        <button
+          type="button"
+          class="date-calendar-nav"
+          data-${prefix}-step="-1"
+          aria-label="Предыдущий месяц"
+          ${cursor===`${MIN_YEAR}-01`?"disabled":""}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M13 4L7 10L13 16"></path>
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          class="date-calendar-title"
+          data-${prefix}-jump="open"
+          aria-expanded="false"
+        >
+          ${MONTHS[month-1]} ${year}
+        </button>
+
+        <button
+          type="button"
+          class="date-calendar-nav"
+          data-${prefix}-step="1"
+          aria-label="Следующий месяц"
+          ${cursor===`${MAX_YEAR}-12`?"disabled":""}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M7 4L13 10L7 16"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="date-weekdays">
+        <span>Пн</span>
+        <span>Вт</span>
+        <span>Ср</span>
+        <span>Чт</span>
+        <span>Пт</span>
+        <span>Сб</span>
+        <span>Вс</span>
+      </div>
+
+      <div class="date-grid">
+        ${calendarDaysHTML(cursor,selected)}
+      </div>
+
+      <button
+        type="button"
+        class="date-today"
+        data-${prefix}-today="1"
+      >
+        Сегодня
+      </button>
+    </div>
+  `;
+}
+
+/*
+  Сетка дней одна и та же в модальном окне и в календаре, раскрытом
+  внутри плитки «Смена»: отличается только то, куда её кладут.
+*/
+function calendarDaysHTML(
+  cursor,
+  selected
+){
+  const [year,month]=
+    cursor.split("-").map(Number);
+
+  const firstDay=
+    new Date(year,month-1,1,12);
+
+  const mondayOffset=
+    (firstDay.getDay()+6)%7;
 
   const gridStart=new Date(
     year,
@@ -7029,7 +7361,7 @@ function drawDatePicker(){
 
     const ymd=localYMD(day);
     const outside=day.getMonth()!==month-1;
-    const selected=ymd===datePickerValue;
+    const isSelected=ymd===selected;
     const isToday=ymd===today;
     const outOfRange=day.getFullYear()<MIN_YEAR || day.getFullYear()>MAX_YEAR;
 
@@ -7038,7 +7370,7 @@ function drawDatePicker(){
         type="button"
         class="date-day
           ${outside?"outside":""}
-          ${selected?"on":""}
+          ${isSelected?"on":""}
           ${isToday?"today":""}
         "
         data-date="${ymd}"
@@ -7050,9 +7382,49 @@ function drawDatePicker(){
     `;
   }
 
+  return html;
+}
+
+function calendarMonthsHTML(
+  year,
+  selected,
+  attribute="data-calendar-month"
+){
+  return MONTHS
+    .map((month,index)=>{
+      const ym=
+        year+"-"+
+        String(index+1)
+          .padStart(2,"0");
+
+      return `
+        <button
+          type="button"
+          class="date-jump-month ${ym===selected?"on":""}"
+          ${attribute}="${ym}"
+        >
+          ${month}
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function drawDatePicker(){
+  const [year,month]=dateCalendarCursor.split("-").map(Number);
+
+  document.getElementById("datePickerMonth").textContent=
+    MONTHS[month-1]+" "+year;
+
+  document.getElementById("datePrev").disabled=dateCalendarCursor===`${MIN_YEAR}-01`;
+  document.getElementById("dateNext").disabled=dateCalendarCursor===`${MAX_YEAR}-12`;
+
   setHTML(
     document.getElementById("dateGrid"),
-    html
+    calendarDaysHTML(
+      dateCalendarCursor,
+      datePickerValue
+    )
   );
 }
 
@@ -7065,21 +7437,10 @@ function drawDateJump(){
 
   setHTML(
     document.getElementById("dateJumpMonths"),
-    MONTHS.map((month,index)=>{
-      const ym=
-        dateJumpYear+"-"+
-        String(index+1).padStart(2,"0");
-
-      return `
-        <button
-          type="button"
-          class="date-jump-month ${ym===dateJumpValue?"on":""}"
-          data-calendar-month="${ym}"
-        >
-          ${month}
-        </button>
-      `;
-    }).join("")
+    calendarMonthsHTML(
+      dateJumpYear,
+      dateJumpValue
+    )
   );
 }
 
@@ -7656,110 +8017,6 @@ function openChoicePicker({
   });
 }
 
-function openPointPicker(){
-  if(!draft) return;
-
-  openChoicePicker({
-    kind:"point",
-    value:draft.dbPointId,
-    title:"Выберите пункт",
-    searchable:true,
-    options:shiftPointOptions()
-      .map(point=>({
-        value:point.id,
-        label:
-          point.name+
-          (
-            point.active===false
-              ? " · в архиве"
-              : ""
-          ),
-        searchText:[
-          point.name,
-          point.code,
-          point.id
-        ].join(" ")
-      }))
-  });
-}
-
-function openEmployeePicker(){
-  if(!draft) return;
-
-  if(!draft.dbPointId){
-    toast(
-      "Сначала выберите ПВЗ",
-      2600
-    );
-
-    document
-      .getElementById(
-        "f-point-open"
-      )
-      ?.focus();
-
-    return;
-  }
-
-  openChoicePicker({
-    kind:"employee",
-    value:draft.employeeId,
-    title:"Выберите сотрудника",
-    searchable:true,
-    options:shiftEmployeeOptions()
-      .map(employee=>({
-        value:employee.id,
-        label:
-          employee.full_name+
-          (
-            employee.status==="inactive"
-              ? " · в архиве"
-              : ""
-          ),
-        searchText:[
-          employee.full_name,
-          employee.phone,
-          employee.transfer_phone,
-          employee.transfer_bank,
-          employee.transfer_recipient,
-          employeeAccountEmail(
-            employee
-          )
-        ].filter(Boolean).join(" ")
-      }))
-  });
-}
-
-function openStatsEmployeePicker(){
-  openChoicePicker({
-    kind:"stats-employee",
-    value:statsEmployeeId,
-    title:"Сотрудник",
-    searchable:true,
-    options:statsEmployeeOptions()
-      .map(employee=>({
-        value:employee.id,
-        label:
-          employee.full_name+
-          (
-            employee.status==="inactive"
-              ? " · архив"
-              : ""
-          ),
-        searchText:[
-          employee.full_name,
-          employee.phone,
-          employee.transfer_phone,
-          employee.transfer_bank,
-          employee.transfer_recipient,
-          employeeAccountEmail(
-            employee
-          )
-        ].filter(Boolean).join(" ")
-      }))
-  });
-}
-
 function closePointPicker(){
   const picker=document.getElementById("pointPicker");
   if(!picker.classList.contains("on") && picker.getAttribute("aria-hidden")==="true") return;
@@ -8147,6 +8404,7 @@ function drawSheet(isEdit){
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Часы</div><div class="t">${hoursWord(result.hours)}</div></div></div>
         ${fixed ? "" : `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Объём</div><div class="t">${nf(Number(draft.shk)||0)} ШК</div></div></div>`}
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Смена</div><div class="t">${money(result.base)}</div></div></div>
+        ${draft.baseOverrideReason ? `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Причина корректировки</div><div class="t">${esc(draft.baseOverrideReason)}</div></div></div>` : ""}
       </div>
       ${adjustmentReadOnlyHTML("Премии",draft.bonuses)}
       ${adjustmentReadOnlyHTML("Штрафы",draft.penalties,true)}
@@ -8175,18 +8433,78 @@ function drawSheet(isEdit){
     `
     <div class="ml">Смена</div>
     <div class="card">
-      <button type="button" class="row point-row" id="f-date-open">
+      <button
+        type="button"
+        class="row point-row"
+        id="f-date-open"
+        aria-expanded="${shiftInlineField==="date" ? "true" : "false"}"
+      >
         <div class="t">Дата</div>
         <div class="point-value">${esc(dateLabel(draft.date))}</div>
       </button>
-      <button type="button" class="row point-row" id="f-point-open">
+
+      ${fieldRevealHTML({
+        key:"shiftDateReveal",
+        open:shiftInlineField==="date",
+        body:inlineCalendarHTML({
+          cursor:
+            shiftDateCursor ||
+            draft.date.slice(0,7),
+          selected:draft.date,
+          jumpOpen:shiftDateJumpOpen,
+          jumpYear:
+            shiftDateJumpYear ||
+            Number(draft.date.slice(0,4)),
+          prefix:"shift-date"
+        })
+      })}
+
+      <button
+        type="button"
+        class="row point-row"
+        id="f-point-open"
+        aria-expanded="${shiftInlineField==="point" ? "true" : "false"}"
+      >
         <div class="t">Пункт</div>
         <div class="point-value">${esc(draft.point || "Выберите пункт")}</div>
       </button>
+
+      ${fieldRevealHTML({
+        key:"shiftPointReveal",
+        open:shiftInlineField==="point",
+        body:inlineChoiceHTML({
+          options:shiftPointOptions()
+            .map(point=>({
+              value:point.id,
+              label:
+                point.name+
+                (
+                  point.active===false
+                    ? " · в архиве"
+                    : ""
+                ),
+              searchText:[
+                point.name,
+                point.code,
+                point.id
+              ].join(" ")
+            })),
+          value:draft.dbPointId,
+          attribute:"data-shift-point",
+          searchId:"shiftPointSearch",
+          searchQuery:
+            shiftInlineField==="point"
+              ? shiftInlineQuery
+              : "",
+          searchLabel:"Поиск пункта"
+        })
+      })}
+
       <button
         type="button"
         class="row point-row shift-employee-row"
         id="f-employee-open"
+        aria-expanded="${shiftInlineField==="employee" ? "true" : "false"}"
       >
         <div class="t">Сотрудник</div>
         <div class="point-value">
@@ -8200,6 +8518,43 @@ function drawSheet(isEdit){
           )}
         </div>
       </button>
+
+      ${fieldRevealHTML({
+        key:"shiftEmployeeReveal",
+        open:shiftInlineField==="employee",
+        body:inlineChoiceHTML({
+          options:shiftEmployeeOptions()
+            .map(employee=>({
+              value:employee.id,
+              label:
+                employee.full_name+
+                (
+                  employee.status==="inactive"
+                    ? " · в архиве"
+                    : ""
+                ),
+              searchText:[
+                employee.full_name,
+                employee.phone,
+                employee.transfer_phone,
+                employee.transfer_bank,
+                employee.transfer_recipient,
+                employeeAccountEmail(
+                  employee
+                )
+              ].filter(Boolean).join(" ")
+            })),
+          value:draft.employeeId,
+          attribute:"data-shift-employee",
+          searchId:"shiftEmployeeSearch",
+          searchQuery:
+            shiftInlineField==="employee"
+              ? shiftInlineQuery
+              : "",
+          searchLabel:"Поиск сотрудника"
+        })
+      })}
+
       ${fixed ? "" : `
         <label class="row">
           <div class="t">ШК</div>
@@ -8215,42 +8570,65 @@ function drawSheet(isEdit){
     </div></div>
 
     <div class="ml">Отработано</div>
-    <div class="card">
+    <div class="card reveal-box">
       <div class="segbox"><div class="seg">
         <button type="button" data-part="0" class="${!draft.partial?"on":""}">Полная смена</button>
         <button type="button" data-part="1" class="${draft.partial?"on":""}">Неполная смена</button>
       </div></div>
-      ${draft.partial?`<label class="row"><div class="t">Часов</div><input type="text" inputmode="decimal" id="f-hours" min="0.5" max="${FULL_HOURS-0.5}" step="0.5" value="${esc(draft.hours==="" ? "" : String(draft.hours).replace(".",","))}" placeholder="0" aria-label="Часов" autocomplete="off"></label>`:""}
+
+      ${fieldRevealHTML({
+        key:"shiftHoursReveal",
+        open:draft.partial,
+        body:`
+          <label class="row">
+            <div class="t">Часов</div>
+            <input type="text" inputmode="decimal" id="f-hours" min="0.5" max="${FULL_HOURS-0.5}" step="0.5" value="${esc(draft.hours==="" ? "" : String(draft.hours).replace(".",","))}" placeholder="0" aria-label="Часов" autocomplete="off">
+          </label>
+        `
+      })}
     </div>
 
     <div class="ml">Оплата</div>
-    <div class="card segbox payment-mode-box">
-      <div class="seg">
-        <button
-          type="button"
-          data-pay-mode="tariff"
-          class="${manualPayment ? "" : "on"}"
-        >
-          По тарифу
-        </button>
-        <button
-          type="button"
-          data-pay-mode="manual"
-          class="${manualPayment ? "on" : ""}"
-        >
-          Корректировка оклада
-        </button>
+    <div class="card reveal-box payment-mode-box">
+      <div class="segbox">
+        <div class="seg">
+          <button
+            type="button"
+            data-pay-mode="tariff"
+            class="${manualPayment ? "" : "on"}"
+          >
+            По тарифу
+          </button>
+          <button
+            type="button"
+            data-pay-mode="manual"
+            class="${manualPayment ? "on" : ""}"
+          >
+            Корректировка оклада
+          </button>
+        </div>
       </div>
+
+      ${fieldRevealHTML({
+        key:"shiftPaymentReveal",
+        open:manualPayment,
+        body:`
+          <label class="row">
+            <div class="t">За смену</div>
+            <input type="text" inputmode="decimal" id="f-base-override" value="${esc(draft.baseOverride==="" ? "" : String(draft.baseOverride).replace(".",","))}" placeholder="0" aria-label="Фактическая оплата за смену" autocomplete="off">
+          </label>
+
+          <label class="row shift-note-row">
+            <input type="text" class="shift-note-input" id="f-base-reason" value="${esc(draft.baseOverrideReason || "")}" placeholder="Причина корректировки" aria-label="Причина корректировки оклада" autocomplete="off">
+          </label>
+
+          <div class="field-reveal-note">
+            Причина относится только к корректировке оклада и не заменяет
+            комментарий к смене.
+          </div>
+        `
+      })}
     </div>
-    ${manualPayment ? `
-      <div class="card payment-override-card">
-        <label class="row">
-          <div class="t">За смену</div>
-          <input type="text" inputmode="decimal" id="f-base-override" value="${esc(draft.baseOverride==="" ? "" : String(draft.baseOverride).replace(".",","))}" placeholder="0" aria-label="Оплата за смену" autocomplete="off">
-        </label>
-      </div>
-      <div class="note">Укажите фактическую сумму за смену, а причину — в комментарии.</div>
-    ` : ""}
 
     <div class="ml">Премии</div>
     ${adjustmentEditorHTML("bonuses",draft.bonuses)}
@@ -8304,6 +8682,11 @@ function readForm(){
       value===""
         ? ""
         : value.replace(",",".");
+  }
+
+  if(get("f-base-reason")){
+    draft.baseOverrideReason=
+      get("f-base-reason").value;
   }
 
   if(get("f-note")){
@@ -8467,14 +8850,20 @@ function validateDraft(value){
 
     const result=previewCalc(value);
 
+    /*
+      Причина относится к самой корректировке: комментарий смены остаётся
+      свободным полем и больше не обязан её объяснять.
+    */
     if(
       value.baseOverride!=="" &&
       result.baseOverridden &&
-      !String(value.note || "").trim()
+      !String(
+        value.baseOverrideReason || ""
+      ).trim()
     ){
       return {
-        message:"Укажите причину изменения оплаты в комментарии к смене",
-        fieldId:"f-note"
+        message:"Укажите причину корректировки оклада",
+        fieldId:"f-base-reason"
       };
     }
 
@@ -8533,6 +8922,10 @@ function normalizedDraft(value){
       value.baseOverride===""
         ? ""
         : Number(value.baseOverride),
+    baseOverrideReason:
+      String(
+        value.baseOverrideReason || ""
+      ).trim(),
     note:String(value.note || "").trim(),
     bonuses:value.bonuses.map(item=>({
       ...item,
@@ -12274,20 +12667,212 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
 
   const isEdit=shifts.some(x=>x.id===draft.id);
 
-  if(t.id==="f-date-open"){
-    openDatePicker();
+  /*
+    Раскрытие строки — такая же правка черновика, как ввод в поле: перед
+    перерисовкой введённое надо забрать, иначе оно потеряется.
+  */
+  if(
+    [
+      "f-date-open",
+      "f-point-open",
+      "f-employee-open"
+    ].includes(t.id)
+  ){
+    readForm();
+
+    const field=
+      t.id==="f-date-open"
+        ? "date"
+        : t.id==="f-point-open"
+          ? "point"
+          : "employee";
+
+    if(
+      field==="employee" &&
+      shiftInlineField!=="employee" &&
+      !draft.dbPointId
+    ){
+      toast(
+        "Сначала выберите ПВЗ",
+        2600
+      );
+
+      document
+        .getElementById("f-point-open")
+        ?.focus();
+
+      return;
+    }
+
+    const opening=
+      shiftInlineField!==field;
+
+    shiftInlineField=
+      opening ? field : null;
+    shiftInlineQuery="";
+    shiftDateJumpOpen=false;
+
+    if(field==="date" && opening){
+      shiftDateCursor=
+        draft.date.slice(0,7);
+      shiftDateJumpYear=
+        Number(draft.date.slice(0,4));
+    }
+
+    drawSheet(isEdit);
+
+    if(opening && field!=="date"){
+      focusInlineSearch(
+        field==="point"
+          ? "shiftPointSearch"
+          : "shiftEmployeeSearch"
+      );
+    }
+
     return;
   }
 
-  if(t.id==="f-employee-open"){
+  if(t.dataset.shiftPoint){
     readForm();
-    openEmployeePicker();
+
+    const wasFixed=
+      previewCalc(draft).fixed;
+
+    const point=
+      teamData.points.find(
+        item=>
+          item.id===t.dataset.shiftPoint
+      );
+
+    if(!point){
+      return;
+    }
+
+    const pointChanged=
+      draft.dbPointId!==point.id;
+
+    draft.dbPointId=point.id;
+    draft.pointId=
+      point.code || point.id;
+    draft.point=point.name;
+
+    if(pointChanged){
+      draft.employeeId="";
+      draft.employeeName="";
+    }
+
+    const nowFixed=
+      previewCalc(draft).fixed;
+
+    if(nowFixed){
+      draft.shk=0;
+    }else if(wasFixed){
+      draft.shk="";
+    }
+
+    resetShiftInline();
+    drawSheet(isEdit);
+    saveUIState();
     return;
   }
 
-  if(t.id==="f-point-open"){
+  if(t.dataset.shiftEmployee){
     readForm();
-    openPointPicker();
+
+    const employee=
+      shiftEmployeeOptions()
+        .find(
+          item=>
+            item.id===
+            t.dataset.shiftEmployee
+        );
+
+    if(!employee){
+      return;
+    }
+
+    draft.employeeId=employee.id;
+    draft.employeeName=
+      employee.full_name;
+
+    resetShiftInline();
+    drawSheet(isEdit);
+    saveUIState();
+    return;
+  }
+
+  if(t.dataset.shiftDateStep){
+    /* shiftMonth уже держит курсор в границах MIN_YEAR..MAX_YEAR. */
+    shiftDateCursor=
+      shiftMonth(
+        shiftDateCursor ||
+          draft.date.slice(0,7),
+        Number(t.dataset.shiftDateStep)
+      );
+
+    drawSheet(isEdit);
+    return;
+  }
+
+  if(t.dataset.shiftDateJump){
+    shiftDateJumpOpen=true;
+    shiftDateJumpYear=Number(
+      (
+        shiftDateCursor ||
+        draft.date.slice(0,7)
+      ).slice(0,4)
+    );
+
+    drawSheet(isEdit);
+    return;
+  }
+
+  if(t.dataset.shiftDateJumpYear){
+    shiftDateJumpYear=Math.min(
+      MAX_YEAR,
+      Math.max(
+        MIN_YEAR,
+        shiftDateJumpYear+
+          Number(t.dataset.shiftDateJumpYear)
+      )
+    );
+
+    drawSheet(isEdit);
+    return;
+  }
+
+  if(t.dataset.shiftDateMonth){
+    shiftDateCursor=
+      t.dataset.shiftDateMonth;
+    shiftDateJumpOpen=false;
+
+    drawSheet(isEdit);
+    return;
+  }
+
+  if(t.dataset.shiftDateToday){
+    const today=localYMD();
+
+    shiftDateCursor=today.slice(0,7);
+    shiftDateJumpOpen=false;
+
+    readForm();
+    draft.date=today;
+    resetShiftInline();
+    drawSheet(isEdit);
+    saveUIState();
+    return;
+  }
+
+  if(
+    t.dataset.date &&
+    shiftInlineField==="date"
+  ){
+    readForm();
+    draft.date=t.dataset.date;
+    resetShiftInline();
+    drawSheet(isEdit);
+    saveUIState();
     return;
   }
 
@@ -12372,7 +12957,9 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
       draft.baseOverrideMode===
         "tariff"
     ){
+      /* Причина объясняла расхождение, которого больше нет. */
       draft.baseOverride="";
+      draft.baseOverrideReason="";
     }
 
     drawSheet(isEdit);
@@ -12542,132 +13129,189 @@ document
     closePointPicker();
   };
 
+/*
+  Из модального окна остался один выбор — фильтр ПВЗ в «Управлении». Дата,
+  пункт и сотрудник смены раскрываются внутри своей карточки и сюда уже не
+  приходят.
+*/
 function applyPointPickerValue(){
-    if(pointPickerKind==="manage-point-filter"){
-      if(
-        ![
-          "all",
-          "advance",
-          "regular"
-        ].includes(pointPickerValue)
-      ){
-        return;
-      }
+  if(pointPickerKind!=="manage-point-filter"){
+    return;
+  }
 
-      pointAdvanceFilter=
-        pointPickerValue;
+  if(
+    ![
+      "all",
+      "advance",
+      "regular"
+    ].includes(pointPickerValue)
+  ){
+    return;
+  }
 
-      closePointPicker();
-      render();
-      return;
-    }
+  pointAdvanceFilter=pointPickerValue;
 
-    if(pointPickerKind==="stats-employee"){
-      if(!pointPickerValue){
-        return;
-      }
-
-      statsEmployeeId=
-        pointPickerValue;
-
-      closePointPicker();
-      saveUIState();
-      render();
-      return;
-    }
-
-    if(
-      !draft ||
-      !pointPickerValue
-    ){
-      return;
-    }
-
-    if(pointPickerKind==="employee"){
-      const employee=
-        shiftEmployeeOptions()
-          .find(
-            item=>
-              item.id===
-              pointPickerValue
-          );
-
-      if(!employee){
-        return;
-      }
-
-      readForm();
-
-      draft.employeeId=
-        employee.id;
-      draft.employeeName=
-        employee.full_name;
-
-      closePointPicker();
-
-      drawSheet(
-        shifts.some(
-          item=>
-            item.id===draft.id
-        )
-      );
-      saveUIState();
-      return;
-    }
-
-    const wasFixed=
-      previewCalc(draft).fixed;
-
-    readForm();
-
-    const point=
-      teamData.points.find(
-        item=>
-          item.id===pointPickerValue
-      );
-
-    if(!point){
-      return;
-    }
-
-    const pointChanged=
-      draft.dbPointId!==point.id;
-
-    draft.dbPointId=point.id;
-    draft.pointId=
-      point.code || point.id;
-    draft.point=point.name;
-
-    if(pointChanged){
-      draft.employeeId="";
-      draft.employeeName="";
-    }
-
-    const nowFixed=
-      previewCalc(draft).fixed;
-
-    if(nowFixed){
-      draft.shk=0;
-    }else if(wasFixed){
-      draft.shk="";
-    }
-
-    closePointPicker();
-
-    const isEdit=
-      shifts.some(
-        x=>x.id===draft.id
-      );
-
-    drawSheet(isEdit);
-    saveUIState();
+  closePointPicker();
+  render();
 }
 
 document
   .getElementById("pointDone")
   .onclick=applyPointPickerValue;
 
+/*
+  Календарь внутри плитки листается теми же жестами, что и в модальном
+  окне: трекпадом и горизонтальным касанием. Без этого раскрытие внутри
+  карточки отняло бы у даты способ, который уже был.
+*/
+const inlineDateWheel=
+  createWheelGesture({distance:42});
+
+function stepInlineDate(direction){
+  if(!draft || shiftInlineField!=="date"){
+    return;
+  }
+
+  shiftDateCursor=
+    shiftMonth(
+      shiftDateCursor ||
+        draft.date.slice(0,7),
+      direction
+    );
+
+  drawSheet(
+    shifts.some(
+      item=>item.id===draft.id
+    )
+  );
+}
+
+function inlineCalendarGrid(target){
+  return target?.closest?.(
+    ".inline-calendar .date-grid"
+  );
+}
+
+document
+  .getElementById("sheetBody")
+  .addEventListener(
+    "wheel",
+    event=>{
+      if(!inlineCalendarGrid(event.target)){
+        return;
+      }
+
+      const {direction,claim}=
+        inlineDateWheel.push({
+          deltaX:event.deltaX,
+          deltaY:event.deltaY,
+          now:performance.now()
+        });
+
+      if(!claim){
+        return;
+      }
+
+      if(event.cancelable){
+        event.preventDefault();
+      }
+
+      event.stopPropagation();
+
+      if(direction){
+        stepInlineDate(direction);
+      }
+    },
+    {passive:false}
+  );
+
+let inlineDateTouch=null;
+
+document
+  .getElementById("sheetBody")
+  .addEventListener(
+    "touchstart",
+    event=>{
+      if(
+        event.touches.length!==1 ||
+        !inlineCalendarGrid(event.target)
+      ){
+        inlineDateTouch=null;
+        return;
+      }
+
+      inlineDateTouch={
+        x:event.touches[0].clientX,
+        y:event.touches[0].clientY,
+        settled:false
+      };
+    },
+    {passive:true}
+  );
+
+document
+  .getElementById("sheetBody")
+  .addEventListener(
+    "touchmove",
+    event=>{
+      if(
+        !inlineDateTouch ||
+        inlineDateTouch.settled ||
+        event.touches.length!==1
+      ){
+        return;
+      }
+
+      const dx=
+        event.touches[0].clientX-
+        inlineDateTouch.x;
+
+      const dy=
+        event.touches[0].clientY-
+        inlineDateTouch.y;
+
+      /*
+        Вертикаль принадлежит прокрутке формы: месяц листается, только
+        когда горизонталь уверенно её перевешивает.
+      */
+      if(
+        Math.abs(dx)<44 ||
+        Math.abs(dx)<=Math.abs(dy)*1.2
+      ){
+        return;
+      }
+
+      inlineDateTouch.settled=true;
+      stepInlineDate(dx>0 ? -1 : 1);
+    },
+    {passive:true}
+  );
+
+document
+  .getElementById("sheetBody")
+  .addEventListener(
+    "touchend",
+    ()=>{
+      inlineDateTouch=null;
+    },
+    {passive:true}
+  );
+
 document.getElementById("sheetBody").addEventListener("input",e=>{
+  if(
+    e.target.id==="shiftPointSearch" ||
+    e.target.id==="shiftEmployeeSearch"
+  ){
+    shiftInlineQuery=e.target.value;
+
+    drawSheet(
+      shifts.some(
+        item=>item.id===draft?.id
+      )
+    );
+    return;
+  }
+
   if(e.target.id==="f-hours"){
     const maxHours=
       FULL_HOURS-0.5;
@@ -12888,9 +13532,16 @@ app.addEventListener(
       ![
         "employeeSearch",
         "pointSearch",
-        "shiftSearch"
+        "shiftSearch",
+        "statsEmployeeSearch"
       ].includes(event.target.id)
     ){
+      return;
+    }
+
+    if(event.target.id==="statsEmployeeSearch"){
+      statsEmployeeQuery=event.target.value;
+      render();
       return;
     }
 
@@ -12918,7 +13569,26 @@ app.addEventListener("click",async event=>{
   if(!button) return;
 
   if(button.id==="statsEmployeeOpen"){
-    openStatsEmployeePicker();
+    statsEmployeeOpen=!statsEmployeeOpen;
+    statsEmployeeQuery="";
+    render();
+
+    if(statsEmployeeOpen){
+      focusInlineSearch(
+        "statsEmployeeSearch"
+      );
+    }
+
+    return;
+  }
+
+  if(button.dataset.statsEmployee){
+    statsEmployeeId=
+      button.dataset.statsEmployee;
+    statsEmployeeOpen=false;
+    statsEmployeeQuery="";
+    saveUIState();
+    render();
     return;
   }
 

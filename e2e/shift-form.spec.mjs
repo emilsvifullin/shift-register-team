@@ -18,26 +18,25 @@ test.use({
   удалённой строки, не должен попасть в сохранённую смену.
 */
 
+/*
+  Пункт и сотрудник выбираются внутри самой карточки «Смена»: строка
+  раскрывается, список появляется под ней, выбор её же и сворачивает.
+*/
 async function choose(page,opener,value){
-  await page.locator(opener).click();
+  const row=page.locator(opener);
+  const attribute=
+    opener==="#f-point-open"
+      ? "data-shift-point"
+      : "data-shift-employee";
 
-  await expect(
-    page.locator("#pointPicker")
-  ).toHaveClass(/\bon\b/);
+  await row.click();
+  await expect(row).toHaveAttribute("aria-expanded","true");
 
   await page
-    .locator(`#pointList [data-picker-value="${value}"]`)
+    .locator(`[${attribute}="${value}"]`)
     .click();
 
-  if(
-    await page.locator("#pointPicker.on #pointDone").isVisible()
-  ){
-    await page.locator("#pointDone").click();
-  }
-
-  await expect(
-    page.locator("#pointPicker")
-  ).not.toHaveClass(/\bon\b/);
+  await expect(row).toHaveAttribute("aria-expanded","false");
 }
 
 async function openNewShift(page){

@@ -17,6 +17,7 @@ const read=
     );
 
 
+/* Тот же порядок, в котором их подключает index.html. */
 const STYLE_FILES=Object.freeze([
   "styles.css",
   "styles/accessibility.css",
@@ -24,7 +25,13 @@ const STYLE_FILES=Object.freeze([
   "styles/workflow.css",
   "styles/auth.css",
   "styles/platform.css",
-  "styles/refinement.css"
+  "styles/refinement.css",
+  "styles/interaction-core.css",
+  "styles/management.css",
+  "styles/motion-reference.css",
+  "styles/modal-motion-exact.css",
+  "styles/interaction.css",
+  "styles/inline-fields.css"
 ]);
 
 const readStyles=async()=>
@@ -682,19 +689,80 @@ test(
       /function updateShiftList\(\)\{[\s\S]*requestAnimationFrame\(\s*fitShiftWindow\s*\);/
     );
 
+    /*
+      Служебные data-атрибуты полю проставляет рантайм, и «личность» узла
+      они не описывают: иначе живое поле всегда отличалось бы от своей
+      разметки и теряло фокус после первой же буквы.
+    */
+    const patch=
+      await read(
+        "src/render/dom-patch.js"
+      );
+
+    assert.match(
+      patch,
+      /function identity\(element\)[\s\S]*RUNTIME_FIELD_ATTRIBUTES\.has\(name\)[\s\S]*continue;/
+    );
+
+    /*
+      Выбор сотрудника, ПВЗ и даты раскрывается внутри своей плитки, а не
+      отдельным окном снизу. Поиск при этом никуда не делся: сотрудника
+      по-прежнему можно найти в том числе по почте аккаунта.
+    */
     assert.match(
       app,
-      /function openStatsEmployeePicker\(\)[\s\S]*searchable:true[\s\S]*employeeAccountEmail/
+      /statsEmployeeReveal[\s\S]*inlineChoiceHTML\([\s\S]*employeeAccountEmail/
     );
 
     assert.match(
       app,
-      /function openPointPicker\(\)[\s\S]*searchable:true/
+      /shiftPointReveal[\s\S]*inlineChoiceHTML\(/
     );
 
     assert.match(
       app,
-      /function openEmployeePicker\(\)[\s\S]*searchable:true/
+      /shiftEmployeeReveal[\s\S]*inlineChoiceHTML\([\s\S]*employeeAccountEmail/
+    );
+
+    assert.match(
+      app,
+      /shiftDateReveal[\s\S]*inlineCalendarHTML\(/
+    );
+
+    /*
+      Раскрытое продолжение остаётся в разметке и в свёрнутом виде: иначе
+      сворачивать было бы нечего и вниз уезжала бы пустая коробка. От
+      фокуса его закрывает inert.
+    */
+    const revealModule=
+      await read(
+        "src/field-reveal.js"
+      );
+
+    assert.match(
+      revealModule,
+      /grid-template-rows/
+    );
+
+    assert.match(
+      revealModule,
+      /open \? "" : "inert"[\s\S]*\$\{body\}/
+    );
+
+    assert.match(
+      styles,
+      /\.field-reveal\{[\s\S]*grid-template-rows:0fr;[\s\S]*transition:grid-template-rows/
+    );
+
+    assert.match(
+      styles,
+      /\.field-reveal\.on\{\s*grid-template-rows:1fr;/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /openStatsEmployeePicker|openEmployeePicker|openPointPicker/,
+      "выбор больше не уходит в отдельное модальное окно"
     );
 
     assert.match(
@@ -1594,6 +1662,11 @@ test(
         "supabase/migrations/20260825110804_support_manual_shift_pay.sql"
       );
 
+    const reasonMigration=
+      await read(
+        "supabase/migrations/20260921030000_shift_base_amount_reason.sql"
+      );
+
     const team=
       await readTeamApi();
 
@@ -1627,9 +1700,49 @@ test(
       /pricing_snapshot\s*=/
     );
 
+    /*
+      Причина корректировки — собственное поле смены: её требует v3, а
+      возврат к тарифу её снимает, потому что объяснять больше нечего.
+    */
+    assert.match(
+      reasonMigration,
+      /add column if not exists base_amount_override_reason text/
+    );
+
+    assert.match(
+      reasonMigration,
+      /admin_save_shift_v3[\s\S]*security definer[\s\S]*set search_path = ''/
+    );
+
+    assert.match(
+      reasonMigration,
+      /shift_base_amount_reason_required/
+    );
+
+    assert.match(
+      reasonMigration,
+      /v_reason := null;[\s\S]*v_effective_base := v_calculated_base;/
+    );
+
+    assert.match(
+      reasonMigration,
+      /revoke all on function public\.admin_save_shift_v3[\s\S]*from public, anon/
+    );
+
+    assert.doesNotMatch(
+      reasonMigration,
+      /pricing_snapshot\s*=/
+    );
+
     assert.match(
       team,
-      /\.rpc\(\s*"admin_save_shift_v2"[\s\S]*p_base_amount_override/
+      /p_base_amount_override[\s\S]*p_base_amount_reason[\s\S]*\.rpc\(\s*"admin_save_shift_v3"/
+    );
+
+    /* Старая база остаётся рабочей, пока миграция не применена. */
+    assert.match(
+      team,
+      /missingFunction\(result\.error\)[\s\S]*"admin_save_shift_v2"/
     );
 
     assert.match(
@@ -1637,14 +1750,28 @@ test(
       /data-pay-mode="tariff"[\s\S]*По тарифу[\s\S]*data-pay-mode="manual"[\s\S]*Корректировка оклада/
     );
 
+    /*
+      Сумма и причина корректировки раскрываются внутри плитки «Оплата», а
+      причина больше не занимает общий комментарий смены.
+    */
     assert.match(
       app,
-      /manualPayment \? `[\s\S]*id="f-base-override"[\s\S]*Укажите фактическую сумму за смену, а причину — в комментарии/
+      /shiftPaymentReveal[\s\S]*id="f-base-override"[\s\S]*id="f-base-reason"/
     );
 
     assert.match(
       app,
-      /draft\.baseOverrideMode=[\s\S]*t\.dataset\.payMode[\s\S]*draft\.baseOverride="";/
+      /baseOverrideReason[\s\S]*fieldId:"f-base-reason"/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /Укажите причину изменения оплаты в комментарии к смене/
+    );
+
+    assert.match(
+      app,
+      /draft\.baseOverrideMode=[\s\S]*t\.dataset\.payMode[\s\S]*draft\.baseOverride="";\s*draft\.baseOverrideReason="";/
     );
   }
 );

@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="1d0e23899bf81adbbaed18315a7603940092940f713df330e16218b8c40226a2";
+const SHELL_FINGERPRINT="da64e16b0fbdf317f03f578482fe02fb37620bb98eb8ffe68907b82ae7d0d071";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -60,6 +60,7 @@ const STYLES=[
   "./styles/management.css",
   "./styles/motion-reference.css",
   "./styles/modal-motion-exact.css",
+  "./styles/inline-fields.css",
   "./styles/interaction.css"
 ];
 
@@ -76,6 +77,7 @@ const SCRIPTS=[
   "./src/auth.js",
   "./src/config.js",
   "./src/domain.js",
+  "./src/field-reveal.js",
   "./src/format.js",
   "./src/interactions.js",
   "./src/login.js",

@@ -162,9 +162,24 @@ function applyFormSignature(target,source,previous){
 function identity(element){
   const parts=[element.nodeName];
   const attributes=element.attributes;
+  const field=VALUE_TAGS.has(element.nodeName);
 
   for(let index=0;index<attributes.length;index++){
     const {name,value}=attributes[index];
+
+    /*
+      Служебные data-атрибуты полю проставляет рантайм, а не разметка, и
+      снимать их отрисовка не вправе. Значит, и «личность» поля они не
+      описывают: иначе живой узел всегда отличался бы от своей же
+      разметки, и поле теряло бы фокус на каждой перерисовке — набирать в
+      нём с фильтрацией по ходу ввода было невозможно.
+    */
+    if(
+      field &&
+      RUNTIME_FIELD_ATTRIBUTES.has(name)
+    ){
+      continue;
+    }
 
     if(
       name===KEY_ATTRIBUTE ||

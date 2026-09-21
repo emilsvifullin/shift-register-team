@@ -171,7 +171,11 @@ supabase db push --linked
 ```
 
 `supabase migration list` shows both sides; the remote side is the one
-that counts. The column added by `20260921030000_shift_base_amount_reason`
+that counts. A migration that *tightens* what the database accepts — a new
+constraint, a stricter check — breaks the shell that is still live, so it
+goes out the other way round only when the old and new payloads are both
+accepted in between; otherwise the two are applied back to back and the
+narrow window is a deliberate choice, not an oversight. The column added by `20260921030000_shift_base_amount_reason`
 shipped in the shell before it existed in the database, and every screen
 failed with `column shifts.base_amount_override_reason does not exist`
 until the migration was applied.

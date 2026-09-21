@@ -1776,6 +1776,84 @@ test(
   }
 );
 
+/*
+  Тариф по ШК конечен: ставка не действует выше последней границы.
+*/
+test(
+  "shk tariff bounds are finite on both sides of the wire",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260921120000_bounded_shk_tariff_tiers.sql"
+      );
+
+    const team=
+      await readTeamApi();
+
+    const domain=
+      await read("src/team-domain.js");
+
+    const app=
+      await read("src/app.js");
+
+    /* Старые записи с открытым хвостом читаются и дальше. */
+    assert.match(
+      migration,
+      /v_index = v_count and[\s\S]*jsonb_typeof\(v_item -> 'up_to'\) = 'null'[\s\S]*continue;/
+    );
+
+    /* Новая запись обязана закончиться числом. */
+    assert.match(
+      migration,
+      /point_tariffs_shk_tiers_bounded[\s\S]*= 'number'[\s\S]*not valid/
+    );
+
+    assert.doesNotMatch(
+      migration,
+      /final_shk_tier_must_be_open/
+    );
+
+    /* Сохранение из приложения открытый хвост не пропускает. */
+    assert.match(
+      app,
+      /normalizeShkTiers\(\s*manageEditorDraft\.tiers,\s*\{allowOpenTail:false\}/
+    );
+
+    /* Новый тариф не подставляет границ, которых никто не задавал. */
+    assert.match(
+      domain,
+      /allowOpenTail=true/
+    );
+
+    assert.match(
+      app,
+      /function defaultTariffTiers\(\)\{\s*return \[\{up_to:"",rate:""\}\];/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /up_to:350,rate:3000/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /tariff-tier-open/,
+      "строки «Без границы» в редакторе тарифа больше нет"
+    );
+
+    /* Выше последней границы — отказ с числом, а не последняя ставка. */
+    assert.match(
+      domain,
+      /shk_above_last_tier/
+    );
+
+    assert.match(
+      team,
+      /tariff_rate_not_found:/
+    );
+  }
+);
+
 test(
   "penalty payout targeting is nullable, validated and saved atomically",
   async()=>{

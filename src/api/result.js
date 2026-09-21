@@ -13,6 +13,10 @@ const ERROR_MESSAGES=Object.freeze({
     "Этот ПВЗ не назначен сотруднику",
   tariff_not_found_for_date:
     "Для выбранного ПВЗ и даты тариф не найден",
+  tariff_rate_not_found:
+    "Для этого объёма ШК ставка в тарифе не задана. Дополните тариф ПВЗ.",
+  point_tariffs_shk_tiers_bounded:
+    "Укажите верхнюю границу ШК для последней строки тарифа",
   account_already_linked:
     "Этот аккаунт уже привязан к другому сотруднику",
   employee_account_required:

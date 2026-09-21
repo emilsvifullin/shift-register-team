@@ -87,7 +87,8 @@ import {
 } from "./wheel-gesture.js";
 
 import {
-  fieldRevealHTML
+  fieldRevealHTML,
+  REVEAL_DURATION
 } from "./field-reveal.js";
 
 import {
@@ -186,7 +187,25 @@ function resetShiftInline(){
   shiftInlineField=null;
   shiftInlineQuery="";
   shiftDateJumpOpen=false;
+  adjustmentEntering.clear();
+  adjustmentLeaving.clear();
 }
+
+/*
+  Премии и штрафы появляются и исчезают тем же раскрытием, что и
+  продолжения плиток.
+
+  Переходное состояние держится по идентификатору строки, а не флагом
+  внутри самой записи: черновик целиком уходит в сохранение и посимвольно
+  сравнивается с исходным, когда приложение решает, были ли правки, —
+  служебный флаг в записи попал бы и туда, и в базу.
+
+  Добавленная строка рисуется свёрнутой и раскрывается следующим кадром.
+  Удаляемая сначала сворачивается и только после перехода уходит из
+  черновика: иначе сворачивать было бы нечего.
+*/
+const adjustmentEntering=new Set();
+const adjustmentLeaving=new Set();
 let storageRevision=null;
 let loadError=null;
 let sheetPreviousFocus=null;
@@ -2277,7 +2296,6 @@ function viewStats(){
                   })),
               value:statsEmployeeId,
               attribute:"data-stats-employee",
-              caption:"Выберите сотрудника",
               searchId:"statsEmployeeSearch",
               searchQuery:statsEmployeeQuery,
               searchLabel:"Поиск сотрудника"
@@ -4007,21 +4025,16 @@ function openManagePointFilterPicker(){
   });
 }
 
-function defaultTariffTiers(){
-  const existing=
-    teamData.tariffs.find(
-      tariff=>
-        tariff.pricing_type===
-        "shk_tiers"
-    )?.shk_tiers;
+/*
+  Новый тариф начинается с одной пустой строки.
 
-  return (existing || [
-    {up_to:350,rate:3000},
-    {up_to:450,rate:3500},
-    {up_to:550,rate:4500},
-    {up_to:650,rate:5500},
-    {up_to:null,rate:6500}
-  ]).map(tier=>({...tier}));
+  Раньше он подставлял границы чужого ПВЗ, а если их не было — набор
+  350/450/550/650 из старой конфигурации. Менеджер получал готовую
+  сетку, которую не задавал, и достаточно было не заметить лишнюю
+  строку, чтобы ПВЗ начал считать по чужим ставкам.
+*/
+function defaultTariffTiers(){
+  return [{up_to:"",rate:""}];
 }
 
 function readManageEditor(){
@@ -4107,38 +4120,35 @@ function rowKey(item){
   return rowKeys.get(item);
 }
 
+/*
+  Каждая строка тарифа заканчивается числом, включая последнюю: строки
+  «Без границы» больше нет. Нули в полях — подсказка о том, что сюда
+  вводят значение, а не заранее принятое решение.
+*/
 function tierEditorHTML(tiers){
   /*
     Место под кнопку удаления держится, только пока строки можно удалять:
     иначе поля «ШК до» и «Ставка» без всякой причины уже остальной формы.
   */
-  const removable=tiers.length>2;
+  const removable=tiers.length>1;
 
-  return tiers.map((tier,index)=>{
-    const final=index===tiers.length-1;
-
-    return `
+  return tiers.map((tier,index)=>`
       <div class="row tariff-tier" data-key="tier-${rowKey(tier)}" data-tier-index="${index}">
         <div class="tariff-tier-fields">
           <label class="tariff-tier-field">
-            <span>${final ? "Диапазон" : "ШК до"}</span>
-            ${final ? `
-              <strong class="tariff-tier-open">Без границы</strong>
-            ` : `
-              <input type="number" inputmode="numeric" data-tier-limit value="${esc(tier.up_to)}" min="1" step="1" aria-label="ШК до">
-            `}
+            <span>ШК до</span>
+            <input type="number" inputmode="numeric" data-tier-limit value="${esc(tier.up_to ?? "")}" min="1" step="1" placeholder="0" aria-label="ШК до">
           </label>
           <label class="tariff-tier-field">
             <span>Ставка, ₽</span>
-            <input type="text" inputmode="decimal" data-tier-rate value="${esc(tier.rate)}" aria-label="Ставка">
+            <input type="text" inputmode="decimal" data-tier-rate value="${esc(tier.rate ?? "")}" placeholder="0" aria-label="Ставка">
           </label>
         </div>
-        ${removable ? (!final ? `
+        ${removable ? `
           <button type="button" class="tariff-tier-remove" data-tier-remove="${index}" aria-label="Удалить границу">×</button>
-        ` : `<span class="tariff-tier-remove-space" aria-hidden="true"></span>`) : ""}
+        ` : ""}
       </div>
-    `;
-  }).join("");
+    `).join("");
 }
 
 function updateManageEditorHeader(){
@@ -4638,7 +4648,8 @@ async function saveManageEditor(){
       "shk_tiers"
     ){
       tiers=normalizeShkTiers(
-        manageEditorDraft.tiers
+        manageEditorDraft.tiers,
+        {allowOpenTail:false}
       );
     }
 
@@ -4845,7 +4856,8 @@ function normalizedTariffEditorDraft({
     pricingType:"shk_tiers",
     fixedRate:null,
     shkTiers:normalizeShkTiers(
-      manageEditorDraft.tiers
+      manageEditorDraft.tiers,
+      {allowOpenTail:false}
     )
   };
 }
@@ -7183,9 +7195,9 @@ function inlineOptionsHTML({
 
 /*
   Раскрытый список — отдельная область внутри плитки, а не продолжение
-  её строк. Он лежит на утопленном фоне, отделён от параметров формы
-  заметной чертой и подписан тем же, чем раньше был подписан заголовок
-  окна выбора: иначе строки списка читаются как ещё одно поле формы.
+  её строк: он лежит на утопленном фоне и отделён от параметров формы
+  заметной чертой. Подписи у него нет — строка, из которой он вырос, и
+  поле поиска уже говорят, что именно выбирают.
 
   Поиск стоит всегда, а не по числу текущих записей: сотрудников и ПВЗ
   заводят со временем, и список, короткий на пустой базе, у живой команды
@@ -7195,7 +7207,6 @@ function inlineChoiceHTML({
   options,
   value,
   attribute,
-  caption,
   searchId,
   searchQuery,
   searchLabel,
@@ -7211,10 +7222,6 @@ function inlineChoiceHTML({
 
   return `
     <div class="inline-choice">
-      <div class="inline-choice-caption">
-        ${esc(caption)}
-      </div>
-
       ${searchable
         ? inlineSearchHTML({
             id:searchId,
@@ -7236,6 +7243,16 @@ function inlineChoiceHTML({
   Календарь внутри плитки: те же навигация, сетка и переход к месяцу и
   году, что и в модальном окне, только без самого окна.
 */
+/*
+  Календарь внутри плитки: те же навигация, сетка и переход к месяцу и
+  году, что и в модальном окне, только без самого окна.
+
+  Заголовок стоит в обоих режимах и работает в обе стороны. Раньше режим
+  месяца и года подменял собой всё содержимое, включая заголовок, и
+  выйти из него можно было только выбрав месяц: передумавшему некуда
+  было нажать. По той же причине здесь есть «Текущий месяц» — иначе из
+  далёкого года возвращаться приходилось стрелками.
+*/
 function inlineCalendarHTML({
   cursor,
   selected,
@@ -7246,86 +7263,80 @@ function inlineCalendarHTML({
   const [year,month]=
     cursor.split("-").map(Number);
 
+  const head=`
+    <div class="date-calendar-head">
+      <button
+        type="button"
+        class="date-calendar-nav"
+        data-${prefix}-step="-1"
+        aria-label="${jumpOpen ? "Предыдущий год" : "Предыдущий месяц"}"
+        ${
+          jumpOpen
+            ? (jumpYear<=MIN_YEAR ? "disabled" : "")
+            : (cursor===`${MIN_YEAR}-01` ? "disabled" : "")
+        }
+      >
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M13 4L7 10L13 16"></path>
+        </svg>
+      </button>
+
+      <button
+        type="button"
+        class="date-calendar-title"
+        data-${prefix}-jump="${jumpOpen ? "close" : "open"}"
+        aria-expanded="${jumpOpen ? "true" : "false"}"
+      >
+        ${jumpOpen
+          ? jumpYear
+          : `${MONTHS[month-1]} ${year}`}
+      </button>
+
+      <button
+        type="button"
+        class="date-calendar-nav"
+        data-${prefix}-step="1"
+        aria-label="${jumpOpen ? "Следующий год" : "Следующий месяц"}"
+        ${
+          jumpOpen
+            ? (jumpYear>=MAX_YEAR ? "disabled" : "")
+            : (cursor===`${MAX_YEAR}-12` ? "disabled" : "")
+        }
+      >
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M7 4L13 10L7 16"></path>
+        </svg>
+      </button>
+    </div>
+  `;
+
   if(jumpOpen){
     return `
       <div class="inline-calendar">
-        <div class="inline-calendar-jump">
-          <div class="inline-calendar-jump-year">
-            <button
-              type="button"
-              class="date-calendar-nav"
-              data-${prefix}-jump-year="-1"
-              aria-label="Предыдущий год"
-              ${jumpYear<=MIN_YEAR?"disabled":""}
-            >
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M13 4L7 10L13 16"></path>
-              </svg>
-            </button>
+        ${head}
 
-            <span>${jumpYear}</span>
-
-            <button
-              type="button"
-              class="date-calendar-nav"
-              data-${prefix}-jump-year="1"
-              aria-label="Следующий год"
-              ${jumpYear>=MAX_YEAR?"disabled":""}
-            >
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M7 4L13 10L7 16"></path>
-              </svg>
-            </button>
-          </div>
-
-          <div class="date-jump-months">
-            ${calendarMonthsHTML(
-              jumpYear,
-              cursor,
-              `data-${prefix}-month`
-            )}
-          </div>
+        <div class="date-jump-months">
+          ${calendarMonthsHTML(
+            jumpYear,
+            cursor,
+            `data-${prefix}-month`
+          )}
         </div>
+
+        <button
+          type="button"
+          class="date-today"
+          data-${prefix}-current="1"
+        >
+          Текущий месяц
+        </button>
       </div>
     `;
   }
 
   return `
     <div class="inline-calendar">
-      <div class="date-calendar-head">
-        <button
-          type="button"
-          class="date-calendar-nav"
-          data-${prefix}-step="-1"
-          aria-label="Предыдущий месяц"
-          ${cursor===`${MIN_YEAR}-01`?"disabled":""}
-        >
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M13 4L7 10L13 16"></path>
-          </svg>
-        </button>
-
-        <button
-          type="button"
-          class="date-calendar-title"
-          data-${prefix}-jump="open"
-          aria-expanded="false"
-        >
-          ${MONTHS[month-1]} ${year}
-        </button>
-
-        <button
-          type="button"
-          class="date-calendar-nav"
-          data-${prefix}-step="1"
-          aria-label="Следующий месяц"
-          ${cursor===`${MAX_YEAR}-12`?"disabled":""}
-        >
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M7 4L13 10L7 16"></path>
-          </svg>
-        </button>
-      </div>
+      ${head}
 
       <div class="date-weekdays">
         <span>Пн</span>
@@ -8310,8 +8321,14 @@ function adjustmentEditorHTML(
 
   return `
     <div class="card adjustment-list">
-      ${(rows || []).map((item,index)=>`
-        <div class="adjustment-row" data-key="${kind}-${rowKey(item)}" data-adjustment-kind="${kind}" data-adjustment-index="${index}">
+      ${(rows || []).map((item,index)=>fieldRevealHTML({
+        key:`${kind}-${item.id}`,
+        open:
+          !adjustmentEntering.has(item.id) &&
+          !adjustmentLeaving.has(item.id),
+        className:"adjustment-reveal",
+        body:`
+        <div class="adjustment-row" data-adjustment-kind="${kind}" data-adjustment-index="${index}">
           <label class="row">
             <div class="t">${label}</div>
             <input type="text" inputmode="decimal" data-adjustment-amount value="${esc(String(item.amount ?? "").replace(".",","))}" placeholder="0" autocomplete="off">
@@ -8330,7 +8347,8 @@ function adjustmentEditorHTML(
             Удалить
           </button>
         </div>
-      `).join("")}
+      `
+      })).join("")}
 
       <button
         type="button"
@@ -8517,7 +8535,6 @@ function drawSheet(isEdit){
             })),
           value:draft.dbPointId,
           attribute:"data-shift-point",
-          caption:"Выберите пункт",
           searchId:"shiftPointSearch",
           searchQuery:
             shiftInlineField==="point"
@@ -8573,7 +8590,6 @@ function drawSheet(isEdit){
             })),
           value:draft.employeeId,
           attribute:"data-shift-employee",
-          caption:"Выберите сотрудника",
           searchId:"shiftEmployeeSearch",
           searchQuery:
             shiftInlineField==="employee"
@@ -8646,14 +8662,10 @@ function drawSheet(isEdit){
             <input type="text" inputmode="decimal" id="f-base-override" value="${esc(draft.baseOverride==="" ? "" : String(draft.baseOverride).replace(".",","))}" placeholder="0" aria-label="Фактическая оплата за смену" autocomplete="off">
           </label>
 
-          <label class="row shift-note-row">
-            <input type="text" class="shift-note-input" id="f-base-reason" value="${esc(draft.baseOverrideReason || "")}" placeholder="Причина корректировки" aria-label="Причина корректировки оклада" autocomplete="off">
+          <label class="row">
+            <div class="t">Комментарий</div>
+            <input type="text" id="f-base-reason" value="${esc(draft.baseOverrideReason || "")}" aria-label="Комментарий к корректировке оклада" autocomplete="off">
           </label>
-
-          <div class="field-reveal-note">
-            Причина относится только к корректировке оклада и не заменяет
-            комментарий к смене.
-          </div>
         `
       })}
     </div>
@@ -12197,26 +12209,15 @@ manageEditorSheetElement.addEventListener(
     }
 
     if(button.id==="tierAdd"){
-      const final=
-        manageEditorDraft.tiers.at(-1);
-
-      const previous=
-        manageEditorDraft.tiers.at(-2);
-
-      manageEditorDraft.tiers.splice(
-        -1,
-        0,
-        {
-          up_to:
-            (
-              Number(previous?.up_to) ||
-              0
-            )+100,
-          rate:
-            Number(final?.rate) ||
-            3000
-        }
-      );
+      /*
+        Граница добавляется пустой и в конец: последняя строка больше не
+        особенная, а подставлять за менеджера числа, которых он не
+        называл, — ровно то, от чего уходим.
+      */
+      manageEditorDraft.tiers.push({
+        up_to:"",
+        rate:""
+      });
 
       drawManageEditor();
       return;
@@ -12829,41 +12830,45 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     return;
   }
 
+  /* Стрелки ведут месяцы в сетке дней и годы в сетке месяцев. */
   if(t.dataset.shiftDateStep){
-    /* shiftMonth уже держит курсор в границах MIN_YEAR..MAX_YEAR. */
-    shiftDateCursor=
-      shiftMonth(
-        shiftDateCursor ||
-          draft.date.slice(0,7),
-        Number(t.dataset.shiftDateStep)
+    const step=Number(t.dataset.shiftDateStep);
+
+    if(shiftDateJumpOpen){
+      shiftDateJumpYear=Math.min(
+        MAX_YEAR,
+        Math.max(
+          MIN_YEAR,
+          shiftDateJumpYear+step
+        )
       );
+    }else{
+      /* shiftMonth уже держит курсор в границах MIN_YEAR..MAX_YEAR. */
+      shiftDateCursor=
+        shiftMonth(
+          shiftDateCursor ||
+            draft.date.slice(0,7),
+          step
+        );
+    }
 
     drawSheet(isEdit);
     return;
   }
 
+  /* Заголовок переключает режимы в обе стороны. */
   if(t.dataset.shiftDateJump){
-    shiftDateJumpOpen=true;
-    shiftDateJumpYear=Number(
-      (
-        shiftDateCursor ||
-        draft.date.slice(0,7)
-      ).slice(0,4)
-    );
+    shiftDateJumpOpen=
+      t.dataset.shiftDateJump==="open";
 
-    drawSheet(isEdit);
-    return;
-  }
-
-  if(t.dataset.shiftDateJumpYear){
-    shiftDateJumpYear=Math.min(
-      MAX_YEAR,
-      Math.max(
-        MIN_YEAR,
-        shiftDateJumpYear+
-          Number(t.dataset.shiftDateJumpYear)
-      )
-    );
+    if(shiftDateJumpOpen){
+      shiftDateJumpYear=Number(
+        (
+          shiftDateCursor ||
+          draft.date.slice(0,7)
+        ).slice(0,4)
+      );
+    }
 
     drawSheet(isEdit);
     return;
@@ -12872,6 +12877,19 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
   if(t.dataset.shiftDateMonth){
     shiftDateCursor=
       t.dataset.shiftDateMonth;
+    shiftDateJumpOpen=false;
+
+    drawSheet(isEdit);
+    return;
+  }
+
+  /*
+    «Текущий месяц» только переводит календарь на сегодняшний месяц и
+    возвращает к дням: дату человек выбирает сам.
+  */
+  if(t.dataset.shiftDateCurrent){
+    shiftDateCursor=
+      localYMD().slice(0,7);
     shiftDateJumpOpen=false;
 
     drawSheet(isEdit);
@@ -12907,9 +12925,7 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
   if(t.dataset.adjustmentAdd){
     readForm();
 
-    draft[
-      t.dataset.adjustmentAdd
-    ].push({
+    const added={
       id:createTeamId(),
       amount:"",
       comment:"",
@@ -12919,10 +12935,32 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
               payoutKind:""
             }
           : {})
-    });
+    };
 
+    draft[
+      t.dataset.adjustmentAdd
+    ].push(added);
+
+    adjustmentEntering.add(added.id);
     drawSheet(isEdit);
     saveUIState();
+
+    requestAnimationFrame(()=>{
+      if(!adjustmentEntering.delete(added.id)){
+        return;
+      }
+
+      if(!draft){
+        return;
+      }
+
+      drawSheet(
+        shifts.some(
+          item=>item.id===draft.id
+        )
+      );
+    });
+
     return;
   }
 
@@ -12958,13 +12996,45 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
       t.dataset.adjustmentRemove
         .split(":");
 
-    draft[kind].splice(
-      Number(index),
-      1
-    );
+    const removed=
+      draft[kind]?.[Number(index)];
 
+    if(!removed){
+      return;
+    }
+
+    adjustmentLeaving.add(removed.id);
     drawSheet(isEdit);
-    saveUIState();
+
+    window.setTimeout(()=>{
+      if(!adjustmentLeaving.delete(removed.id)){
+        return;
+      }
+
+      if(!draft?.[kind]){
+        return;
+      }
+
+      /*
+        За время перехода соседние строки могли добавиться или уйти,
+        поэтому запись ищется по себе, а не по прежнему месту.
+      */
+      const at=draft[kind].indexOf(removed);
+
+      if(at<0){
+        return;
+      }
+
+      draft[kind].splice(at,1);
+
+      drawSheet(
+        shifts.some(
+          item=>item.id===draft.id
+        )
+      );
+      saveUIState();
+    },REVEAL_DURATION);
+
     return;
   }
 
@@ -12993,17 +13063,18 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     drawSheet(isEdit);
     saveUIState();
 
+    /*
+      Поле забирает фокус только там, где есть аппаратная клавиатура. На
+      телефоне фокус посреди раскрытия поднимал клавиатуру, лист менял
+      высоту на ходу, и панель доезжала рывком.
+    */
     if(
       draft.baseOverrideMode===
         "manual"
     ){
-      requestAnimationFrame(()=>{
-        document
-          .getElementById(
-            "f-base-override"
-          )
-          ?.focus();
-      });
+      focusInlineSearch(
+        "f-base-override"
+      );
     }
   }
 

@@ -600,9 +600,13 @@ test(
 
     await expect(panel).toHaveCount(1);
 
+    /*
+      Подписи у области нет: строка, из которой она выросла, и поле поиска
+      уже говорят, что именно выбирают.
+    */
     await expect(
       panel.locator(".inline-choice-caption")
-    ).toHaveText(/Выберите пункт/);
+    ).toHaveCount(0);
 
     /* Поиск есть и при коротком списке. */
     await expect(
@@ -781,5 +785,150 @@ test(
         .locator('[data-key="payoutReveal-first_half"] .payout-expanded')
         .count()
     ).toBe(1);
+  }
+);
+
+/*
+  Из выбора месяца и года есть дорога назад.
+
+  Раньше этот режим подменял собой всё содержимое календаря вместе с
+  заголовком, и выйти из него можно было только выбрав месяц: передумавшему
+  некуда было нажать. По той же причине здесь есть «Текущий месяц» — из
+  далёкого года стрелками возвращаться долго.
+*/
+test(
+  "the calendar moves between day, month and year in both directions",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+
+    await page.locator("#shiftAdd").click();
+
+    const row=page.locator("#f-date-open");
+
+    await row.click();
+    await expect(row).toHaveAttribute("aria-expanded","true");
+
+    const title=page.locator(
+      ".inline-calendar .date-calendar-title"
+    );
+
+    const days=page.locator(".inline-calendar .date-day");
+    const months=page.locator("[data-shift-date-month]");
+
+    await expect(title).toHaveText(/Сентябрь 2026/);
+    await expect(days).toHaveCount(42);
+
+    /* Заголовок открывает месяцы и остаётся на месте. */
+    await title.click();
+
+    await expect(months).toHaveCount(12);
+    await expect(days).toHaveCount(0);
+    await expect(title).toHaveText("2026");
+    await expect(title).toHaveAttribute("aria-expanded","true");
+
+    /* И он же возвращает к дням, ничего не выбирая. */
+    await title.click();
+
+    await expect(days).toHaveCount(42);
+    await expect(title).toHaveText(/Сентябрь 2026/);
+
+    /* Стрелки ведут годы в режиме месяцев и месяцы в режиме дней. */
+    await title.click();
+    await page.locator('[data-shift-date-step="1"]').click();
+    await expect(title).toHaveText("2027");
+
+    await page.locator('[data-shift-date-step="-1"]').click();
+    await expect(title).toHaveText("2026");
+
+    /* Текущий месяц достижим из любого года. */
+    await page.locator('[data-shift-date-step="1"]').click();
+    await page.locator('[data-shift-date-step="1"]').click();
+    await expect(title).toHaveText("2028");
+
+    await page.locator("[data-shift-date-current]").click();
+
+    await expect(days).toHaveCount(42);
+    await expect(title).toHaveText(/Сентябрь 2026/);
+
+    /* Выбор месяца тоже возвращает к дням. */
+    await title.click();
+    await months.nth(11).click();
+
+    await expect(days).toHaveCount(42);
+    await expect(title).toHaveText(/Декабрь 2026/);
+
+    /* Дата меняется только выбором дня. */
+    await expect(row).toContainText("21 сентября 2026");
+
+    await page
+      .locator(".inline-calendar .date-day:not(.outside)")
+      .nth(4)
+      .click();
+
+    await expect(row).toContainText("5 декабря 2026");
+  }
+);
+
+/*
+  Премия и штраф появляются и исчезают тем же раскрытием, что и остальные
+  продолжения плиток, а не возникают в разметке рывком.
+*/
+test(
+  "bonus and penalty rows grow in and shrink out",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+
+    await page.locator("#shiftAdd").click();
+
+    const rows=page.locator(".adjustment-reveal");
+    const add=page.locator('[data-adjustment-add="bonuses"]');
+
+    await expect(rows).toHaveCount(0);
+
+    await add.click();
+    await expect(rows).toHaveCount(1);
+
+    /*
+      Строка встаёт в разметку свёрнутой и раскрывается следующим кадром:
+      иначе расти было бы не из чего.
+    */
+    await expect
+      .poll(()=>rows.first().evaluate(el=>
+        Math.round(el.getBoundingClientRect().height)
+      ))
+      .toBeGreaterThan(80);
+
+    await add.click();
+    await add.click();
+
+    await expect(rows).toHaveCount(3);
+
+    await expect
+      .poll(()=>rows.nth(2).evaluate(el=>
+        el.classList.contains("on")
+      ))
+      .toBe(true);
+
+    /* Удаление сначала сворачивает строку и только потом убирает её. */
+    await page
+      .locator('[data-adjustment-remove="bonuses:1"]')
+      .click();
+
+    expect(
+      await rows.nth(1).evaluate(el=>({
+        mounted:el.isConnected,
+        open:el.classList.contains("on")
+      }))
+    ).toEqual({mounted:true,open:false});
+
+    await expect(rows).toHaveCount(2);
+
+    /* Уцелевшие строки не перепутались. */
+    expect(
+      await page.evaluate(()=>
+        [...document.querySelectorAll(".adjustment-reveal")]
+          .map(el=>el.dataset.key)
+      )
+    ).toHaveLength(2);
   }
 );

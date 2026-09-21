@@ -99,19 +99,9 @@
   box-shadow:inset 0 1px 2px rgba(0,0,0,.08);
 }
 
-.inline-choice-caption{
-  padding:11px 16px 2px;
-
-  font-size:9.5px;
-  font-weight:700;
-  letter-spacing:.14em;
-  text-transform:uppercase;
-  color:var(--ink3);
-}
-
 /* Поиск — часть области выбора, поэтому без своей рамки и фона. */
 .inline-search{
-  height:42px;
+  height:46px;
   margin:0;
   padding:0 16px;
 
@@ -193,24 +183,21 @@
 }
 
 /*
-  Календарь — такая же раскрытая область, как список выбора, и отделён от
-  параметров формы тем же способом: иначе одна раскрытая строка плитки
-  выглядела бы иначе, чем соседняя.
+  Календарь отделён от параметров формы легче, чем список выбора: сетка
+  месяца сама по себе ни на что в форме не похожа, а утопленный фон под
+  такой большой областью читался тёмным пятном во всю карточку. Здесь
+  хватает слабого оттенка и черты сверху.
 */
 .inline-calendar{
   padding:12px 14px 14px;
 
-  border-top:1px solid var(--line2);
-  border-bottom:1px solid var(--line2);
-  background:var(--tint2);
-  box-shadow:
-    inset 0 1px 2px rgba(0,0,0,.08),
-    inset 0 -1px 2px rgba(0,0,0,.05);
+  border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  background:var(--tint-soft);
 }
 
 .field-reveal:last-child .inline-calendar{
   border-bottom:0;
-  box-shadow:inset 0 1px 2px rgba(0,0,0,.08);
 }
 
 .inline-calendar .date-calendar-head{
@@ -254,15 +241,6 @@
 .field-reveal .row:first-child,
 .field-reveal .segbox:first-child{
   border-top:1px solid var(--line);
-}
-
-.field-reveal-note{
-  padding:11px 16px 13px;
-  border-top:1px solid var(--line);
-
-  font-size:12px;
-  line-height:1.45;
-  color:var(--ink3);
 }
 
 /*
@@ -315,4 +293,25 @@
 */
 .tariff-box .point-row .t{
   width:96px;
+}
+
+/*
+  Премия и штраф раскрываются и сворачиваются как всё остальное, поэтому
+  строка лежит внутри контейнера перехода. Верхний разделитель считается
+  от него: у самой строки первого ребёнка карточки больше нет.
+*/
+.adjustment-reveal:first-child .adjustment-row{
+  border-top:0;
+}
+
+/*
+  Заголовок календаря переключает дни и месяцы в обе стороны, поэтому его
+  стрелка показывает, куда ведёт нажатие, — как у раскрывающихся строк.
+*/
+.date-calendar-title::after{
+  transition:transform .28s cubic-bezier(.32,.72,0,1);
+}
+
+.date-calendar-title[aria-expanded="true"]::after{
+  transform:translateY(-30%) rotate(-135deg);
 }

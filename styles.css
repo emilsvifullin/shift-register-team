@@ -1294,31 +1294,7 @@ nav.tabs button.on{
   font-variant-numeric:tabular-nums;
 }
 
-.tariff-tier-open{
-  min-width:0;
-  height:36px;
-  padding:0 10px;
-
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-
-  overflow:hidden;
-
-  border:1px solid var(--line);
-  border-radius:10px;
-  background:var(--tint-soft);
-  color:var(--ink2);
-
-  font-size:12px;
-  font-weight:400;
-  text-align:right;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.tariff-tier-remove,
-.tariff-tier-remove-space{
+.tariff-tier-remove{
   width:32px;
   flex:none;
 }

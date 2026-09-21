@@ -396,14 +396,26 @@ test(
       .locator('#manageEditorBody [data-pricing-type="shk_tiers"]')
       .click();
 
-    await page.locator("#tierAdd").click();
-
     const rows=page.locator("#manageEditorBody [data-tier-index]");
+
+    /* Новый тариф начинается с одной пустой строки. */
+    await expect(rows).toHaveCount(1);
+
+    expect(
+      await rows.first().locator("[data-tier-limit]").inputValue()
+    ).toBe("");
+
+    await page.locator("#tierAdd").click();
+    await page.locator("#tierAdd").click();
 
     await expect(rows).toHaveCount(3);
 
+    await rows.nth(0).locator("[data-tier-limit]").fill("350");
+    await rows.nth(0).locator("[data-tier-rate]").fill("3000");
     await rows.nth(1).locator("[data-tier-limit]").fill("500");
     await rows.nth(1).locator("[data-tier-rate]").fill("5000");
+    await rows.nth(2).locator("[data-tier-limit]").fill("650");
+    await rows.nth(2).locator("[data-tier-rate]").fill("6500");
 
     await page.locator('[data-tier-remove="1"]').click();
 
@@ -425,9 +437,10 @@ test(
       ).args.p_shk_tiers
     );
 
+    /* Последняя граница — число: открытого хвоста больше нет. */
     expect(saved).toEqual([
       {up_to:350,rate:3000},
-      {up_to:null,rate:6500}
+      {up_to:650,rate:6500}
     ]);
   }
 );
@@ -619,7 +632,7 @@ test(
 
     await expect(rows).toHaveCount(2);
 
-    const twoRows=await page.evaluate(()=>{
+    const oneRow=await page.evaluate(()=>{
       const row=document.querySelector(
         "#manageEditorBody [data-tier-index]"
       );
@@ -639,15 +652,20 @@ test(
       };
     });
 
-    expect(twoRows.spacers).toBe(0);
-    expect(Math.abs(twoRows.fields-twoRows.content))
-      .toBeLessThanOrEqual(1);
+    /*
+      Строк больше одной — значит, каждую можно удалить, и колонка
+      удаления есть у всех. Пустого места под неё нет ни у одной строки:
+      «Без границы» как особой последней строки больше не существует.
+    */
+    expect(oneRow.spacers).toBe(0);
+    expect(oneRow.content-oneRow.fields)
+      .toBeGreaterThan(20);
 
     await page.locator("#tierAdd").click();
 
     await expect(rows).toHaveCount(3);
 
-    /* С тремя строками колонка удаления снова нужна и выровнена. */
+    /* Поля всех строк выровнены между собой. */
     const threeRows=await page.evaluate(()=>{
       const list=[...document.querySelectorAll(
         "#manageEditorBody [data-tier-index]"
@@ -667,7 +685,7 @@ test(
       };
     });
 
-    expect(threeRows.removes).toBe(2);
+    expect(threeRows.removes).toBe(3);
     expect(new Set(threeRows.fieldWidths).size).toBe(1);
   }
 );

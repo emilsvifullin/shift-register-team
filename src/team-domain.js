@@ -61,8 +61,25 @@ function moneyNumber(
   return cents/100;
 }
 
+/*
+  Границы тарифа конечны: каждая строка заканчивается числом.
+
+  Раньше последняя строка обязана была быть открытой («без границы»), и
+  её ставка молча распространялась на любой объём выше. Менеджер задавал
+  «до 650 — 5500 ₽», а смена с 900 ШК считалась по 5500 ₽, хотя такого
+  решения никто не принимал. Теперь выше последней границы ставки просто
+  нет, и смена не сохранится, пока тариф не дополнят.
+
+  Записи, заведённые до этого, хранят открытый хвост. Читать их нужно
+  по-прежнему — иначе перестанут считаться уже сохранённые смены, — а
+  вот сохранить такой тариф заново уже нельзя: граница проставляется
+  руками, осознанно.
+*/
 export function normalizeShkTiers(
-  value
+  value,
+  {
+    allowOpenTail=true
+  }={}
 ){
   if(
     !Array.isArray(value) ||
@@ -88,44 +105,44 @@ export function normalizeShkTiers(
     const final=
       index===value.length-1;
 
-    const upTo=
-      item.up_to===null ||
-      item.up_to==="" ||
-      item.upTo===null ||
-      item.upTo===""
-        ? null
-        : Number(
-            item.up_to ??
-            item.upTo
-          );
+    const raw=
+      item.up_to ??
+      item.upTo;
 
-    if(
-      final &&
-      upTo!==null
-    ){
-      throw new Error(
-        "Последняя ставка должна действовать без верхней границы"
-      );
+    const open=
+      raw===null ||
+      raw===undefined ||
+      raw==="";
+
+    if(open){
+      if(!final || !allowOpenTail){
+        throw new Error(
+          "Укажите верхнюю границу ШК для каждой строки тарифа"
+        );
+      }
+
+      return {
+        up_to:null,
+        rate:moneyNumber(
+          item.rate,
+          "Ставка"
+        )
+      };
     }
 
+    const upTo=Number(raw);
+
     if(
-      !final &&
-      (
-        !Number.isSafeInteger(upTo) ||
-        upTo<=previous ||
-        upTo>MAX_SHK
-      )
+      !Number.isSafeInteger(upTo) ||
+      upTo<=previous ||
+      upTo>MAX_SHK
     ){
       throw new Error(
         "Границы ШК должны быть целыми и идти по возрастанию"
       );
     }
 
-    if(
-      !final
-    ){
-      previous=upTo;
-    }
+    previous=upTo;
 
     return {
       up_to:upTo,
@@ -214,9 +231,15 @@ export function rateForTariff(
     );
 
   if(!tier){
-    throw new Error(
-      "Для значения ШК ставка не найдена"
+    const last=tiers.at(-1)?.up_to;
+
+    const error=new Error(
+      `Объём ${number} ШК выше последней границы тарифа (${last}). Дополните тариф ПВЗ.`
     );
+
+    error.code="shk_above_last_tier";
+
+    throw error;
   }
 
   return tier.rate;

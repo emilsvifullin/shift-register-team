@@ -164,7 +164,17 @@ test("whole-picker and mouse horizontal drags no longer change years",async({pag
   expect(counters.legacyDateYear).toBe(0);
 });
 
-test("extra desktop pointer and wheel month navigation is suppressed to match shift-register",async({page})=>{
+/*
+  Мышью протащить месяц по экрану нельзя: этого жеста нет в эталоне, и он
+  мешает выделению текста. А вот двухпальцевый свайп по трекпаду приходит
+  колесом, и это отдельный намеренный жест — его разбирает app.js со
+  своими порогами и направлением.
+
+  Раньше здесь гасилось и то и другое одним правилом, и перелистывание
+  месяцев на ноутбуке не работало вовсе, хотя весь его разбор в
+  приложении был на месте.
+*/
+test("mouse drags stay suppressed while the trackpad gesture reaches the app",async({page})=>{
   await page.goto(FIXTURE);
   await page.waitForLoadState("networkidle");
 
@@ -199,5 +209,5 @@ test("extra desktop pointer and wheel month navigation is suppressed to match sh
 
   expect(counters.legacyMainPointerMove).toBe(0);
   expect(counters.legacyMainPointerUp).toBe(0);
-  expect(counters.legacyWheel).toBe(0);
+  expect(counters.legacyWheel).toBeGreaterThan(0);
 });

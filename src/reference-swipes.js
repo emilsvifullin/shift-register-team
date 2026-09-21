@@ -46,9 +46,19 @@ function modalBlocksMonthSwipe(){
 /*
   shift-register меняет месяц пальцем только
   через touch-события. В team уже есть этот
-  же touch-алгоритм в app.js. Здесь гасим
-  только дополнительные pointer/wheel пути,
-  которых в эталоне нет.
+  же touch-алгоритм в app.js. Здесь гасится
+  лишний pointer-путь: протащить месяц мышью
+  по экрану нельзя, это чужой жест и он
+  мешает выделению текста.
+
+  Горизонтальное колесо здесь не трогается.
+  Двухпальцевый свайп по трекпаду приходит
+  именно колесом, и это отдельный намеренный
+  жест — его разбирает app.js со своими
+  порогами. Раньше он гасился здесь же
+  вместе с мышью, и перелистывание месяцев
+  на ноутбуке не работало вовсе, хотя весь
+  его разбор в приложении был на месте.
 */
 let pointerMonthGuard=null;
 
@@ -153,32 +163,13 @@ document.addEventListener(
   true
 );
 
-document.addEventListener(
-  "wheel",
-  event=>{
-    if(
-      !activeMainMonthTab() ||
-      modalBlocksMonthSwipe() ||
-      Math.abs(event.deltaX)<=
-        Math.abs(event.deltaY)
-    ){
-      return;
-    }
-
-    event.stopPropagation();
-  },
-  {
-    passive:true,
-    capture:true
-  }
-);
-
 /*
   В shift-register выбор года свайпается
   только непосредственно по сетке месяцев,
   только touch/pen и с этими порогами.
-  Дополнительные mouse/wheel/whole-sheet
-  жесты team блокируются ниже.
+  Лишний whole-sheet жест мышью блокируется
+  ниже; колесо трекпада — нет, его разбирает
+  app.js как отдельный жест.
 */
 function installYearSwipe({
   containerId,
@@ -303,25 +294,6 @@ function installYearSwipe({
     "pointercancel",
     finishGuard,
     true
-  );
-
-  container.addEventListener(
-    "wheel",
-    event=>{
-      const absX=Math.abs(event.deltaX);
-      const absY=Math.abs(event.deltaY);
-
-      if(
-        absX>=1 &&
-        absX>=absY*.72
-      ){
-        event.stopPropagation();
-      }
-    },
-    {
-      passive:true,
-      capture:true
-    }
   );
 
   grid.addEventListener(

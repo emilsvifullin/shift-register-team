@@ -105,6 +105,22 @@ function seed({employees=2,shifts=true,payouts=false}={}){
   return source;
 }
 
+/*
+  Раскрытие — переход, и всё внутри него едет вместе с панелью. Клик по
+  движущейся цели на медленной машине переигрывается, а второй клик по
+  переключателю успевает закрыть то, что первый открыл. Поэтому перед
+  работой внутри панели ждём не время, а конец самого перехода.
+*/
+async function settle(page,key){
+  const element=page.locator(`[data-key="${key}"]`);
+
+  await expect
+    .poll(()=>element.evaluate(node=>
+      node.getAnimations().length
+    ))
+    .toBe(0);
+}
+
 function reveal(page,key){
   return page.evaluate(name=>{
     const element=
@@ -424,9 +440,11 @@ test(
     await page.locator("#shiftAdd").click();
 
     await page.locator("#f-point-open").click();
+    await settle(page,"shiftPointReveal");
     await page.locator("[data-shift-point]").first().click();
 
     await page.locator("#f-employee-open").click();
+    await settle(page,"shiftEmployeeReveal");
     await page.locator("[data-shift-employee]").first().click();
 
     await page.locator('[data-pay-mode="manual"]').click();
@@ -660,6 +678,7 @@ test(
     await page.locator("#shiftAdd").click();
 
     await page.locator("#f-point-open").click();
+    await settle(page,"shiftPointReveal");
     await page.locator("[data-shift-point]").first().click();
 
     await page.locator("#f-employee-open").click();
@@ -709,6 +728,7 @@ test(
 
     await page.locator("#tab-stats").click();
     await page.locator("#statsEmployeeOpen").click();
+    await settle(page,"statsEmployeeReveal");
     await page.locator("[data-stats-employee]").first().click();
 
     const toggle=page.locator(

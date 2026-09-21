@@ -73,6 +73,30 @@ function payoutSeed(payouts=[]){
   return seed;
 }
 
+/*
+  Плитка выплаты раскрывается переходом, поэтому всё, что лежит внутри
+  неё, доступно не сразу: кнопка ещё едет вместе с панелью, и клик по
+  движущейся цели на медленной машине промахивается. Ждём не время, а сам
+  переход — он и есть условие.
+*/
+async function expandPayout(page,kind="first_half"){
+  await page
+    .locator(`[data-payout-toggle="${kind}"]`)
+    .click();
+
+  const reveal=page.locator(
+    `[data-key="payoutReveal-${kind}"]`
+  );
+
+  await expect(reveal).toHaveClass(/\bon\b/);
+
+  await expect
+    .poll(()=>reveal.evaluate(element=>
+      element.getAnimations().length
+    ))
+    .toBe(0);
+}
+
 async function openStats(page,payouts=[]){
   await openApp(page,{seed:payoutSeed(payouts)});
 
@@ -251,9 +275,7 @@ test(
   async({page})=>{
     await openStats(page);
 
-    await page
-      .locator('[data-payout-toggle="first_half"]')
-      .click();
+    await expandPayout(page);
 
     await page.locator(".payout-block.open [data-payout-add]").click();
 
@@ -316,9 +338,7 @@ test(
   async({page})=>{
     await openStats(page);
 
-    await page
-      .locator('[data-payout-toggle="first_half"]')
-      .click();
+    await expandPayout(page);
 
     await page.locator(".payout-block.open [data-payout-add]").click();
 

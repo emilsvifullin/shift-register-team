@@ -32,6 +32,14 @@ async function choose(page,opener,value){
   await row.click();
   await expect(row).toHaveAttribute("aria-expanded","true");
 
+  /* Пока панель едет, клик по строке внутри неё переигрывается. */
+  await expect
+    .poll(()=>page
+      .locator(".field-reveal.on")
+      .first()
+      .evaluate(node=>node.getAnimations().length))
+    .toBe(0);
+
   await page
     .locator(`[${attribute}="${value}"]`)
     .click();

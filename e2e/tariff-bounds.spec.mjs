@@ -163,10 +163,21 @@ test(
       page.locator("#sheet")
     ).toHaveClass(/\bon\b/);
 
+    /* Ждём конец раскрытия: внутри едущей панели клик переигрывается. */
+    const settle=async key=>{
+      await expect
+        .poll(()=>page
+          .locator(`[data-key="${key}"]`)
+          .evaluate(node=>node.getAnimations().length))
+        .toBe(0);
+    };
+
     await page.locator("#f-point-open").click();
+    await settle("shiftPointReveal");
     await page.locator('[data-shift-point="point-1"]').click();
 
     await page.locator("#f-employee-open").click();
+    await settle("shiftEmployeeReveal");
     await page.locator("[data-shift-employee]").first().click();
 
     /* Внутри границ ставка считается как раньше. */

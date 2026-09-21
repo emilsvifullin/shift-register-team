@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="ef4b38280fbfa98d2d4aa45ecbda94b735fed2cd582f3316f828d6e42a18ff12";
+const SHELL_FINGERPRINT="1d0e23899bf81adbbaed18315a7603940092940f713df330e16218b8c40226a2";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -98,6 +98,7 @@ const SCRIPTS=[
   "./src/team-motion.js",
   "./src/team.js",
   "./src/ui/input-behavior.js",
+  "./src/wheel-gesture.js",
   "./src/workflow.js"
 ];
 

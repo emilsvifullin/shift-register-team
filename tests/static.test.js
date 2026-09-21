@@ -1088,9 +1088,21 @@ test(
       /wheelSequence\.canDismiss/
     );
 
+    /*
+      Повторный жест колеса разбирает общий распознаватель, а не
+      пошаговая проверка внутри обработчика: он держит ось, направление и
+      хвост инерции на уровне жеста целиком. Поведение проверяют
+      tests/wheel-gesture.test.js и e2e/month-wheel.spec.mjs.
+    */
     assert.match(
       app,
-      /now-monthWheelLastAt>110/
+      /createWheelGesture/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /monthWheelLastAt|dateWheelGestureLocked/,
+      "пошаговый разбор жеста рвал свайп на части"
     );
 
     assert.match(

@@ -83,6 +83,10 @@ import {
 } from "./picker-position.js";
 
 import {
+  createWheelGesture
+} from "./wheel-gesture.js";
+
+import {
   installInputBehavior
 } from "./ui/input-behavior.js";
 
@@ -9346,11 +9350,11 @@ function bindYearSwipe(
   changeYear
 ){
   let swipe=null;
-  let wheelDistance=0;
-  let wheelTimer=0;
-  let wheelHandled=false;
-  let wheelLastAt=0;
   let suppressClickUntil=0;
+
+  /* Год листается меньшим путём: окно узкое, и жест в нём короче. */
+  const wheelGesture=
+    createWheelGesture({distance:32});
 
   element.addEventListener(
     "pointerdown",
@@ -9556,16 +9560,14 @@ function bindYearSwipe(
   element.addEventListener(
     "wheel",
     event=>{
-      const absX=
-        Math.abs(event.deltaX);
+      const {direction,claim}=
+        wheelGesture.push({
+          deltaX:event.deltaX,
+          deltaY:event.deltaY,
+          now:performance.now()
+        });
 
-      const absY=
-        Math.abs(event.deltaY);
-
-      if(
-        absX<1 ||
-        absX<absY*.72
-      ){
+      if(!claim){
         return;
       }
 
@@ -9575,43 +9577,13 @@ function bindYearSwipe(
 
       event.stopPropagation();
 
-      const now=
-        performance.now();
-
-      if(
-        !wheelLastAt ||
-        now-wheelLastAt>105
-      ){
-        wheelDistance=0;
-        wheelHandled=false;
-      }
-
-      wheelLastAt=now;
-
-      clearTimeout(wheelTimer);
-      wheelTimer=setTimeout(()=>{
-        wheelDistance=0;
-        wheelHandled=false;
-        wheelLastAt=0;
-      },130);
-
-      if(wheelHandled){
+      if(!direction){
         return;
       }
 
-      wheelDistance+=event.deltaX;
+      suppressClickUntil=
+        performance.now()+360;
 
-      if(Math.abs(wheelDistance)<32){
-        return;
-      }
-
-      const direction=
-        wheelDistance>0
-          ? 1
-          : -1;
-
-      wheelDistance=0;
-      wheelHandled=true;
       changeYear(direction);
     },
     {passive:false}
@@ -10791,21 +10763,9 @@ monthSwipeArea.addEventListener(
   }
 );
 
-let monthWheelX=0;
-let monthWheelY=0;
-let monthWheelTimer=0;
-let monthWheelLastAt=0;
-let monthWheelDirection=0;
-let monthWheelGestureHandled=false;
+const monthWheelGesture=
+  createWheelGesture();
 let pendingMonthWheelDirections=[];
-
-function resetMonthWheelGesture(){
-  monthWheelX=0;
-  monthWheelY=0;
-  monthWheelLastAt=0;
-  monthWheelDirection=0;
-  monthWheelGestureHandled=false;
-}
 
 function queueMonthWheelDirection(
   direction
@@ -10860,70 +10820,42 @@ monthSwipeArea.addEventListener(
   event=>{
     if(
       !["shifts","stats"].includes(tab) ||
-      activeModal() ||
-      Math.abs(event.deltaX)<=
-        Math.abs(event.deltaY)
+      activeModal()
     ){
+      /*
+        Экран сменился посреди жеста — жест на этом и заканчивается, а не
+        ждёт своего продолжения: вернувшись, человек начинает новый.
+      */
+      monthWheelGesture.cancel();
+
       return;
     }
 
-    const now=performance.now();
+    const {direction,claim}=
+      monthWheelGesture.push({
+        deltaX:event.deltaX,
+        deltaY:event.deltaY,
+        now:performance.now()
+      });
 
-    const direction=
-      event.deltaX>0
-        ? 1
-        : -1;
-
-    const newGesture=
-      !monthWheelLastAt ||
-      now-monthWheelLastAt>110 ||
-      (
-        monthWheelDirection &&
-        direction!==monthWheelDirection
-      );
-
-    if(newGesture){
-      resetMonthWheelGesture();
-      monthWheelDirection=direction;
+    if(!claim){
+      return;
     }
 
-    monthWheelLastAt=now;
-
-    window.clearTimeout(
-      monthWheelTimer
-    );
-
-    monthWheelTimer=
-      window.setTimeout(()=>{
-        resetMonthWheelGesture();
-      },140);
-
+    /*
+      Горизонтальный жест удерживается с первых шагов: иначе его успевает
+      забрать себе браузер под перелистывание истории, и остаток свайпа до
+      страницы уже не доходит.
+    */
     if(event.cancelable){
       event.preventDefault();
     }
 
     event.stopPropagation();
 
-    if(
-      monthWheelGestureHandled
-    ){
+    if(!direction){
       return;
     }
-
-    monthWheelX+=event.deltaX;
-    monthWheelY+=event.deltaY;
-
-    if(
-      Math.abs(monthWheelX)<48 ||
-      Math.abs(monthWheelX)<=
-        Math.abs(monthWheelY)*1.12
-    ){
-      return;
-    }
-
-    monthWheelX=0;
-    monthWheelY=0;
-    monthWheelGestureHandled=true;
 
     if(monthTransitionRunning){
       queueMonthWheelDirection(
@@ -11590,18 +11522,21 @@ dateGrid.addEventListener("pointercancel",e=>{
   },250);
 });
 
-let dateWheelX=0;
-let dateWheelY=0;
-let dateWheelTimer=0;
-let dateWheelGestureLocked=false;
+/* Сетка дней уже окна: тот же жест проходится меньшим путём. */
+const dateWheelGesture=
+  createWheelGesture({distance:42});
 
 dateGrid.addEventListener(
   "wheel",
   event=>{
-    if(
-      Math.abs(event.deltaX)<=
-        Math.abs(event.deltaY)
-    ){
+    const {direction,claim}=
+      dateWheelGesture.push({
+        deltaX:event.deltaX,
+        deltaY:event.deltaY,
+        now:performance.now()
+      });
+
+    if(!claim){
       return;
     }
 
@@ -11611,40 +11546,9 @@ dateGrid.addEventListener(
 
     event.stopPropagation();
 
-    dateWheelX+=event.deltaX;
-    dateWheelY+=event.deltaY;
-
-    window.clearTimeout(
-      dateWheelTimer
-    );
-
-    dateWheelTimer=
-      window.setTimeout(()=>{
-        dateWheelX=0;
-        dateWheelY=0;
-        dateWheelGestureLocked=false;
-      },140);
-
-    if(dateWheelGestureLocked){
+    if(!direction){
       return;
     }
-
-    if(
-      Math.abs(dateWheelX)<42 ||
-      Math.abs(dateWheelX)<=
-        Math.abs(dateWheelY)*1.12
-    ){
-      return;
-    }
-
-    const direction=
-      dateWheelX>0
-        ? 1
-        : -1;
-
-    dateWheelX=0;
-    dateWheelY=0;
-    dateWheelGestureLocked=true;
 
     changeDateCalendarMonth(
       shiftMonth(

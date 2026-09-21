@@ -516,11 +516,6 @@ nav.tabs button{
     transform var(--ui-base) var(--ui-ease-out);
 }
 
-.payout-expanded{
-  animation-duration:var(--ui-base);
-  animation-timing-function:var(--ui-ease-out);
-}
-
 .payout-summary::after,
 .tariff-history-chevron,
 .employee-point-check,

@@ -141,7 +141,7 @@ test(
     ).toHaveCount(0);
 
     await expect(
-      page.locator(".payout-source-list .payout-source-row")
+      page.locator(".payout-block.open .payout-source-list .payout-source-row")
     ).toHaveCount(5);
   }
 );
@@ -159,7 +159,7 @@ test(
       .locator('[data-payout-toggle="first_half"]')
       .click();
 
-    const progress=page.locator(".payout-progress");
+    const progress=page.locator(".payout-block.open .payout-progress");
 
     await expect(progress).toContainText("Не выплачено");
     await expect(progress.locator("strong"))
@@ -180,7 +180,7 @@ test(
 
     await tile.click();
 
-    const progress=page.locator(".payout-progress");
+    const progress=page.locator(".payout-block.open .payout-progress");
 
     await expect(progress)
       .toContainText("Осталось выплатить");
@@ -207,11 +207,11 @@ test(
     await tile.click();
 
     await expect(
-      page.locator(".payout-progress strong")
+      page.locator(".payout-block.open .payout-progress strong")
     ).toHaveText("15 000 ₽");
 
     await expect(
-      page.locator(".payout-record")
+      page.locator(".payout-block.open .payout-record")
     ).toHaveCount(2);
   }
 );
@@ -255,11 +255,11 @@ test(
       .locator('[data-payout-toggle="first_half"]')
       .click();
 
-    await page.locator("[data-payout-add]").click();
+    await page.locator(".payout-block.open [data-payout-add]").click();
 
     const form=await page.evaluate(()=>{
       const editor=
-        document.querySelector(".payout-editor");
+        document.querySelector(".payout-block.open .payout-editor");
 
       const card=editor.getBoundingClientRect();
 
@@ -320,10 +320,10 @@ test(
       .locator('[data-payout-toggle="first_half"]')
       .click();
 
-    await page.locator("[data-payout-add]").click();
+    await page.locator(".payout-block.open [data-payout-add]").click();
 
     await expect(
-      page.locator('.payout-editor input[type="date"]')
+      page.locator('.payout-block.open .payout-editor input[type="date"]')
     ).toHaveCount(0);
 
     const dateField=page

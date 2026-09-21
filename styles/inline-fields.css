@@ -69,9 +69,49 @@
   transform:translateY(-30%) rotate(-135deg);
 }
 
-/* Поиск внутри плитки — та же строка карточки, что и остальные. */
+/*
+  Область выбора внутри плитки.
+
+  Строки списка на том же фоне, что и поля формы, читались как ещё одно
+  поле: человек не понимал, что уже смотрит на список. Поэтому область
+  утоплена, отделена заметной чертой и подписана — граница между
+  параметрами формы и выбором видна сразу, а плитка остаётся одной
+  карточкой.
+*/
+.inline-choice{
+  border-top:1px solid var(--line2);
+  border-bottom:1px solid var(--line2);
+
+  /*
+    Строки формы уже лежат на слабом оттенке, поэтому область выбора
+    берёт следующий по силе: разницы в пару сотых альфы на экране не
+    видно, и список снова читался бы как ещё одно поле.
+  */
+  background:var(--tint2);
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,.08),
+    inset 0 -1px 2px rgba(0,0,0,.05);
+}
+
+/* Последняя строка карточки — у области выбора нижней черты уже нет. */
+.field-reveal:last-child .inline-choice{
+  border-bottom:0;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.08);
+}
+
+.inline-choice-caption{
+  padding:11px 16px 2px;
+
+  font-size:9.5px;
+  font-weight:700;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--ink3);
+}
+
+/* Поиск — часть области выбора, поэтому без своей рамки и фона. */
 .inline-search{
-  height:44px;
+  height:42px;
   margin:0;
   padding:0 16px;
 
@@ -80,9 +120,8 @@
   gap:10px;
 
   border:0;
-  border-top:1px solid var(--line);
   border-radius:0;
-  background:var(--tint);
+  background:transparent;
   color:var(--ink3);
   cursor:text;
 }
@@ -121,11 +160,19 @@
   -webkit-appearance:none;
 }
 
+/*
+  Длинный список не тянет форму вниз: дальше он прокручивается внутри
+  себя. Предел задан и в долях экрана, и в пикселях — на низком окне
+  список не должен занимать его целиком, а на высоком незачем разворачивать
+  всю команду.
+*/
 .inline-options{
-  max-height:min(46vh,320px);
+  max-height:min(42vh,296px);
   overflow-y:auto;
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
+
+  border-top:1px solid var(--line);
 }
 
 .inline-options .point-option{
@@ -134,7 +181,7 @@
 }
 
 .inline-options .point-option:first-child{
-  border-top:1px solid var(--line);
+  border-top:0;
 }
 
 .inline-empty{
@@ -145,10 +192,25 @@
   color:var(--ink3);
 }
 
-/* Календарь внутри плитки. */
+/*
+  Календарь — такая же раскрытая область, как список выбора, и отделён от
+  параметров формы тем же способом: иначе одна раскрытая строка плитки
+  выглядела бы иначе, чем соседняя.
+*/
 .inline-calendar{
   padding:12px 14px 14px;
-  border-top:1px solid var(--line);
+
+  border-top:1px solid var(--line2);
+  border-bottom:1px solid var(--line2);
+  background:var(--tint2);
+  box-shadow:
+    inset 0 1px 2px rgba(0,0,0,.08),
+    inset 0 -1px 2px rgba(0,0,0,.05);
+}
+
+.field-reveal:last-child .inline-calendar{
+  border-bottom:0;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.08);
 }
 
 .inline-calendar .date-calendar-head{

@@ -17,7 +17,7 @@ import {
   Высоту раскрытого меряем у самого контейнера: он и есть то, что растёт.
 */
 
-function seed({employees=2,shifts=true}={}){
+function seed({employees=2,shifts=true,payouts=false}={}){
   const source=structuredClone(ADMIN_SEED);
   const base=source.employees[0];
 
@@ -86,6 +86,20 @@ function seed({employees=2,shifts=true}={}){
         bonuses:[],
         penalties:[]
       }))
+    : [];
+
+  source.employee_payouts=payouts
+    ? [{
+        id:"payout-1",
+        employee_id:source.employees[0].id,
+        period_month:"2026-09-01",
+        payout_kind:"first_half",
+        amount:5000,
+        paid_on:"2026-09-20",
+        comment:"Часть суммы",
+        created_at:"2026-09-20T00:00:00Z",
+        updated_at:"2026-09-20T00:00:00Z"
+      }]
     : [];
 
   return source;
@@ -559,5 +573,213 @@ test(
           )
       )
     ).toBe(true);
+  }
+);
+
+/*
+  Раскрытая область выбора не должна читаться как ещё одно поле формы:
+  она утоплена, отделена от параметров заметной чертой и подписана. Поиск
+  в ней стоит всегда, а не по числу записей на текущей базе.
+*/
+test(
+  "an opened list reads as a choice area, not as more form rows",
+  async({page})=>{
+    await openApp(page,{seed:seed({employees:10})});
+
+    await page.locator("#shiftAdd").click();
+
+    await expect(
+      page.locator("#sheet")
+    ).toHaveClass(/\bon\b/);
+
+    await page.locator("#f-point-open").click();
+
+    const panel=page.locator(
+      '[data-key="shiftPointReveal"] .inline-choice'
+    );
+
+    await expect(panel).toHaveCount(1);
+
+    await expect(
+      panel.locator(".inline-choice-caption")
+    ).toHaveText(/Выберите пункт/);
+
+    /* Поиск есть и при коротком списке. */
+    await expect(
+      page.locator("#shiftPointSearch")
+    ).toBeVisible();
+
+    const look=await page.evaluate(()=>{
+      const row=document.getElementById("f-point-open");
+      const area=document.querySelector(
+        '[data-key="shiftPointReveal"] .inline-choice'
+      );
+
+      const tone=el=>{
+        const [r,g,b,a=1]=getComputedStyle(el)
+          .backgroundColor
+          .match(/[\d.]+/g)
+          .map(Number);
+
+        return {r,g,b,a};
+      };
+
+      return {
+        row:tone(row),
+        area:tone(area),
+        areaBorder:getComputedStyle(area).borderTopWidth,
+        inset:getComputedStyle(area).boxShadow.includes("inset")
+      };
+    });
+
+    /*
+      Строки формы сами лежат на слабом оттенке, поэтому разницу меряем,
+      а не принимаем на веру: пары сотых альфы на экране не видно.
+    */
+    expect(look.area.a-look.row.a)
+      .toBeGreaterThan(0.03);
+
+    expect(look.areaBorder).toBe("1px");
+    expect(look.inset).toBe(true);
+  }
+);
+
+/*
+  Длинный список не тянет форму вниз: дальше он прокручивается внутри
+  себя.
+*/
+test(
+  "a long list keeps its own height instead of stretching the form",
+  async({page})=>{
+    await openApp(page,{seed:seed({employees:10})});
+
+    await page.locator("#shiftAdd").click();
+
+    await page.locator("#f-point-open").click();
+    await page.locator("[data-shift-point]").first().click();
+
+    await page.locator("#f-employee-open").click();
+
+    await expect
+      .poll(()=>reveal(page,"shiftEmployeeReveal")
+        .then(state=>state.height))
+      .toBeGreaterThan(100);
+
+    const list=await page.evaluate(()=>{
+      const element=document.querySelector(
+        '[data-key="shiftEmployeeReveal"] .inline-options'
+      );
+
+      return {
+        rows:element
+          .querySelectorAll("[data-shift-employee]")
+          .length,
+        height:Math.round(
+          element.getBoundingClientRect().height
+        ),
+        content:element.scrollHeight,
+        viewport:window.innerHeight
+      };
+    });
+
+    expect(list.rows).toBe(10);
+    expect(list.content).toBeGreaterThan(list.height);
+    expect(list.height).toBeLessThan(
+      list.viewport*0.45
+    );
+  }
+);
+
+/*
+  Подробности выплаты раскрываются и закрываются высотой.
+
+  Раньше блок вставал в раскладку сразу на всю высоту и лишь потом
+  проявлялся ключевыми кадрами, а при закрытии исчезал мгновенно —
+  обратного хода не было вовсе. Поэтому здесь проверяется и то, что
+  содержимое остаётся в разметке закрытым: без него сворачивать нечего.
+*/
+test(
+  "payout details open and close through height, both ways",
+  async({page})=>{
+    await openApp(page,{seed:seed({payouts:true})});
+
+    await page.locator("#tab-stats").click();
+    await page.locator("#statsEmployeeOpen").click();
+    await page.locator("[data-stats-employee]").first().click();
+
+    const toggle=page.locator(
+      '[data-payout-toggle="first_half"]'
+    );
+
+    await expect(toggle).toHaveAttribute("aria-expanded","false");
+
+    const closed=await reveal(page,"payoutReveal-first_half");
+
+    expect(closed).toMatchObject({
+      height:0,
+      open:false,
+      inert:true
+    });
+
+    /* Содержимое смонтировано и закрытым — иначе не из чего сворачивать. */
+    expect(
+      await page
+        .locator('[data-key="payoutReveal-first_half"] .payout-expanded')
+        .count()
+    ).toBe(1);
+
+    expect(
+      await page.evaluate(()=>
+        getComputedStyle(
+          document.querySelector(
+            '[data-key="payoutReveal-first_half"]'
+          )
+        ).transitionProperty
+      )
+    ).toContain("grid-template-rows");
+
+    /*
+      Идущий переход спрашиваем у самого элемента, а не ловим выборкой
+      высоты: кривая сильно смещена к началу, и на коротком блоке к
+      следующему кадру высота уже почти конечная — проба то попадала бы в
+      переход, то нет.
+    */
+    const running=()=>page.evaluate(()=>
+      document
+        .querySelector('[data-key="payoutReveal-first_half"]')
+        .getAnimations()
+        .map(animation=>
+          animation.transitionProperty || ""
+        )
+    );
+
+    await toggle.click();
+    expect(await running())
+      .toContain("grid-template-rows");
+
+    await expect
+      .poll(()=>reveal(page,"payoutReveal-first_half")
+        .then(state=>state.height))
+      .toBeGreaterThan(200);
+
+    const open=await reveal(page,"payoutReveal-first_half");
+
+    expect(open.inert).toBe(false);
+
+    /* Закрытие тоже переход, а не мгновенное исчезновение разметки. */
+    await toggle.click();
+    expect(await running())
+      .toContain("grid-template-rows");
+
+    await expect
+      .poll(()=>reveal(page,"payoutReveal-first_half")
+        .then(state=>state.height))
+      .toBe(0);
+
+    expect(
+      await page
+        .locator('[data-key="payoutReveal-first_half"] .payout-expanded')
+        .count()
+    ).toBe(1);
   }
 );

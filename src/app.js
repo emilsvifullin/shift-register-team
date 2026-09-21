@@ -1757,7 +1757,6 @@ function payoutSourceRows(shiftsList,kind){
   разворачиваются только смены, из которых сумма собрана.
 */
 function payoutExpandedHTML({kind,due,employee,statsShifts}){
-  if(expandedPayoutKind!==kind) return "";
   const records=payoutRecords(employee?.id,kind);
   const progress=paymentProgress(due,records);
   const editor=payoutEditor?.kind===kind ? payoutEditor : null;
@@ -1824,7 +1823,16 @@ function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
           <span class="v ${due<0 ? "neg" : ""}">${money(due)}</span>
         </div>
       </button>
-      ${payoutExpandedHTML({kind,due,employee,statsShifts})}
+      ${fieldRevealHTML({
+        key:`payoutReveal-${kind}`,
+        open,
+        body:payoutExpandedHTML({
+          kind,
+          due,
+          employee,
+          statsShifts
+        })
+      })}
     </div>
   `;
 }
@@ -2269,6 +2277,7 @@ function viewStats(){
                   })),
               value:statsEmployeeId,
               attribute:"data-stats-employee",
+              caption:"Выберите сотрудника",
               searchId:"statsEmployeeSearch",
               searchQuery:statsEmployeeQuery,
               searchLabel:"Поиск сотрудника"
@@ -7172,10 +7181,21 @@ function inlineOptionsHTML({
   `;
 }
 
+/*
+  Раскрытый список — отдельная область внутри плитки, а не продолжение
+  её строк. Он лежит на утопленном фоне, отделён от параметров формы
+  заметной чертой и подписан тем же, чем раньше был подписан заголовок
+  окна выбора: иначе строки списка читаются как ещё одно поле формы.
+
+  Поиск стоит всегда, а не по числу текущих записей: сотрудников и ПВЗ
+  заводят со временем, и список, короткий на пустой базе, у живой команды
+  длинный. Пропадающее поле поиска пришлось бы искать заново.
+*/
 function inlineChoiceHTML({
   options,
   value,
   attribute,
+  caption,
   searchId,
   searchQuery,
   searchLabel,
@@ -7190,19 +7210,25 @@ function inlineChoiceHTML({
       : options;
 
   return `
-    ${searchable && options.length>5
-      ? inlineSearchHTML({
-          id:searchId,
-          value:searchQuery,
-          label:searchLabel
-        })
-      : ""}
+    <div class="inline-choice">
+      <div class="inline-choice-caption">
+        ${esc(caption)}
+      </div>
 
-    ${inlineOptionsHTML({
-      options:visible,
-      value,
-      attribute
-    })}
+      ${searchable
+        ? inlineSearchHTML({
+            id:searchId,
+            value:searchQuery,
+            label:searchLabel
+          })
+        : ""}
+
+      ${inlineOptionsHTML({
+        options:visible,
+        value,
+        attribute
+      })}
+    </div>
   `;
 }
 
@@ -8491,6 +8517,7 @@ function drawSheet(isEdit){
             })),
           value:draft.dbPointId,
           attribute:"data-shift-point",
+          caption:"Выберите пункт",
           searchId:"shiftPointSearch",
           searchQuery:
             shiftInlineField==="point"
@@ -8546,6 +8573,7 @@ function drawSheet(isEdit){
             })),
           value:draft.employeeId,
           attribute:"data-shift-employee",
+          caption:"Выберите сотрудника",
           searchId:"shiftEmployeeSearch",
           searchQuery:
             shiftInlineField==="employee"

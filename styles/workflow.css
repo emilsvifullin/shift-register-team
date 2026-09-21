@@ -112,23 +112,25 @@
   color:var(--green);
 }
 
+/*
+  Подробности выплаты раскрываются высотой, как и остальные продолжения
+  плиток (styles/inline-fields.css). Раньше блок появлялся в раскладке
+  сразу на всю высоту и только потом проявлялся ключевыми кадрами: сам
+  скачок layout это не смягчало, а при закрытии разметка убирала блок
+  мгновенно, и обратного хода не было вовсе.
+*/
 .payout-expanded{
   overflow:hidden;
   border-top:1px solid var(--line);
   background:var(--tint-soft);
-  animation:payout-details-in .22s ease both;
+
+  opacity:1;
+  transition:opacity .24s ease .04s;
 }
 
-@keyframes payout-details-in{
-  from{
-    opacity:0;
-    transform:translate3d(0,-6px,0);
-  }
-
-  to{
-    opacity:1;
-    transform:translate3d(0,0,0);
-  }
+.field-reveal:not(.on) .payout-expanded{
+  opacity:0;
+  transition:opacity .16s ease;
 }
 
 .payout-breakdown{
@@ -515,7 +517,7 @@
 
 @media (prefers-reduced-motion:reduce){
   .payout-expanded{
-    animation:none;
+    transition:none;
   }
 
   .payout-date{

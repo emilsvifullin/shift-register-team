@@ -148,6 +148,34 @@ update. Pages before 7.0 preloaded `app.js`, `config.js`, `domain.js`,
 URLs still hold old code, so the application requests these modules as
 `?shell=7`. `tests/service-worker.test.js` enforces both rules.
 
+## Releasing a schema change
+
+Static files and the database are two deploys, not one. A push to `main`
+publishes the shell through GitHub Pages within a minute; nothing in CI
+touches Supabase. Migrations under `supabase/migrations/` are applied
+separately, and a file sitting in the repository has changed nothing.
+
+That gap is not symmetric. A write can ask the database what it supports:
+`saveAdminShift` calls `admin_save_shift_v3` and falls back to `_v2` when
+the function is missing. A read cannot — PostgREST rejects the whole
+`select` with `42703` as soon as one column is unknown, so a single column
+that exists only in the repository takes the application down for
+everyone, not just the feature that added it.
+
+So a release that adds a column or a function applies the migration
+**before** the code that reads it reaches the shell:
+
+```
+supabase link --project-ref <ref>   # once
+supabase db push --linked
+```
+
+`supabase migration list` shows both sides; the remote side is the one
+that counts. The column added by `20260921030000_shift_base_amount_reason`
+shipped in the shell before it existed in the database, and every screen
+failed with `column shifts.base_amount_override_reason does not exist`
+until the migration was applied.
+
 ## Tests
 
 - `npm run check` — syntax check plus the Node suite (pure logic,

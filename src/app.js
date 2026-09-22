@@ -14076,12 +14076,37 @@ window.addEventListener(
   }
 );
 
+/*
+  Без веб-сокета Realtime — а в сетях, где режут Cloudflare, его нет —
+  данные обновляются опросом, и только пока страница на экране. Человек,
+  вернувшийся к приложению, иначе до полуминуты смотрел бы на то, что
+  было до его ухода. Когда сокет жив, обновлять незачем: он уже принёс
+  всё сам.
+*/
+let visibleRefreshAt=0;
+
 document.addEventListener(
   "visibilitychange",
   ()=>{
     if(document.visibilityState!=="visible"){
       saveUIState();
+      return;
     }
+
+    if(
+      realtimeStatus==="connected" ||
+      Date.now()-visibleRefreshAt<10000
+    ){
+      return;
+    }
+
+    visibleRefreshAt=Date.now();
+
+    /*
+      Как и при восстановлении сети: перерисовка дожидается конца
+      переходов, а ввод в полях реконсилятор сохраняет.
+    */
+    void refreshTeamData();
   }
 );
 

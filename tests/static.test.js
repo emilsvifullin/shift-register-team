@@ -355,23 +355,67 @@ test(
 );
 
 test(
-  "entrypoints pin the Supabase CDN asset and block embedding",
+  "entrypoints pin the Supabase client and block embedding",
   async()=>{
     const index=
       await read("index.html");
     const login=
       await read("login.html");
+    const loginScript=
+      await read("src/login.js");
     const frameGuard=
       await read("src/frame-guard.js");
 
-    assert.match(
-      index,
-      /integrity="sha384-[^"]+"/
+    /*
+      Клиент лежит в самом сайте, но хеш остался: файл обязан совпадать
+      байт в байт с закреплённым выпуском.
+    */
+    const pinned=
+      /integrity="(sha384-[^"]+)"/.exec(index)?.[1];
+
+    assert.ok(pinned);
+
+    const {createHash}=
+      await import("node:crypto");
+
+    const {readFile}=
+      await import("node:fs/promises");
+
+    const vendored=
+      await readFile(
+        new URL(
+          "../vendor/supabase-js-2.112.3.js",
+          import.meta.url
+        )
+      );
+
+    assert.equal(
+      "sha384-"+createHash("sha384")
+        .update(vendored)
+        .digest("base64"),
+      pinned
     );
 
     assert.match(
-      index,
-      /crossorigin="anonymous"/
+      loginScript,
+      new RegExp(pinned.replace(/[+/]/g,"\\$&"))
+    );
+
+    /* Внешних скриптов у приложения нет. */
+    for(const html of [index,login]){
+      assert.match(
+        html,
+        /script-src 'self';/
+      );
+    }
+
+    /*
+      Страница входа обязана уметь идти и прямым путём: иначе резервный
+      маршрут упирается в CSP именно там, где он нужнее всего.
+    */
+    assert.match(
+      login,
+      /connect-src 'self' https:\/\/shift-register-supabase-proxy\.vercel\.app https:\/\/rxosovinouuonwrrzigs\.supabase\.co;/
     );
 
     assert.match(

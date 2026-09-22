@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="a44c75f4c099483cdb4422baad2e15931a3f4d8e64c374504d081c0ba56443b5";
+const SHELL_FINGERPRINT="f30200299d13b6ff618d99df41cfa6a678f14f501b737d02c8f35671625b5383";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -38,9 +38,6 @@ const CACHE_NAME=`${CACHE_PREFIX}v${VERSION}-${SHELL_FINGERPRINT.slice(0,12)}`;
 const LEGACY_CACHE_PREFIX="sr-team-";
 
 const INDEX_FILE="./index.html";
-
-const SUPABASE_CDN_URL=
-  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
 const DOCUMENTS=[
   INDEX_FILE,
@@ -83,6 +80,7 @@ const SCRIPTS=[
   "./src/login.js",
   "./src/manage-swipe.js",
   "./src/modal-motion.js",
+  "./src/network-routes.js",
   "./src/month-picker-swipe.js",
   "./src/phone.js",
   "./src/picker-position.js",
@@ -101,7 +99,8 @@ const SCRIPTS=[
   "./src/team.js",
   "./src/ui/input-behavior.js",
   "./src/wheel-gesture.js",
-  "./src/workflow.js"
+  "./src/workflow.js",
+  "./vendor/supabase-js-2.112.3.js"
 ];
 
 const ICONS=[
@@ -229,14 +228,6 @@ self.addEventListener(
             throw error;
           }
         }
-
-        /*
-          Внешний CDN не должен ронять установку: без него приложение
-          всё равно стартует, а запрос повторится при первом обращении.
-        */
-        await cache
-          .add(SUPABASE_CDN_URL)
-          .catch(()=>{});
 
         if(await hasLegacyGeneration()){
           await self.skipWaiting();
@@ -399,14 +390,6 @@ self.addEventListener(
 
     const url=new URL(request.url);
     const scope=new URL(self.registration.scope);
-
-    if(url.href===SUPABASE_CDN_URL){
-      event.respondWith(
-        cacheFirst(request,{store:true})
-      );
-
-      return;
-    }
 
     if(url.origin!==scope.origin){
       return;

@@ -548,10 +548,23 @@ export function stubScript(seed){
   Приложение загружается ровно так, как в production: те же index.html,
   модули и стили. Заменяются только скрипт supabase-js и его SRI-хеш,
   который иначе отверг бы подставной ответ.
+
+  Клиент Supabase лежит в самом сайте (vendor/), поэтому подменяется
+  этот файл, а не адрес на CDN.
 */
+/*
+  «Сегодня» в тестах одно и то же. Данные сидов и ожидания привязаны к
+  сентябрю 2026 года; без заморозки часов весь набор краснел бы с первого
+  октября без единого изменения кода. Замораживаются только Date.now и
+  new Date(): таймеры, кадры анимации и performance.now идут как обычно.
+*/
+export const FROZEN_TODAY=new Date(2026,8,21,12,0,0);
+
 export async function openApp(page,{seed=ADMIN_SEED}={}){
+  await page.clock.setFixedTime(FROZEN_TODAY);
+
   await page.route(
-    "https://cdn.jsdelivr.net/**",
+    "**/vendor/supabase-js-*.js",
     route=>route.fulfill({
       status:200,
       contentType:"text/javascript",

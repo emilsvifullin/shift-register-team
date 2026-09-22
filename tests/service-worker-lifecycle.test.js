@@ -20,7 +20,6 @@ import {
 
 const root=new URL("../",import.meta.url);
 const SCOPE="https://shift.example/";
-const CDN="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
 
 const source=await serviceWorkerSource();
 const shell=serviceWorkerShell(source);
@@ -114,10 +113,6 @@ function createWorker({
 
     if(offline){
       throw new TypeError("offline");
-    }
-
-    if(request.url===CDN){
-      return new Response("globalThis.supabase={};",{status:200});
     }
 
     const path="./"+new URL(request.url).pathname.slice(1);
@@ -306,9 +301,11 @@ test(
 
     await worker.install();
 
-    const shellFetches=worker.calls.fetch.filter(call=>
-      call.url!==CDN
-    );
+    /*
+      Клиент Supabase — такой же файл оболочки, как остальные: внешних
+      запросов при установке нет вовсе.
+    */
+    const shellFetches=worker.calls.fetch;
 
     assert.equal(shellFetches.length,shell.assets.length);
 
@@ -459,9 +456,10 @@ test(
 
     await worker.install();
 
+    /* Проверенная генерация не качается заново — даже клиент Supabase. */
     assert.deepEqual(
       worker.calls.fetch.map(call=>call.url),
-      [CDN]
+      []
     );
   }
 );

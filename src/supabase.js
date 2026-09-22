@@ -1,3 +1,16 @@
+import {
+  createRouteFetch
+} from "./network-routes.js";
+
+/*
+  До Supabase два пути: прокси на Vercel и сам проект за Cloudflare.
+  Разные сети режут разное, поэтому путь выбирается по факту, а не
+  зашит один (src/network-routes.js).
+
+  Адреса клиент строит от прокси: от этого адреса зависит и ключ, под
+  которым хранится сеанс. Сменить его — значит разлогинить всех, поэтому
+  ключ дополнительно закреплён явно, а подмену хоста делает маршрутизатор.
+*/
 const SUPABASE_PROXY_URL=
   "https://shift-register-supabase-proxy.vercel.app";
 
@@ -12,6 +25,30 @@ const SUPABASE_FUNCTIONS_URL=
 
 const SUPABASE_PUBLISHABLE_KEY=
   "sb_publishable_f-tS0xagjlx2giW2k5u0hw_dxzEtV-v";
+
+const SESSION_STORAGE_KEY=
+  "sb-shift-register-supabase-proxy-auth-token";
+
+function safeLocalStorage(){
+  try{
+    return globalThis.localStorage || null;
+  }catch{
+    return null;
+  }
+}
+
+export const supabaseRoutes=
+  createRouteFetch({
+    routes:[
+      {id:"proxy",base:SUPABASE_PROXY_URL},
+      {id:"direct",base:SUPABASE_PROJECT_URL}
+    ],
+    fetchImpl:(...args)=>globalThis.fetch(...args),
+    storage:safeLocalStorage(),
+    probeHeaders:{
+      apikey:SUPABASE_PUBLISHABLE_KEY
+    }
+  });
 
 const createClient=
   globalThis.supabase?.createClient;
@@ -30,11 +67,20 @@ export const supabaseClient=
       auth:{
         persistSession:true,
         autoRefreshToken:true,
-        detectSessionInUrl:true
+        detectSessionInUrl:true,
+        storageKey:SESSION_STORAGE_KEY
+      },
+      global:{
+        fetch:supabaseRoutes.fetch
       }
     }
   );
 
+/*
+  Realtime — веб-сокет, а прокси на Vercel сокеты не пропускает, поэтому
+  он ходит только напрямую. Это не точка отказа: без сокета приложение
+  обновляет данные опросом (src/app.js, automaticRefreshTimer).
+*/
 export const supabaseRealtimeClient=
   createClient(
     SUPABASE_PROJECT_URL,
@@ -68,7 +114,7 @@ export async function invokeSupabaseFunction(
 
   const send=async token=>{
     try{
-      return await fetch(
+      return await supabaseRoutes.fetch(
         `${SUPABASE_FUNCTIONS_URL}/${encodeURIComponent(name)}`,
         {
           method:"POST",
@@ -143,5 +189,18 @@ supabaseClient.auth.onAuthStateChange(
         .realtime
         .setAuth(accessToken);
     }
+  }
+);
+
+/*
+  Сеть сменилась — Wi-Fi на мобильную или наоборот, — и рабочий путь мог
+  стать другим. Проверяем заранее, чтобы следующая запись не шла вслепую.
+*/
+globalThis.addEventListener?.(
+  "online",
+  ()=>{
+    void supabaseRoutes
+      .ensureRoute({force:true})
+      .catch(()=>{});
   }
 );

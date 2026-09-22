@@ -87,9 +87,18 @@ test(
       "WebKit reuses a preloaded module past the service worker after an update"
     );
 
+    /*
+      Клиент Supabase лежит в самом сайте: CDN стоит за Cloudflare, который
+      в части сетей обрывает ответы, и блокирующий скрипт вешал запуск.
+    */
+    assert.doesNotMatch(
+      html,
+      /cdn\.jsdelivr\.net/
+    );
+
     assert.match(
       html,
-      /rel="preconnect"[\s\S]*?cdn\.jsdelivr\.net/
+      /<script\s+src="\.\/vendor\/supabase-js-[\d.]+\.js"/
     );
   }
 );

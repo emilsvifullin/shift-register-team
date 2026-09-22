@@ -148,6 +148,55 @@ update. Pages before 7.0 preloaded `app.js`, `config.js`, `domain.js`,
 URLs still hold old code, so the application requests these modules as
 `?shell=7`. `tests/service-worker.test.js` enforces both rules.
 
+## Reaching the backend
+
+The shell comes from GitHub Pages at `shiftregister.ru`. Everything else
+used to come from foreign edge networks that Russian operators filter
+differently from one network to the next:
+
+- **Supabase** (`*.supabase.co`) sits behind Cloudflare, filtered in
+  Russia since June 2025 — sometimes a hard block, sometimes a response
+  that stops after the first kilobytes and hangs.
+- **The proxy** (`shift-register-supabase-proxy.vercel.app`, repo
+  `emilsvifullin/shift-register-supabase-proxy`) is plain Vercel rewrites
+  for `/auth/v1`, `/rest/v1` and `/functions/v1`. It exists because of the
+  Cloudflare filtering, but Vercel is itself filtered by some operators,
+  mobile ones first of all.
+- **supabase-js** used to come from jsDelivr, which is Cloudflare too.
+
+Every request went through exactly one of these, so each person was
+exposed to whichever path their network happened to cut: the proxy for
+sign-in and data, Cloudflare for the library. A network that cuts Vercel
+ended every sign-in with "the network does not let the auth server
+through", although the direct path may well have been open.
+
+Now:
+
+- `vendor/supabase-js-<version>.js` is served by the site itself, byte for
+  byte the release pinned by the SRI hash. If the shell loads, the client
+  loads. No page has an external script.
+- `src/network-routes.js` holds both paths and picks one by what actually
+  answers (happy-eyeballs probe of `/auth/v1/health`, the first path gets
+  a short head start). The choice is remembered and re-checked when the
+  network changes. Both CSPs allow both hosts; without that the fallback
+  would stop at the login page, exactly where it is needed most.
+- Reads and password sign-in are retried over the other path, including a
+  response that stalls mid-body (it is buffered within a deadline, so the
+  stall is seen here rather than inside JSON parsing). **Writes are never
+  resent**: a new payout or point is created server-side, and a replay
+  after a lost response would duplicate it. A write goes out once, over a
+  path verified moments before; if that path fails, it is set aside and
+  the person's own retry takes the other one. Refresh-token grants are not
+  replayed either — Supabase treats reuse outside a short window as token
+  theft and revokes every session.
+- Realtime is a WebSocket, which the Vercel proxy cannot carry, so it only
+  goes direct. It is not a point of failure: without it the app polls
+  every 30 s while visible and refreshes on returning to the page.
+
+A path that neither Vercel nor Cloudflare fronts — a relay under
+`shiftregister.ru` on Russian hosting — would close the remaining gap for
+networks that cut both. It is one more entry in the route list.
+
 ## Releasing a schema change
 
 Static files and the database are two deploys, not one. A push to `main`

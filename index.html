@@ -37,7 +37,7 @@ html{
   фон статус-бара iOS берёт из theme-color, то есть из цвета темы.
 -->
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app https://rxosovinouuonwrrzigs.supabase.co wss://rxosovinouuonwrrzigs.supabase.co; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://shift-register-supabase-proxy.vercel.app https://rxosovinouuonwrrzigs.supabase.co wss://rxosovinouuonwrrzigs.supabase.co; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'">
 
 <meta name="apple-mobile-web-app-title" content="Shift Register">
 <meta name="theme-color" content="#0B0C0E" media="(prefers-color-scheme: dark)">
@@ -83,7 +83,6 @@ body{
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="icon" href="./icon-192.png">
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://shift-register-supabase-proxy.vercel.app">
 <link rel="preconnect" href="https://rxosovinouuonwrrzigs.supabase.co" crossorigin>
 
@@ -121,10 +120,16 @@ body{
   код. Подробности — docs/architecture.md, «Обновление оболочки».
 -->
 
+<!--
+  Клиент Supabase лежит в самом сайте, а не на jsDelivr. CDN стоит за
+  Cloudflare, который в части российских сетей отдаёт только первые
+  килобайты ответа и замирает; блокирующий скрипт в 212 КБ вешал тогда
+  запуск приложения целиком. Файл байт в байт тот же, что был закреплён
+  хешем на CDN, — хеш остался.
+-->
 <script
-  src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3"
+  src="./vendor/supabase-js-2.112.3.js"
   integrity="sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC"
-  crossorigin="anonymous"
 ></script>
 
 <script type="module" src="./src/platform-shell.js?shell=7"></script>

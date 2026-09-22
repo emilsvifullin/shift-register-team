@@ -5,6 +5,7 @@ import {
 
 import {
   ADMIN_SEED,
+  FROZEN_TODAY,
   openApp
 } from "./support/supabase-stub.mjs";
 
@@ -821,6 +822,22 @@ test(
   async({page})=>{
     await openApp(page,{seed:seed()});
 
+    /* «Сегодня» заморожено в openApp и берётся оттуда же. */
+    const today=FROZEN_TODAY;
+    const year=today.getFullYear();
+    const MONTHS=[
+      "Январь","Февраль","Март","Апрель","Май","Июнь",
+      "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"
+    ];
+    const thisMonth=new RegExp(`${MONTHS[today.getMonth()]} ${year}`);
+    const longDate=date=>new Intl.DateTimeFormat("ru-RU",{
+      day:"numeric",
+      month:"long",
+      year:"numeric"
+    })
+      .format(date)
+      .replace(/\s*г\.$/u,"");
+
     await page.locator("#shiftAdd").click();
 
     const row=page.locator("#f-date-open");
@@ -835,7 +852,7 @@ test(
     const days=page.locator(".inline-calendar .date-day");
     const months=page.locator("[data-shift-date-month]");
 
-    await expect(title).toHaveText(/Сентябрь 2026/);
+    await expect(title).toHaveText(thisMonth);
     await expect(days).toHaveCount(42);
 
     /* Заголовок открывает месяцы и остаётся на месте. */
@@ -843,49 +860,49 @@ test(
 
     await expect(months).toHaveCount(12);
     await expect(days).toHaveCount(0);
-    await expect(title).toHaveText("2026");
+    await expect(title).toHaveText(String(year));
     await expect(title).toHaveAttribute("aria-expanded","true");
 
     /* И он же возвращает к дням, ничего не выбирая. */
     await title.click();
 
     await expect(days).toHaveCount(42);
-    await expect(title).toHaveText(/Сентябрь 2026/);
+    await expect(title).toHaveText(thisMonth);
 
     /* Стрелки ведут годы в режиме месяцев и месяцы в режиме дней. */
     await title.click();
     await page.locator('[data-shift-date-step="1"]').click();
-    await expect(title).toHaveText("2027");
+    await expect(title).toHaveText(String(year+1));
 
     await page.locator('[data-shift-date-step="-1"]').click();
-    await expect(title).toHaveText("2026");
+    await expect(title).toHaveText(String(year));
 
     /* Текущий месяц достижим из любого года. */
     await page.locator('[data-shift-date-step="1"]').click();
     await page.locator('[data-shift-date-step="1"]').click();
-    await expect(title).toHaveText("2028");
+    await expect(title).toHaveText(String(year+2));
 
     await page.locator("[data-shift-date-current]").click();
 
     await expect(days).toHaveCount(42);
-    await expect(title).toHaveText(/Сентябрь 2026/);
+    await expect(title).toHaveText(thisMonth);
 
     /* Выбор месяца тоже возвращает к дням. */
     await title.click();
     await months.nth(11).click();
 
     await expect(days).toHaveCount(42);
-    await expect(title).toHaveText(/Декабрь 2026/);
+    await expect(title).toHaveText(new RegExp(`Декабрь ${year}`));
 
     /* Дата меняется только выбором дня. */
-    await expect(row).toContainText("21 сентября 2026");
+    await expect(row).toContainText(longDate(today));
 
     await page
       .locator(".inline-calendar .date-day:not(.outside)")
       .nth(4)
       .click();
 
-    await expect(row).toContainText("5 декабря 2026");
+    await expect(row).toContainText(longDate(new Date(year,11,5)));
   }
 );
 

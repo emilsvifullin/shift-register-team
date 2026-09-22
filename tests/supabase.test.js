@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+/*
+  Запись идёт только проверенным путём: перед ней маршрутизатор делает
+  лёгкий запрос здоровья (src/network-routes.js). Поддельная сеть
+  отвечает на него как настоящий сервер и не путает его с вызовом функции.
+*/
+function isRouteProbe(url){
+  return String(url).endsWith("/auth/v1/health");
+}
+
+function probeResponse(){
+  return new Response("{}",{status:200});
+}
+
+
 test(
-  "Supabase REST, Auth and Edge Functions use proxy while Realtime stays direct",
+  "Supabase REST, Auth and Edge Functions go through the route checker while Realtime stays direct",
   async()=>{
     const originalSupabase=
       globalThis.supabase;
@@ -48,20 +62,26 @@ test(
       }
     };
 
+    let probes=0;
+
     globalThis.fetch=async(
       url,
       options
     )=>{
+      if(isRouteProbe(url)){
+        probes+=1;
+        return probeResponse();
+      }
+
       request={url,options};
 
-      return {
-        ok:true,
-        status:200,
-        json:async()=>({
+      return new Response(
+        JSON.stringify({
           ok:true,
           created:true
-        })
-      };
+        }),
+        {status:200}
+      );
     };
 
     try{
@@ -103,10 +123,16 @@ test(
         }
       );
 
+      /*
+        На здоровой сети функция вызывается через прокси, и только после
+        проверки пути — ровно одним запросом.
+      */
       assert.equal(
         request.url,
         "https://shift-register-supabase-proxy.vercel.app/functions/v1/admin-employee-auth"
       );
+
+      assert.equal(probes,1);
 
       assert.deepEqual(
         clientUrls,
@@ -204,31 +230,33 @@ test(
     let requestCount=0;
 
     globalThis.fetch=async(
-      _url,
+      url,
       options
     )=>{
+      if(isRouteProbe(url)){
+        return probeResponse();
+      }
+
       requestCount+=1;
       authorizations.push(
         options.headers.Authorization
       );
 
       if(requestCount===1){
-        return {
-          ok:false,
-          status:401,
-          json:async()=>({
+        return new Response(
+          JSON.stringify({
             error:"unauthorized"
-          })
-        };
+          }),
+          {status:401}
+        );
       }
 
-      return {
-        ok:true,
-        status:200,
-        json:async()=>({
+      return new Response(
+        JSON.stringify({
           ok:true
-        })
-      };
+        }),
+        {status:200}
+      );
     };
 
     try{

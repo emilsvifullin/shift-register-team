@@ -895,14 +895,12 @@ function loadSupabaseLibrary(){
           "script"
         );
 
+      /* Та же копия из самого сайта, что и в index.html. */
       script.src=
-        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3";
+        "./vendor/supabase-js-2.112.3.js";
 
       script.integrity=
         "sha384-l8ah+VgaWtk1mvOe9VC+OirC6qHFF4yH7l7mKRidV9MSti3E9F463bMp6ZVN4kuC";
-
-      script.crossOrigin=
-        "anonymous";
 
       script.async=true;
 
@@ -949,6 +947,15 @@ async function getSupabaseClient(){
           "./supabase.js"
         );
 
+      /*
+        Путь до сервера проверяется, пока человек ещё вводит почту: к
+        нажатию «Войти» уже известно, какой из двух путей в этой сети
+        открыт, и вход не тратит время на отказавший.
+      */
+      void module.supabaseRoutes
+        .ensureRoute()
+        .catch(()=>{});
+
       return module.supabaseClient;
     })();
 
@@ -959,6 +966,22 @@ async function getSupabaseClient(){
     throw error;
   }
 }
+
+/*
+  Клиент и путь до сервера готовятся с первым касанием формы, а не с
+  нажатием «Войти»: на медленной сети это секунды, которые иначе человек
+  провёл бы перед крутящейся кнопкой.
+*/
+form.addEventListener(
+  "focusin",
+  ()=>{
+    void getSupabaseClient()
+      .catch(()=>{});
+  },
+  {
+    once:true
+  }
+);
 
 form.addEventListener(
   "submit",
@@ -1076,13 +1099,21 @@ form.addEventListener(
         return;
       }
 
+      /*
+        Сюда доходит, только когда не ответил ни один путь: вход по паролю
+        сам пробует и прокси, и прямой адрес (src/network-routes.js). Это
+        уже не «сеть не пропускает сервер», а отсутствие связи с ним
+        вообще — и совет о другой сети здесь по делу.
+      */
       if(
         authError?.name===
           "AuthRetryableFetchError" ||
         authError?.status===0
       ){
         setError(
-          "Сеть не пропускает сервер авторизации."
+          navigator.onLine
+            ? "Сервер недоступен из этой сети. Попробуйте другое подключение."
+            : "Нет подключения к интернету."
         );
 
         return;

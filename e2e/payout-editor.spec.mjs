@@ -5,6 +5,7 @@ import {
 
 import {
   ADMIN_SEED,
+  FROZEN_TODAY,
   openApp
 } from "./support/supabase-stub.mjs";
 
@@ -350,16 +351,15 @@ test(
       .locator("[data-payout-date-open]");
 
     /*
-      Новая отметка по умолчанию датирована сегодняшним днём, поэтому
-      ожидаемая подпись считается от текущей даты, а не записана числом:
-      иначе тест держался бы ровно один день.
+      Новая отметка по умолчанию датирована сегодняшним днём. «Сегодня»
+      страницы заморожено в openApp, и ожидание берётся оттуда же.
     */
     const today=new Intl.DateTimeFormat("ru-RU",{
       day:"numeric",
       month:"long",
       year:"numeric"
     })
-      .format(new Date())
+      .format(FROZEN_TODAY)
       .replace(/\s*г\.$/u,"");
 
     await expect(dateField).toHaveText(today);

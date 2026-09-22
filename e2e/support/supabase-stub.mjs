@@ -244,23 +244,73 @@ export function stubScript(seed){
 
       return id;
     },
-    admin_delete_point(args){
-      const before=db.points.length;
-
-      db.points=db.points.filter(point=>
-        point.id!==args.p_point_id
+    /*
+      Удаление ПВЗ повторяет порядок настоящей базы: сперва смены с их
+      премиями и штрафами, затем сам ПВЗ с назначениями и тарифами.
+      Записи о выплатах и журнал удаление переживают.
+    */
+    admin_delete_point_cascade(args){
+      const point=db.points.find(item=>
+        item.id===args.p_point_id
       );
 
-      if(db.points.length===before){
+      if(!point){
         throw new Error("point_not_found");
       }
+
+      const named=value=>
+        String(value || "").trim().toLowerCase();
+
+      if(named(args.p_point_name)!==named(point.name)){
+        throw new Error("point_name_mismatch");
+      }
+
+      const doomed=db.shifts.filter(shift=>
+        shift.point_id===args.p_point_id
+      );
+
+      const shiftIds=new Set(
+        doomed.map(shift=>shift.id)
+      );
+
+      const summary={
+        point_id:point.id,
+        name:point.name,
+        shifts:doomed.length,
+        bonuses:doomed.reduce(
+          (sum,shift)=>sum+(shift.bonuses?.length || 0),
+          0
+        ),
+        penalties:doomed.reduce(
+          (sum,shift)=>sum+(shift.penalties?.length || 0),
+          0
+        ),
+        employee_points:(db.employee_points || []).filter(
+          link=>link.point_id===args.p_point_id
+        ).length,
+        tariffs:db.point_tariffs.filter(
+          tariff=>tariff.point_id===args.p_point_id
+        ).length
+      };
+
+      db.shifts=db.shifts.filter(shift=>
+        !shiftIds.has(shift.id)
+      );
+
+      db.points=db.points.filter(item=>
+        item.id!==args.p_point_id
+      );
 
       db.point_tariffs=db.point_tariffs.filter(
         tariff=>
           tariff.point_id!==args.p_point_id
       );
 
-      return true;
+      db.employee_points=(db.employee_points || []).filter(
+        link=>link.point_id!==args.p_point_id
+      );
+
+      return summary;
     },
     admin_add_point_tariff(args){
       const id="tariff-"+

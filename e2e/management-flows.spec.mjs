@@ -279,10 +279,63 @@ test(
   }
 );
 
+/*
+  Удаление ПВЗ — полное: уходит и сам пункт, и его смены. Архив его не
+  заменяет. Поэтому подтверждение требует набрать название: по одной
+  кнопке промахиваются, по набранному названию — нет.
+*/
 test(
-  "deleting a point is an edit-mode action that refreshes the list",
+  "deleting a point wipes its history and cannot be triggered by one tap",
   async({page})=>{
-    await openApp(page);
+    const seed=structuredClone(ADMIN_SEED);
+
+    seed.shifts=[
+      {
+        id:"doomed-1",
+        employee_id:"employee-1",
+        shift_date:"2026-09-04",
+        point_id:"point-2",
+        shift_type:"main",
+        shk:null,
+        partial:false,
+        hours:null,
+        full_hours:12,
+        base_amount:3000,
+        pricing_snapshot:{
+          version:2,
+          fixed:true,
+          pricingType:"fixed",
+          rate:3000,
+          fullHours:12
+        },
+        note:"",
+        employee:{
+          id:"employee-1",
+          user_id:"user-1",
+          full_name:seed.employees[0].full_name,
+          status:"active"
+        },
+        point:{
+          id:"point-2",
+          code:"p2",
+          name:"Корабельная 1",
+          active:true,
+          advance_enabled:false
+        },
+        bonuses:[
+          {id:"b-1",amount:500,comment:"Премия"}
+        ],
+        penalties:[]
+      }
+    ];
+
+    await openApp(page,{seed});
+
+    /* Смена этого ПВЗ видна до удаления. */
+    await expect(
+      page.locator(".shift-scroll .sh")
+    ).toHaveCount(1);
+
     await openPoints(page);
 
     await page
@@ -310,13 +363,28 @@ test(
       .locator("#managePointDelete")
       .click();
 
-    await page
-      .locator("#appConfirmOk")
-      .click();
+    /* Человек видит, что именно потеряет, и что это навсегда. */
+    const detail=page.locator("#appConfirmDetail");
+
+    await expect(detail).toContainText("Смен: 1");
+    await expect(detail).toContainText("Действие необратимо");
+
+    const ok=page.locator("#appConfirmOk");
+    const input=page.locator("#appConfirmInput");
+
+    await expect(ok).toBeDisabled();
+
+    await input.fill("Корабельная");
+    await expect(ok).toBeDisabled();
+
+    await input.fill("Корабельная 1");
+    await expect(ok).toBeEnabled();
+
+    await ok.click();
 
     await expect(
       page.locator("#toast")
-    ).toContainText("ПВЗ удалён");
+    ).toContainText("ПВЗ удалён вместе с 1 сменами");
 
     await expect(
       page.locator("#manageEditorSheet")
@@ -325,6 +393,132 @@ test(
     await expect(
       page.locator('[data-point-id="point-2"]')
     ).toHaveCount(0);
+
+    /* История ушла вместе с ПВЗ: ни смен, ни осиротевших связей. */
+    expect(
+      await page.evaluate(()=>({
+        shifts:globalThis.__stubDb.shifts.length,
+        links:globalThis.__stubDb.employee_points
+          .filter(link=>link.point_id==="point-2").length,
+        tariffs:globalThis.__stubDb.point_tariffs
+          .filter(tariff=>tariff.point_id==="point-2").length,
+        payouts:globalThis.__stubDb.employee_payouts.length
+      }))
+    ).toEqual({
+      shifts:0,
+      links:0,
+      tariffs:0,
+      payouts:ADMIN_SEED.employee_payouts.length
+    });
+
+    await page.locator("#tab-shifts").click();
+
+    await expect(
+      page.locator(".shift-scroll .sh")
+    ).toHaveCount(0);
+  }
+);
+
+/*
+  Архив открывается тем же движением, что и переход между разделами
+  «Управления»: раньше список подменялся мгновенно, и было непонятно,
+  сменился список или его фильтр.
+*/
+test(
+  "switching to the archive slides like the rest of management",
+  async({page})=>{
+    await openApp(page);
+
+    for(const [section,toggle,archived,active] of [
+      ["points","#pointArchiveToggle","Активные ПВЗ","Архив"],
+      ["employees","#employeeArchiveToggle","Активные сотрудники","Архив"]
+    ]){
+      await page.locator("#tab-manage").click();
+
+      /* Из раздела на главную «Управления» возвращает только «назад». */
+      if(await page.locator("#manageBack").isVisible()){
+        await page.locator("#manageBack").click();
+      }
+
+      await page
+        .locator(`#app [data-manage-section="${section}"]`)
+        .click();
+
+      const button=page.locator(toggle);
+
+      await expect(button).toHaveText(active);
+
+      /* Переход идёт на том же элементе, что и смена раздела. */
+      const moving=await button.evaluate(element=>{
+        element.click();
+
+        return document
+          .getElementById("app")
+          .getAnimations()
+          .length>0;
+      });
+
+      expect(moving).toBe(true);
+
+      await expect(button).toHaveText(archived);
+
+      await expect
+        .poll(()=>page.evaluate(()=>
+          document
+            .getElementById("app")
+            .getAnimations()
+            .length
+        ))
+        .toBe(0);
+
+      /* И обратно — тем же движением. */
+      const back=await button.evaluate(element=>{
+        element.click();
+
+        return document
+          .getElementById("app")
+          .getAnimations()
+          .length>0;
+      });
+
+      expect(back).toBe(true);
+
+      await expect(button).toHaveText(active);
+    }
+  }
+);
+
+/* Отказ от подтверждения ничего не удаляет. */
+test(
+  "cancelling the delete confirmation keeps the point",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+
+    await page
+      .locator('[data-point-id="point-2"]')
+      .click();
+
+    await page.locator("#manageEditorSave").click();
+    await page.locator("#managePointDelete").click();
+
+    await page.locator("#appConfirmCancel").click();
+
+    await expect(
+      page.locator("#appConfirm")
+    ).not.toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    expect(
+      await page.evaluate(()=>
+        globalThis.__stubDb.points.some(point=>
+          point.id==="point-2"
+        )
+      )
+    ).toBe(true);
   }
 );
 

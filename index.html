@@ -709,6 +709,27 @@ body{
         id="appConfirmDetail"
         hidden
       ></div>
+
+      <!--
+        Необратимое действие подтверждается набором имени: от случайного
+        нажатия не спасает ни одна кнопка, набранное вручную имя — спасает.
+      -->
+      <label
+        class="app-confirm-check"
+        id="appConfirmCheck"
+        hidden
+      >
+        <span id="appConfirmCheckLabel"></span>
+
+        <input
+          type="text"
+          id="appConfirmInput"
+          autocomplete="off"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+        >
+      </label>
     </div>
 
     <div class="app-confirm-actions">

@@ -27,7 +27,7 @@ export {
 
 export {
   addAdminTariff,
-  deleteAdminPoint,
+  deleteAdminPointWithHistory,
   deleteAdminTariff,
   saveAdminPoint,
   updateAdminTariff

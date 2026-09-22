@@ -49,14 +49,24 @@ export async function saveAdminPoint({
   );
 }
 
-export async function deleteAdminPoint(
-  id
-){
+/*
+  Полное удаление ПВЗ вместе с его историей: сменами, их премиями и
+  штрафами, назначениями сотрудников и тарифами. Имя уходит на сервер и
+  там сверяется — удалится ровно тот ПВЗ, который человек назвал, даже
+  если список на экране отстал от данных.
+
+  Возвращается опись удалённого: её видно в подтверждающем сообщении.
+*/
+export async function deleteAdminPointWithHistory({
+  id,
+  name
+}){
   const result=
     await supabaseClient.rpc(
-      "admin_delete_point",
+      "admin_delete_point_cascade",
       {
-        p_point_id:id
+        p_point_id:id,
+        p_point_name:name
       }
     );
 

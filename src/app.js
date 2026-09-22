@@ -44,7 +44,7 @@ import {
 import {
   addAdminTariff,
   deleteAdminPayout,
-  deleteAdminPoint,
+  deleteAdminPointWithHistory,
   deleteAdminTariff,
   deleteAdminEmployee,
   deleteAdminShift,
@@ -703,6 +703,7 @@ function payouts(
 }
 
 let appConfirmResolve=null;
+let appConfirmExpected=null;
 let appConfirmPreviousFocus=null;
 let toastTimer=null;
 
@@ -783,6 +784,9 @@ function closeAppConfirm(result){
   document.body.classList.remove("confirm-open");
   if(!activeModal()) setBackgroundInert(false);
 
+  document.getElementById("appConfirmOk").disabled=false;
+  appConfirmExpected=null;
+
   const resolve=appConfirmResolve;
   appConfirmResolve=null;
   if(resolve) resolve(result);
@@ -795,10 +799,25 @@ function closeAppConfirm(result){
   },100);
 }
 
-function appConfirm(message,{okText="Подтвердить",danger=false,detail=""}={}){
+/*
+  `confirm` — имя, которое нужно набрать, чтобы кнопка ожила. Для
+  необратимых действий одной кнопки мало: по ней промахиваются, а по
+  набранному вручную имени — нет. Заодно человек видит, что именно
+  удаляет, и не путает соседние записи.
+*/
+function appConfirm(message,{
+  okText="Подтвердить",
+  danger=false,
+  detail="",
+  confirm=null,
+  confirmLabel="Введите название для подтверждения"
+}={}){
   const modal=document.getElementById("appConfirm");
   const title=document.getElementById("appConfirmTitle");
   const detailElement=document.getElementById("appConfirmDetail");
+  const check=document.getElementById("appConfirmCheck");
+  const checkLabel=document.getElementById("appConfirmCheckLabel");
+  const input=document.getElementById("appConfirmInput");
   const ok=document.getElementById("appConfirmOk");
   const cancel=document.getElementById("appConfirmCancel");
 
@@ -808,6 +827,18 @@ function appConfirm(message,{okText="Подтвердить",danger=false,detail
   detailElement.hidden=!detail;
   ok.textContent=okText;
   ok.classList.toggle("danger",danger);
+
+  appConfirmExpected=
+    confirm
+      ? String(confirm).trim().toLocaleLowerCase("ru-RU")
+      : null;
+
+  check.hidden=!confirm;
+  checkLabel.textContent=confirmLabel;
+  input.value="";
+  input.placeholder=confirm || "";
+  ok.disabled=Boolean(confirm);
+
   modal.classList.add("on");
   modal.setAttribute("aria-hidden","false");
   document.body.classList.add("confirm-open");
@@ -835,6 +866,35 @@ document
 
 document.getElementById("appConfirmCancel").addEventListener("click",()=>closeAppConfirm(false));
 document.getElementById("appConfirmOk").addEventListener("click",()=>closeAppConfirm(true));
+
+document
+  .getElementById("appConfirmInput")
+  .addEventListener("input",event=>{
+    if(appConfirmExpected===null){
+      return;
+    }
+
+    document.getElementById("appConfirmOk").disabled=
+      event.target.value
+        .trim()
+        .toLocaleLowerCase("ru-RU")!==
+      appConfirmExpected;
+  });
+
+/* Enter в поле подтверждения работает как нажатие живой кнопки. */
+document
+  .getElementById("appConfirmInput")
+  .addEventListener("keydown",event=>{
+    if(event.key!=="Enter"){
+      return;
+    }
+
+    event.preventDefault();
+
+    if(!document.getElementById("appConfirmOk").disabled){
+      closeAppConfirm(true);
+    }
+  });
 document.getElementById("appConfirm").addEventListener("click",event=>{
   if(event.target.id==="appConfirm") closeAppConfirm(false);
 });
@@ -1644,8 +1704,15 @@ function payoutRecords(employeeId,kind){
   отсутствие выплаты: платить нечего. Раньше такая строка попадала в общую
   ветку и сообщала о невыплаченном нуле.
 */
+/*
+  Начислений нет, а деньги выплачены — «Частично выплачено» про такое
+  врёт: выплачивать больше нечего. Так выглядит период, из которого ушли
+  смены (например, вместе с удалённым ПВЗ), и выплата, записанная раньше
+  смен. Сама запись о выплате остаётся: деньги действительно отданы.
+*/
 function payoutStateLabel(progress){
   if(progress.complete) return "Выплачено";
+  if(progress.due<=0 && progress.paid>0) return "Переплата";
   if(progress.paid>0) return "Частично выплачено";
   if(progress.due<=0) return "Без выплаты";
   return "Не выплачено";
@@ -1659,6 +1726,7 @@ function payoutStateLabel(progress){
 */
 function payoutRemainderLabel(progress){
   if(progress.complete) return "Выплачено";
+  if(progress.due<=0 && progress.paid>0) return "Выплачено сверх начисленного";
   if(progress.paid>0) return "Осталось выплатить";
   if(progress.due<=0) return "Без выплаты";
   return "Не выплачено";
@@ -1669,6 +1737,10 @@ function payoutRemainderValue(progress){
     return progress.overpaid>0
       ? `${money(progress.paid)} · переплата ${money(progress.overpaid)}`
       : money(progress.paid);
+  }
+
+  if(progress.due<=0 && progress.paid>0){
+    return money(progress.paid);
   }
 
   if(progress.paid>0){
@@ -4941,6 +5013,71 @@ async function removeHistoricalTariff(id){
   }
 }
 
+/*
+  Опись того, что уйдёт вместе с ПВЗ. Считается по уже загруженным
+  данным: человек должен увидеть объём потери до того, как подтвердит, а
+  не узнать о нём из сообщения об успехе.
+*/
+function pointDeletionSummary(pointId){
+  const pointShifts=
+    shifts.filter(item=>
+      item.dbPointId===pointId
+    );
+
+  const months=new Set(
+    pointShifts.map(item=>
+      item.date.slice(0,7)
+    )
+  );
+
+  const employees=new Set(
+    pointShifts.map(item=>
+      item.employeeId
+    )
+  );
+
+  return {
+    shifts:pointShifts.length,
+    months:months.size,
+    employees:employees.size,
+    amount:pointShifts.reduce(
+      (sum,item)=>
+        sum+(Number(item.baseAmount) || 0),
+      0
+    ),
+    /*
+      Считаются все назначения, а не только активные: каскад унесёт и те,
+      что помечены снятыми.
+    */
+    links:teamData.employeePoints.filter(
+      item=>item.point_id===pointId
+    ).length,
+    tariffs:pointTariffs(pointId).length
+  };
+}
+
+function pointDeletionDetail(point){
+  const summary=
+    pointDeletionSummary(point.id);
+
+  const parts=[
+    `Тарифов: ${summary.tariffs}`,
+    `Назначено сотрудников: ${summary.links}`
+  ];
+
+  if(summary.shifts){
+    parts.unshift(
+      `Смен: ${summary.shifts} за ${summary.months} мес. на ${money(summary.amount)}`
+    );
+  }
+
+  return (
+    `Будет стёрта вся история «${point.name}». `+
+    parts.join(". ")+
+    ". Действие необратимо."
+  );
+}
+
 async function deleteManagedPoint(){
   const point=manageEditorDraft?.point;
 
@@ -4948,13 +5085,19 @@ async function deleteManagedPoint(){
     return;
   }
 
+  /*
+    Название набирается вручную: удаление необратимо и уносит смены, по
+    которым считались выплаты, — промахнуться по такому нельзя.
+  */
   if(
     !await appConfirm(
-      "Удалить ПВЗ?",
+      `Удалить «${point.name}» навсегда?`,
       {
-        detail:"ПВЗ будет удалён вместе с назначениями сотрудников и историей тарифов. Если по нему есть смены, используйте архив.",
-        okText:"Удалить",
-        danger:true
+        detail:pointDeletionDetail(point),
+        okText:"Удалить навсегда",
+        danger:true,
+        confirm:point.name,
+        confirmLabel:"Наберите название ПВЗ"
       }
     )
   ){
@@ -4964,10 +5107,21 @@ async function deleteManagedPoint(){
   manageEditorSaving=true;
 
   try{
-    await deleteAdminPoint(point.id);
+    const removed=
+      await deleteAdminPointWithHistory({
+        id:point.id,
+        name:point.name
+      });
+
     closeManageEditor();
     await refreshTeamData();
-    toast("ПВЗ удалён");
+
+    toast(
+      removed?.shifts
+        ? `ПВЗ удалён вместе с ${removed.shifts} сменами`
+        : "ПВЗ удалён",
+      3600
+    );
   }catch(error){
     toast(
       pointDeleteError(error),
@@ -4984,11 +5138,15 @@ function pointDeleteError(error){
       ? error.message
       : String(error || "");
 
+  if(message.includes("point_name_mismatch")){
+    return "Название не совпадает: ПВЗ не удалён";
+  }
+
   if(
     message.includes("point_has_history") ||
     message.includes("shifts_point_id_fkey")
   ){
-    return "У ПВЗ есть история смен. Переведите его в архив.";
+    return "Не удалось удалить историю ПВЗ. Обновите страницу и попробуйте снова.";
   }
 
   if(message.includes("point_not_found")){
@@ -5852,6 +6010,31 @@ function animateManageView(
     manageTransitionRunning=false;
     runPendingNavigation();
   }
+}
+
+/*
+  Архив — такой же переход вглубь раздела, как и переход между разделами
+  «Управления», поэтому он идёт тем же движением: уход в архив сдвигает
+  содержимое вперёд, возврат — назад. Раньше список подменялся мгновенно,
+  и было непонятно, что именно сменилось — список или его фильтр.
+*/
+function toggleArchiveView(toArchive,apply){
+  if(transitionsRunning()){
+    queueNavigation(()=>
+      toggleArchiveView(toArchive,apply)
+    );
+
+    return;
+  }
+
+  animateManageView(
+    ()=>{
+      apply();
+      setPageScrollTop(0);
+      render();
+    },
+    toArchive ? 1 : -1
+  );
 }
 
 function syncEmployeeSheetHeader(){
@@ -13757,14 +13940,30 @@ app.addEventListener("click",async event=>{
   }
 
   if(button.id==="employeeArchiveToggle"){
-    employeeStatusFilter=employeeStatusFilter==="inactive" ? "active" : "inactive";
-    render();
+    toggleArchiveView(
+      employeeStatusFilter!=="inactive",
+      ()=>{
+        employeeStatusFilter=
+          employeeStatusFilter==="inactive"
+            ? "active"
+            : "inactive";
+      }
+    );
+
     return;
   }
 
   if(button.id==="pointArchiveToggle"){
-    pointStatusFilter=pointStatusFilter==="inactive" ? "active" : "inactive";
-    render();
+    toggleArchiveView(
+      pointStatusFilter!=="inactive",
+      ()=>{
+        pointStatusFilter=
+          pointStatusFilter==="inactive"
+            ? "active"
+            : "inactive";
+      }
+    );
+
     return;
   }
 

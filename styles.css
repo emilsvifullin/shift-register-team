@@ -2862,6 +2862,55 @@ textarea::placeholder{color:var(--ink3)}
   display:none;
 }
 
+/*
+  Поле подтверждения необратимого действия: человек набирает имя того,
+  что удаляет, — промахнуться пальцем по такому нельзя.
+*/
+.app-confirm-check{
+  width:100%;
+  max-width:300px;
+  margin-top:4px;
+
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+
+  text-align:left;
+}
+
+.app-confirm-check[hidden]{
+  display:none;
+}
+
+.app-confirm-check span{
+  color:var(--ink3);
+
+  font-size:11px;
+  font-weight:650;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+.app-confirm-check input{
+  width:100%;
+  height:42px;
+  padding:0 12px;
+
+  border:1px solid var(--line2);
+  border-radius:12px;
+  background:var(--tint);
+  color:var(--ink);
+
+  font:inherit;
+  font-size:16px;
+  text-align:left;
+}
+
+.app-confirm-btn[disabled]{
+  opacity:.4;
+  pointer-events:none;
+}
+
 .app-confirm-actions{
   display:grid;
   grid-template-columns:1fr 1fr;

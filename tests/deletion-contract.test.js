@@ -11,6 +11,9 @@ const read=path=>
 const migrationPath=
   "supabase/migrations/20260912180551_fix_employee_payout_delete_and_add_point_delete.sql";
 
+const cascadePath=
+  "supabase/migrations/20260922120000_delete_point_with_history.sql";
+
 test("employee deletion cascades payout rows without weakening shift history protection",async()=>{
   const [migration,safeDeletion]=
     await Promise.all([
@@ -36,34 +39,64 @@ test("employee deletion cascades payout rows without weakening shift history pro
   );
 });
 
-test("point deletion is admin-only and refuses points with shift history",async()=>{
-  const [migration,pointsApi,app]=
+/*
+  Удаление ПВЗ — полное: архив его не заменяет. Но оно необратимо и
+  уносит смены, по которым считались выплаты, поэтому защищено с обеих
+  сторон: набором названия в интерфейсе и сверкой того же названия на
+  сервере.
+*/
+test("deleting a point removes its history and is hard to trigger by accident",async()=>{
+  const [migration,pointsApi,app,indexHtml]=
     await Promise.all([
-      read(migrationPath),
+      read(cascadePath),
       read("src/api/points.js"),
-      read("src/app.js")
+      read("src/app.js"),
+      read("index.html")
     ]);
 
   assert.match(
     migration,
-    /create or replace function public\.admin_delete_point/i
+    /create or replace function public\.admin_delete_point_cascade/i
   );
+
   assert.match(
     migration,
     /private\.is_admin\(\)/i
   );
+
+  /*
+    Порядок задан связями: points <- shifts стоит на restrict, поэтому
+    смены уходят раньше самого ПВЗ.
+  */
   assert.match(
     migration,
-    /from public\.shifts[\s\S]*?point_has_history/i
+    /delete from public\.shifts\s*\n\s*where point_id = p_point_id;[\s\S]*?delete from public\.points/i
   );
+
+  /* Сервер удаляет ровно то, что назвал человек. */
   assert.match(
     migration,
-    /grant execute on function public\.admin_delete_point\(uuid\)[\s\S]*?to authenticated/i
+    /point_name_mismatch/
+  );
+
+  assert.match(
+    migration,
+    /grant execute on function public\.admin_delete_point_cascade\(uuid, text\)[\s\S]*?to authenticated/i
+  );
+
+  /*
+    Журнал и записи о выплаченных деньгах переживают удаление: первый —
+    след того, что было снято, вторые — факт выплаты, привязанный к
+    сотруднику, а не к ПВЗ.
+  */
+  assert.doesNotMatch(
+    migration,
+    /delete from public\.(audit_log|employee_payouts)/i
   );
 
   assert.match(
     pointsApi,
-    /export async function deleteAdminPoint[\s\S]*?"admin_delete_point"/
+    /export async function deleteAdminPointWithHistory[\s\S]*?"admin_delete_point_cascade"[\s\S]*?p_point_name/
   );
 
   /*
@@ -74,17 +107,43 @@ test("point deletion is admin-only and refuses points with shift history",async(
     app,
     /id="managePointDelete"/
   );
+
   assert.match(
     app,
     /async function deleteManagedPoint\(\)/
   );
+
+  /* Подтверждение — набор названия, а не одна кнопка. */
   assert.match(
     app,
-    /await deleteAdminPoint\(point\.id\)/
+    /appConfirm\([\s\S]*?confirm:point\.name/
   );
+
   assert.match(
     app,
-    /point_has_history/
+    /Действие необратимо/
+  );
+
+  assert.match(
+    app,
+    /deleteAdminPointWithHistory\(\{[\s\S]*?id:point\.id,[\s\S]*?name:point\.name/
+  );
+
+  /* Кнопка оживает только на точном совпадении. */
+  assert.match(
+    app,
+    /appConfirmExpected[\s\S]*?ok\.disabled=Boolean\(confirm\)/
+  );
+
+  assert.match(
+    indexHtml,
+    /id="appConfirmInput"/
+  );
+
+  /* Архив больше не предлагается вместо удаления. */
+  assert.doesNotMatch(
+    app,
+    /используйте архив/i
   );
 });
 

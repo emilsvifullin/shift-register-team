@@ -38,7 +38,15 @@ function network(behaviour){
       return new Response("bad gateway",{status:502});
     }
 
-    if(mode==="stall"){
+    /*
+      Так выглядит фильтрация Cloudflare: крошечный ответ проверки
+      проходит, а настоящий ответ замирает после первых килобайт.
+    */
+    const throttled=
+      mode==="throttled" &&
+      !url.endsWith("/auth/v1/health");
+
+    if(mode==="stall" || throttled){
       /*
         Заголовки пришли, тело — никогда. Отмена по сигналу рвёт чтение
         тела, как в браузере.
@@ -102,7 +110,14 @@ test(
       path:"/rest/v1/shifts"
     });
 
-    assert.equal(calls.length,1);
+    /*
+      Одна лёгкая проверка на страницу и сам запрос — прямой путь на
+      здоровой сети не трогается вовсе.
+    */
+    assert.deepEqual(
+      calls.map(call=>call.url),
+      [`${PROXY}/auth/v1/health`,`${PROXY}/rest/v1/shifts`]
+    );
   }
 );
 
@@ -132,24 +147,19 @@ test(
 test(
   "a response that stalls mid-body is abandoned for the other route",
   async()=>{
-    /* Прямой путь запомнен как рабочий — и замирает на теле ответа. */
-    const {router:stuck}=routed(
-      {direct:"stall"},
-      {
-        storage:(()=>{
-          const storage=memoryStorage();
-          storage.setItem(
-            "sr-network-route-v1",
-            JSON.stringify({id:"direct"})
-          );
-          return storage;
-        })()
-      }
-    );
+    /*
+      Прокси проходит проверку здоровья — ответ крошечный, — а на
+      настоящем ответе замирает. Именно этот случай проверкой не поймать,
+      его ловит срок чтения.
+    */
+    const {router}=routed({proxy:"throttled"});
 
-    const response=await stuck.fetch(`${PROXY}/rest/v1/shifts`);
+    assert.equal((await router.ensureRoute()).id,"proxy");
 
-    assert.equal((await response.json()).via,"proxy");
+    const response=await router.fetch(`${PROXY}/rest/v1/shifts`);
+
+    assert.equal((await response.json()).via,"direct");
+    assert.equal(router.current.id,"direct");
   }
 );
 
@@ -279,7 +289,31 @@ test(
 test(
   "signing in with a password is retried over the other route",
   async()=>{
-    const {router,calls}=routed({proxy:"refused"});
+    let proxyUp=true;
+    const calls=[];
+
+    const router=createRouteFetch({
+      routes:ROUTES,
+      readTimeout:60,
+      probeTimeout:60,
+      probeStagger:5,
+      async fetchImpl(url,init={}){
+        calls.push({url,method:init.method || "GET"});
+
+        if(url.startsWith(PROXY) && !proxyUp){
+          throw new TypeError("Failed to fetch");
+        }
+
+        return new Response(
+          JSON.stringify({via:url.startsWith(PROXY) ? "proxy" : "direct"}),
+          {status:200}
+        );
+      }
+    });
+
+    /* Прокси был рабочим — и отказал прямо перед входом. */
+    await router.ensureRoute();
+    proxyUp=false;
 
     const response=await router.fetch(
       `${PROXY}/auth/v1/token?grant_type=password`,
@@ -344,10 +378,18 @@ test(
     const second=routed({proxy:"refused"},{storage});
     await second.router.fetch(`${PROXY}/rest/v1/shifts`);
 
-    /* Новая страница начинает сразу с рабочего пути. */
+    /*
+      Новая страница начинает с запомненного пути: он проверяется первым
+      и отвечает раньше, чем отказавший успевает получить свою очередь.
+    */
     assert.equal(
       second.calls[0].url,
-      `${DIRECT}/rest/v1/shifts`
+      `${DIRECT}/auth/v1/health`
+    );
+
+    assert.ok(
+      second.calls.every(call=>call.url.startsWith(DIRECT)),
+      "отказавший путь с прошлой страницы даже не пробуется"
     );
   }
 );
@@ -355,7 +397,13 @@ test(
 test(
   "a caller's own cancellation is not mistaken for a broken route",
   async()=>{
-    const {router,calls}=routed({proxy:"stall"});
+    const {router,calls}=routed(
+      {proxy:"throttled"},
+      {readTimeout:5000}
+    );
+
+    await router.ensureRoute();
+
     const controller=new AbortController();
 
     const pending=router.fetch(`${PROXY}/rest/v1/shifts`,{
@@ -366,8 +414,9 @@ test(
 
     await assert.rejects(pending);
 
-    /* Прямой путь не пробовали: отменил сам вызывающий. */
+    /* Прямой путь не пробовали и прокси не отложили: отменил сам вызывающий. */
     assert.ok(calls.every(call=>call.url.startsWith(PROXY)));
+    assert.equal(router.current.id,"proxy");
   }
 );
 
@@ -381,5 +430,67 @@ test(
     assert.deepEqual(calls.map(call=>call.url),[
       "https://elsewhere.example/file.json"
     ]);
+  }
+);
+
+/*
+  Если путь ещё не известен, запрос дожидается проверки, а не идёт вслепую
+  первым путём. Иначе висящий прокси стоил бы весь срок чтения — на входе
+  это десятки секунд, — хотя проверка узнаёт рабочий путь за долю секунды.
+*/
+test(
+  "without a known route a request waits for the probe instead of the first route",
+  async()=>{
+    const {router,calls}=routed(
+      {proxy:"stall"},
+      {readTimeout:5000,probeTimeout:5000,probeStagger:5}
+    );
+
+    const started=Date.now();
+
+    const response=await router.fetch(
+      `${PROXY}/auth/v1/token?grant_type=password`,
+      {method:"POST",body:"{}"}
+    );
+
+    assert.equal((await response.json()).via,"direct");
+
+    assert.ok(
+      Date.now()-started<1000,
+      "висящий путь не должен стоить срок чтения"
+    );
+
+    /* Сам вход ушёл один раз и сразу рабочим путём. */
+    assert.deepEqual(
+      calls
+        .filter(call=>call.method==="POST")
+        .map(call=>call.url.startsWith(PROXY) ? "proxy" : "direct"),
+      ["direct"]
+    );
+  }
+);
+
+test(
+  "a request made while a probe is running joins it",
+  async()=>{
+    const {router,calls}=routed(
+      {proxy:"stall"},
+      {readTimeout:5000,probeTimeout:5000,probeStagger:5}
+    );
+
+    const warming=router.ensureRoute();
+
+    const response=await router.fetch(`${PROXY}/rest/v1/shifts`);
+
+    assert.equal((await response.json()).via,"direct");
+    assert.equal((await warming).id,"direct");
+
+    /* Одна проверка на двоих, а не две. */
+    assert.equal(
+      calls.filter(call=>
+        call.url===`${DIRECT}/auth/v1/health`
+      ).length,
+      1
+    );
   }
 );

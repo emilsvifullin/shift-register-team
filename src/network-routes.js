@@ -356,6 +356,16 @@ export function createRouteFetch(options){
     }
 
     if(isReplayable(method,url)){
+      /*
+        Пока рабочий путь не известен, запрос дожидается проверки — или
+        присоединяется к уже идущей. Вслепую первым путём он простоял бы на
+        висящем прокси весь срок чтения: на входе это были десятки секунд,
+        хотя проверка узнаёт рабочий путь за долю секунды.
+      */
+      if(probing || !current){
+        await (probing || probe()).catch(()=>{});
+      }
+
       let lastFailure=null;
       let gatewayResponse=null;
 

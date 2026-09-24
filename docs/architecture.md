@@ -197,6 +197,41 @@ A path that neither Vercel nor Cloudflare fronts — a relay under
 `shiftregister.ru` on Russian hosting — would close the remaining gap for
 networks that cut both. It is one more entry in the route list.
 
+## Who may read a table
+
+The application reaches Postgres through the Data API, so a table is
+readable exactly as far as Postgres grants say. The rule is narrow:
+
+- **anon** — nothing. Before sign-in the app talks only to auth.
+- **authenticated** — `select` only. Every write goes through a
+  `security definer` function that checks the role itself, so the grant is
+  not the place where writes are allowed.
+- **service_role** — used by the `admin-employee-auth` edge function,
+  which reads `profiles`/`employees` and writes back to them.
+
+Postgres used to hand every new table in `public` to all three roles with
+every privilege, which made a forgotten `revoke` silently publish a table
+to the internet. From 30 October 2026 Supabase turns that default off, and
+the same forgotten line silently hides a table from the app instead. Both
+mistakes are quiet, and which one happens depends only on when the
+migration is replayed.
+
+So the repository states it: `20260924190000_explicit_data_api_grants`
+revokes the default privileges for future objects — all of them, not just
+the four verbs the Supabase note mentions, because the default also hands
+out `references`, `trigger` and `truncate` — and every table carries its
+own explicit grant. A migration that creates a table therefore ends with:
+
+```sql
+grant select on table public.new_table to authenticated;
+```
+
+and nothing else, unless the edge function needs it too.
+
+`tests/data-api-grants.test.js` replays the grants and revokes of every
+migration in order and checks the result, so a table added without that
+line fails the suite rather than the production app.
+
 ## Releasing a schema change
 
 Static files and the database are two deploys, not one. A push to `main`

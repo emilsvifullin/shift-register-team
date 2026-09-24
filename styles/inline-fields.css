@@ -315,3 +315,92 @@
 .date-calendar-title[aria-expanded="true"]::after{
   transform:translateY(-30%) rotate(-135deg);
 }
+
+/*
+  Набор дат при создании смены: в сетке виден только текущий месяц, а
+  выбор может уйти и в соседний, поэтому выбранное перечислено списком —
+  там же оно и снимается.
+*/
+.date-chosen{
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid var(--line);
+}
+
+.date-chosen-head{
+  margin-bottom:8px;
+
+  font-size:11px;
+  line-height:1.35;
+  color:var(--ink3);
+}
+
+.date-chosen-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.date-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+
+  padding:6px 8px 6px 10px;
+
+  border:1px solid var(--gold-line);
+  border-radius:999px;
+  background:var(--gold-soft);
+  color:var(--gold);
+
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+}
+
+.date-chip[disabled]{
+  border-color:var(--line2);
+  background:var(--tint);
+  color:var(--ink2);
+  cursor:default;
+}
+
+.date-chip-remove{
+  font-size:14px;
+  line-height:1;
+  opacity:.8;
+}
+
+.date-chip[disabled] .date-chip-remove{
+  display:none;
+}
+
+/*
+  День, на который у выбранного сотрудника смена такого же типа уже
+  заведена. Не запрет, а предупреждение: видно до сохранения.
+*/
+.date-day.taken:not(.on){
+  box-shadow:inset 0 0 0 1px var(--line2);
+}
+
+.date-day.taken::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:4px;
+
+  width:4px;
+  height:4px;
+  margin-left:-2px;
+
+  border-radius:50%;
+  background:var(--ink3);
+}
+
+.date-day{
+  position:relative;
+}
+
+.date-day.on.taken::after{
+  background:currentColor;
+}

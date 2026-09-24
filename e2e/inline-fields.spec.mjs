@@ -316,8 +316,16 @@ test(
       .nth(9)
       .click();
 
-    await expect(dateRow).toHaveAttribute("aria-expanded","false");
+    /*
+      У новой смены календарь остаётся открытым: даты набирают пачкой.
+      Выбранный день заменяет прежний, пока он один.
+    */
+    await expect(dateRow).toHaveAttribute("aria-expanded","true");
     await expect(dateRow).toContainText("10 сентября 2026");
+
+    /* Строку закрывает её же заголовок. */
+    await dateRow.click();
+    await expect(dateRow).toHaveAttribute("aria-expanded","false");
 
     /* Пункт: список с поиском внутри той же карточки. */
     await pointRow.click();
@@ -902,6 +910,10 @@ test(
       .nth(4)
       .click();
 
+    /*
+      Первый выбранный день заменяет дату по умолчанию, а не добавляется
+      к ней: пачка набирается со второго дня.
+    */
     await expect(row).toContainText(longDate(new Date(year,11,5)));
   }
 );

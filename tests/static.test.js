@@ -1821,6 +1821,99 @@ test(
 );
 
 /*
+  Один номер телефона может принадлежать нескольким сотрудникам: мать и
+  сын работают отдельно, а деньги обоим уходят на один номер.
+*/
+test(
+  "a phone number may be shared between employees",
+  async()=>{
+    const migration=
+      await read(
+        "supabase/migrations/20260924120000_allow_shared_employee_phone.sql"
+      );
+
+    const app=
+      await read("src/app.js");
+
+    assert.match(
+      migration,
+      /drop index if exists public\.employees_phone_uidx/
+    );
+
+    /*
+      Проверяется сам SQL, без пояснений: в комментарии эти имена названы
+      как раз затем, чтобы сказать, что их не трогают.
+    */
+    const statements=migration
+      .split("\n")
+      .filter(line=>!line.trim().startsWith("--"))
+      .join("\n");
+
+    assert.doesNotMatch(
+      statements,
+      /employees_phone_e164_check|employees_user_id_key|transfer_phone/
+    );
+
+    /*
+      Сообщение о занятом номере осталось только про аккаунт: вход делить
+      нельзя, номер — можно. Имя индекса в коде больше не разбирается —
+      упоминание в пояснении говорит, почему.
+    */
+    assert.doesNotMatch(
+      app,
+      /includes\(\s*"employees_phone_uidx"/
+    );
+
+    assert.match(
+      app,
+      /"user_already_exists"[\s\S]*?"phone_exists"[\s\S]*?уже заняты другим аккаунтом/
+    );
+  }
+);
+
+/*
+  Новую смену заводят сразу на несколько дат: параметры выбираются один
+  раз, а записи создаются на каждый отмеченный день.
+*/
+test(
+  "a new shift can be created for several dates at once",
+  async()=>{
+    const app=
+      await read("src/app.js");
+
+    /* Несколько дат — только у новой смены. */
+    assert.match(
+      app,
+      /function multiDateMode\(\)\{[\s\S]*?shiftSheetMode==="create"[\s\S]*?!shifts\.some/
+    );
+
+    /* Каждая запись получает свой идентификатор — и смена, и её премии. */
+    assert.match(
+      app,
+      /id:created \? createTeamId\(\) : draft\.id[\s\S]*?bonuses:draft\.bonuses\.map\([\s\S]*?id:createTeamId\(\)/
+    );
+
+    /* Каждая дата проверяется отдельно: тариф у них может отличаться. */
+    assert.match(
+      app,
+      /for\(const date of chosen\)\{[\s\S]*?validateDraft\(\{[\s\S]*?date[\s\S]*?\}\)/
+    );
+
+    /* Занятые даты по умолчанию пропускаются, а не задваиваются. */
+    assert.match(
+      app,
+      /async function datesToCreate\(chosen\)[\s\S]*?item\.type===draft\.type[\s\S]*?item\.date===date/
+    );
+
+    /* Частичный отказ называет число созданных: иначе повтор задвоит. */
+    assert.match(
+      app,
+      /Создано \$\{created\} из \$\{dates\.length\}/
+    );
+  }
+);
+
+/*
   Тариф по ШК конечен: ставка не действует выше последней границы.
 */
 test(

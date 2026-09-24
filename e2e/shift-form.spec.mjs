@@ -88,6 +88,17 @@ test(
     await choose(page,"#f-employee-open","employee-2");
     await page.locator("#sheetSave").click();
 
+    /*
+      Вторая смена — того же сотрудника, того же типа и на ту же дату,
+      что и первая. Приложение спрашивает, дубль ли это; здесь дубль
+      заводится осознанно.
+    */
+    await expect(
+      page.locator("#appConfirm")
+    ).toHaveClass(/\bon\b/);
+
+    await page.locator("#appConfirmOk").click();
+
     await expect(
       page.locator("#sheet")
     ).not.toHaveClass(/\bon\b/);

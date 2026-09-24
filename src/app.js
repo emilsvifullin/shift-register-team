@@ -654,6 +654,12 @@ function dateLabel(ymd){
   return day+" "+MONTHS_G[month-1]+" "+year;
 }
 
+/* Без года: в списке выбранных дат он повторялся бы у каждой. */
+function shortDateLabel(ymd){
+  const [,month,day]=ymd.split("-").map(Number);
+  return day+" "+MONTHS_G[month-1];
+}
+
 
 function esc(value){
   return String(value??"").replace(/[&<>\"]/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[char]));
@@ -679,6 +685,7 @@ const nfMoney=formatAmount;
 const money=formatMoney;
 
 const shiftsWord=n=>plural(n,["смена","смены","смен"]);
+const datesWord=n=>plural(n,["дата","даты","дат"]);
 const shiftsAccWord=n=>plural(n,["смену","смены","смен"]);
 const partialShortWord=n=>plural(n,["неполная","неполные","неполных"]);
 
@@ -5728,21 +5735,23 @@ function employeeSaveError(
     return "Сотрудник больше не существует";
   }
 
+  /*
+    Речь только об аккаунте: номер сотрудника делить можно, вход — нет.
+    Раньше сюда же попадал employees_phone_uidx и любой «duplicate key»,
+    и один номер у матери и сына читался как ошибка.
+  */
   if(
-    message.includes(
-      "employees_phone_uidx"
-    ) ||
-    message.includes(
-      "duplicate key"
-    ) ||
     message.includes(
       "user_already_exists"
     ) ||
     message.includes(
       "phone_exists"
+    ) ||
+    message.includes(
+      "email_exists"
     )
   ){
-    return "Этот номер уже используется другим сотрудником или аккаунтом";
+    return "Этот номер или почта уже заняты другим аккаунтом";
   }
 
   if(
@@ -7021,11 +7030,46 @@ function statsEmployeeOptions(){
 function cloneShiftDraft(value){
   return {
     ...value,
+    dates:Array.isArray(value.dates)
+      ? [...value.dates]
+      : undefined,
     bonuses:(value.bonuses || [])
       .map(item=>({...item})),
     penalties:(value.penalties || [])
       .map(item=>({...item}))
   };
+}
+
+/*
+  Несколько дат живут только у новой смены. У сохранённой правится
+  ровно та смена, которую открыли, — список дат там сбивал бы с толку и
+  плодил записи при каждом сохранении.
+*/
+function draftDates(value){
+  if(!Array.isArray(value?.dates) || !value.dates.length){
+    return value?.date ? [value.date] : [];
+  }
+
+  return [...new Set(value.dates)].sort();
+}
+
+function multiDateMode(){
+  return (
+    shiftSheetMode==="create" &&
+    Boolean(draft) &&
+    !shifts.some(item=>item.id===draft.id)
+  );
+}
+
+/*
+  Дата смены — всегда первая из выбранных: по ней считаются тариф и
+  расчёт, её же показывает строка при одной дате.
+*/
+function syncDraftDates(list){
+  const sorted=[...new Set(list)].sort();
+
+  draft.dates=sorted;
+  draft.date=sorted[0] || draft.date;
 }
 
 function openSheet(id,restoredDraft=null,restoredScrollTop=0){
@@ -7078,6 +7122,19 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
           employeeId:"",
           employeeName:"",
           date:defaultShiftDate(),
+          /*
+            Новую смену заводят сразу на несколько дней: `dates` — все
+            выбранные даты, `date` — первая из них. Всё, что считает
+            смену (тариф, расчёт, проверки), продолжает работать с одной
+            датой, а сохранение обходит список.
+          */
+          dates:[defaultShiftDate()],
+          /*
+            Дата подставлена приложением, а не выбрана человеком: первый
+            же тап по календарю её заменит. Иначе выбравший один день
+            получил бы две смены — свою и подставленную.
+          */
+          datesTouched:false,
           dbPointId:"",
           pointId:"",
           point:"",
@@ -7229,6 +7286,8 @@ function shiftDraftChanged(){
   return Boolean(
     draft.dbPointId ||
     draft.employeeId ||
+    /* Набранные даты — такая же несохранённая работа, как и поля. */
+    draftDates(draft).length>1 ||
     draft.shk!=="" ||
     draft.partial ||
     draft.baseOverride!=="" ||
@@ -7441,7 +7500,9 @@ function inlineCalendarHTML({
   selected,
   jumpOpen,
   jumpYear,
-  prefix
+  prefix,
+  taken=null,
+  footer=""
 }){
   const [year,month]=
     cursor.split("-").map(Number);
@@ -7532,7 +7593,7 @@ function inlineCalendarHTML({
       </div>
 
       <div class="date-grid">
-        ${calendarDaysHTML(cursor,selected)}
+        ${calendarDaysHTML(cursor,selected,taken)}
       </div>
 
       <button
@@ -7542,6 +7603,8 @@ function inlineCalendarHTML({
       >
         Сегодня
       </button>
+
+      ${footer}
     </div>
   `;
 }
@@ -7550,10 +7613,29 @@ function inlineCalendarHTML({
   Сетка дней одна и та же в модальном окне и в календаре, раскрытом
   внутри плитки «Смена»: отличается только то, куда её кладут.
 */
+/*
+  `selected` — одна дата или несколько: при создании смены календарь
+  набирает сразу все дни, на которые её заводят.
+
+  `taken` — дни, на которые у выбранного сотрудника смена такого же типа
+  уже есть. Они не запрещены (основная и дополнительная в один день —
+  обычное дело), но помечены: человек видит совпадение до сохранения, а
+  не после.
+*/
 function calendarDaysHTML(
   cursor,
-  selected
+  selected,
+  taken=null
 ){
+  const chosen=
+    selected instanceof Set
+      ? selected
+      : new Set(
+          Array.isArray(selected)
+            ? selected
+            : [selected].filter(Boolean)
+        );
+
   const [year,month]=
     cursor.split("-").map(Number);
 
@@ -7581,8 +7663,9 @@ function calendarDaysHTML(
 
     const ymd=localYMD(day);
     const outside=day.getMonth()!==month-1;
-    const isSelected=ymd===selected;
+    const isSelected=chosen.has(ymd);
     const isToday=ymd===today;
+    const isTaken=taken?.has(ymd)===true;
     const outOfRange=day.getFullYear()<MIN_YEAR || day.getFullYear()>MAX_YEAR;
 
     html+=`
@@ -7592,9 +7675,11 @@ function calendarDaysHTML(
           ${outside?"outside":""}
           ${isSelected?"on":""}
           ${isToday?"today":""}
+          ${isTaken?"taken":""}
         "
         data-date="${ymd}"
-        aria-label="${esc(dateLabel(ymd))}"
+        aria-label="${esc(dateLabel(ymd))}${isSelected?", выбрана":""}${isTaken?", смена уже есть":""}"
+        aria-pressed="${isSelected?"true":"false"}"
         ${outOfRange?"disabled":""}
       >
         ${day.getDate()}
@@ -8603,6 +8688,102 @@ function calcHTML(){
     <div class="tot"><span>За смену</span><span>${money(result.total)}</span></div>`;
 }
 
+/*
+  Дни, на которые у выбранного сотрудника уже заведена смена того же
+  типа. Пока сотрудник не выбран, помечать нечего.
+*/
+function takenShiftDates(){
+  if(!draft?.employeeId){
+    return null;
+  }
+
+  return new Set(
+    shifts
+      .filter(item=>
+        item.employeeId===draft.employeeId &&
+        item.type===draft.type &&
+        item.id!==draft.id
+      )
+      .map(item=>item.date)
+  );
+}
+
+function shiftDatesLabel(){
+  const dates=draftDates(draft);
+
+  if(!multiDateMode() || dates.length<2){
+    return dateLabel(draft.date);
+  }
+
+  return `${datesWord(dates.length)}: ${shortDateList(dates)}`;
+}
+
+/* Подряд идущие дни сворачиваются в промежуток: «4–8, 12 сентября». */
+function shortDateList(dates){
+  const runs=[];
+
+  for(const date of dates){
+    const last=runs.at(-1);
+
+    if(last && nextYMD(last.at(-1))===date){
+      last.push(date);
+      continue;
+    }
+
+    runs.push([date]);
+  }
+
+  const day=value=>Number(value.slice(8,10));
+
+  return runs
+    .map(run=>
+      run.length>1
+        ? `${day(run[0])}–${day(run.at(-1))}`
+        : String(day(run[0]))
+    )
+    .join(", ");
+}
+
+/*
+  Выбранные даты показаны списком под календарём: в сетке видно только
+  текущий месяц, а выбор может уйти и в соседний. Здесь же они и
+  снимаются.
+*/
+function selectedDatesHTML(){
+  if(!multiDateMode()){
+    return "";
+  }
+
+  const dates=draftDates(draft);
+
+  return `
+    <div class="date-chosen">
+      <div class="date-chosen-head">
+        ${dates.length>1
+          ? `Выбрано ${datesWord(dates.length)} — будет создано столько же смен`
+          : draft.datesTouched
+            ? "Отметьте ещё дни, чтобы создать несколько смен сразу"
+            : "Выберите день. Можно отметить сразу несколько."}
+      </div>
+
+      <div class="date-chosen-list">
+        ${dates.map(date=>`
+          <button
+            type="button"
+            class="date-chip"
+            data-shift-date-remove="${date}"
+            aria-label="Убрать ${esc(dateLabel(date))}"
+            ${dates.length<2 ? "disabled" : ""}
+          >
+            <span>${esc(shortDateLabel(date))}</span>
+            <span class="date-chip-remove" aria-hidden="true">×</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function drawSheet(isEdit){
   const result=previewCalc(draft);
   const fixed=result.fixed;
@@ -8667,7 +8848,7 @@ function drawSheet(isEdit){
         aria-expanded="${shiftInlineField==="date" ? "true" : "false"}"
       >
         <div class="t">Дата</div>
-        <div class="point-value">${esc(dateLabel(draft.date))}</div>
+        <div class="point-value">${esc(shiftDatesLabel())}</div>
       </button>
 
       ${fieldRevealHTML({
@@ -8677,7 +8858,11 @@ function drawSheet(isEdit){
           cursor:
             shiftDateCursor ||
             draft.date.slice(0,7),
-          selected:draft.date,
+          selected:multiDateMode()
+            ? draftDates(draft)
+            : draft.date,
+          taken:takenShiftDates(),
+          footer:selectedDatesHTML(),
           jumpOpen:shiftDateJumpOpen,
           jumpYear:
             shiftDateJumpYear ||
@@ -12829,48 +13014,176 @@ document.getElementById("sheetSave").onclick=async()=>{
 
   readForm();
 
-  const error=validateDraft(draft);
+  const chosen=
+    multiDateMode()
+      ? draftDates(draft)
+      : [draft.date];
 
-  if(error){
-    showValidationError(error);
+  /*
+    Каждая дата проверяется отдельно: тариф ПВЗ у них может быть разным,
+    и дата без тарифа должна остановить сохранение до того, как часть
+    смен уже создана.
+  */
+  for(const date of chosen){
+    const error=validateDraft({
+      ...draft,
+      date
+    });
+
+    if(error){
+      showValidationError(
+        chosen.length>1
+          ? {
+              ...error,
+              message:`${dateLabel(date)}: ${error.message}`
+            }
+          : error
+      );
+
+      return;
+    }
+  }
+
+  const dates=
+    await datesToCreate(chosen);
+
+  if(!dates.length){
     return;
   }
 
-  const savedDraft=normalizedDraft(draft);
-
   button.disabled=true;
 
+  let created=0;
+
   try{
-    await saveAdminShift(
-      savedDraft
-    );
+    for(const date of dates){
+      /*
+        Каждая смена получает свой идентификатор — и сама, и её премии
+        со штрафами: общий идентификатор на две записи сервер принял бы
+        за одну и ту же.
+      */
+      await saveAdminShift(
+        normalizedDraft({
+          ...draft,
+          id:created ? createTeamId() : draft.id,
+          date,
+          bonuses:draft.bonuses.map(item=>({
+            ...item,
+            id:createTeamId()
+          })),
+          penalties:draft.penalties.map(item=>({
+            ...item,
+            id:createTeamId()
+          }))
+        })
+      );
+
+      created+=1;
+    }
 
     await refreshTeamData({
       renderAfter:false
     });
 
-    cursor=savedDraft.date.slice(0,7);
+    cursor=dates[0].slice(0,7);
     closeSheet();
     render();
-    toast("Смена сохранена");
+
+    toast(
+      dates.length>1
+        ? `Создано ${shiftsWord(dates.length)}`
+        : "Смена сохранена"
+    );
   }catch(error){
     console.error(
       "Не удалось сохранить смену:",
       error
     );
 
+    /*
+      Часть смен могла уже сохраниться: человеку нужно знать сколько,
+      иначе он повторит целиком и заведёт дубли.
+    */
+    if(created){
+      await refreshTeamData({
+        renderAfter:false
+      });
+
+      render();
+    }
+
     toast(
-      navigator.onLine
-        ? error instanceof Error
-          ? error.message
-          : "Не удалось сохранить смену"
-        : "Нет подключения. Смена не сохранена.",
+      created
+        ? `Создано ${created} из ${dates.length}. ${
+            error instanceof Error
+              ? error.message
+              : "Остальные не сохранены"
+          }`
+        : navigator.onLine
+          ? error instanceof Error
+            ? error.message
+            : "Не удалось сохранить смену"
+          : "Нет подключения. Смена не сохранена.",
       4400
     );
   }finally{
     button.disabled=false;
   }
 };
+
+/*
+  Даты, на которых смена этого сотрудника такого же типа уже есть,
+  по умолчанию пропускаются: повтор почти всегда промах, а не замысел.
+  Но основная и дополнительная смена в один день — обычное дело, поэтому
+  осознанный дубль остаётся возможным, когда свободных дат не осталось.
+*/
+async function datesToCreate(chosen){
+  const taken=chosen.filter(date=>
+    shifts.some(item=>
+      item.employeeId===draft.employeeId &&
+      item.type===draft.type &&
+      item.date===date &&
+      item.id!==draft.id
+    )
+  );
+
+  if(!taken.length){
+    return chosen;
+  }
+
+  const free=chosen.filter(date=>
+    !taken.includes(date)
+  );
+
+  const listed=taken
+    .map(date=>shortDateLabel(date))
+    .join(", ");
+
+  if(free.length){
+    const agreed=await appConfirm(
+      "На части дат смена уже есть",
+      {
+        detail:`У этого сотрудника уже есть такая смена: ${listed}. Создать только на остальных ${datesWord(free.length)}?`,
+        okText:"Создать остальные"
+      }
+    );
+
+    return agreed ? free : [];
+  }
+
+  const agreed=await appConfirm(
+    chosen.length>1
+      ? "На всех выбранных датах смена уже есть"
+      : "На эту дату смена уже есть",
+    {
+      detail:`У этого сотрудника уже есть такая смена: ${listed}. Создать ещё одну?`,
+      okText:"Создать всё равно",
+      danger:true
+    }
+  );
+
+  return agreed ? chosen : [];
+}
 
 document.getElementById("sheetBody").addEventListener("click",async e=>{
   const t=e.target.closest("button");
@@ -13086,6 +13399,26 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     shiftDateJumpOpen=false;
 
     readForm();
+
+    /* При наборе дат «Сегодня» — такой же день, как и остальные. */
+    if(multiDateMode()){
+      const dates=draftDates(draft);
+
+      syncDraftDates(
+        !draft.datesTouched
+          ? [today]
+          : dates.includes(today)
+            ? dates
+            : [...dates,today]
+      );
+
+      draft.datesTouched=true;
+
+      drawSheet(isEdit);
+      saveUIState();
+      return;
+    }
+
     draft.date=today;
     resetShiftInline();
     drawSheet(isEdit);
@@ -13098,10 +13431,56 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     shiftInlineField==="date"
   ){
     readForm();
+
+    /*
+      У новой смены день переключается, а календарь остаётся открытым:
+      даты набирают пачкой. У сохранённой — прежнее поведение: выбрал
+      дату, панель закрылась.
+    */
+    if(multiDateMode()){
+      const picked=t.dataset.date;
+      const dates=draftDates(draft);
+
+      const next=draft.datesTouched
+        ? dates.includes(picked)
+          ? dates.filter(date=>date!==picked)
+          : [...dates,picked]
+        : [picked];
+
+      draft.datesTouched=true;
+
+      /* Последнюю дату снять нельзя: смена без дня не бывает. */
+      if(next.length){
+        syncDraftDates(next);
+        shiftDateCursor=picked.slice(0,7);
+        drawSheet(isEdit);
+        saveUIState();
+      }
+
+      return;
+    }
+
     draft.date=t.dataset.date;
     resetShiftInline();
     drawSheet(isEdit);
     saveUIState();
+    return;
+  }
+
+  if(t.dataset.shiftDateRemove){
+    readForm();
+
+    const rest=draftDates(draft).filter(date=>
+      date!==t.dataset.shiftDateRemove
+    );
+
+    if(rest.length){
+      draft.datesTouched=true;
+      syncDraftDates(rest);
+      drawSheet(isEdit);
+      saveUIState();
+    }
+
     return;
   }
 

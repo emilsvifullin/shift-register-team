@@ -196,6 +196,308 @@ test(
   }
 );
 
+/*
+  Тариф сохраняется своей кнопкой, не закрывая карточку ПВЗ.
+
+  Раньше применить правку тарифа можно было только верхним «Готово», а оно
+  закрывает всю карточку: человек терял из виду и тариф, и его историю.
+  Проверяется весь круг — правка текущего, новый тариф с будущей даты,
+  правка версии из истории, отмена — и то, что после каждого сохранения
+  карточка остаётся открытой и показывает новое состояние.
+*/
+async function openPointEditor(page,pointId){
+  await page
+    .locator(`[data-point-id="${pointId}"]`)
+    .click();
+
+  await expect(
+    page.locator("#manageEditorSheet")
+  ).toHaveClass(/\bon\b/);
+
+  await page
+    .locator("#manageEditorSave")
+    .click();
+
+  await expect(
+    page.locator("#managePointName")
+  ).toBeVisible();
+}
+
+test(
+  "the tariff has its own save and the point card stays open",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+    await openPointEditor(page,"point-2");
+
+    await page
+      .locator('[data-tariff-intent="edit-current"]')
+      .click();
+
+    await page
+      .locator("#manageFixedRate")
+      .fill("3300");
+
+    await page
+      .locator("#manageTariffSave")
+      .click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Текущий тариф сохранён");
+
+    /* Карточка не закрылась и уже показывает новую ставку. */
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator("#managePointName")
+    ).toBeVisible();
+
+    await expect(
+      page.locator("#manageEditorBody")
+    ).toContainText("3 300 ₽");
+
+    /* Форма тарифа закрылась: второго сохранения ждать нечего. */
+    await expect(
+      page.locator("#manageTariffSave")
+    ).toHaveCount(0);
+
+    const tariffs=await page.evaluate(()=>
+      globalThis.__stubDb.point_tariffs.filter(
+        tariff=>tariff.point_id==="point-2"
+      )
+    );
+
+    expect(tariffs).toHaveLength(1);
+    expect(tariffs[0].fixed_rate).toBe(3300);
+  }
+);
+
+test(
+  "a new tariff shows up in the open card as a planned one",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+    await openPointEditor(page,"point-2");
+
+    await expect(
+      page.locator(
+        '#manageEditorBody .tariff-change-button'
+      )
+    ).toHaveText([
+      "Изменить текущий тариф",
+      "Новый тариф"
+    ]);
+
+    await page
+      .locator('[data-tariff-intent="create"]')
+      .click();
+
+    await page
+      .locator("#manageFixedRate")
+      .fill("4100");
+
+    await page
+      .locator("#manageTariffDateOpen")
+      .click();
+
+    await page
+      .locator('#dateGrid [data-date="2026-09-28"]')
+      .click();
+
+    await page.locator("#dateDone").click();
+
+    await expect(
+      page.locator("#datePicker")
+    ).not.toHaveClass(/\bon\b/);
+
+    await page
+      .locator("#manageTariffSave")
+      .click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Новый тариф добавлен");
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    /*
+      Тариф с будущей даты не меняет текущий, поэтому без списка
+      запланированных сохранение выглядело бы как ничего не сделавшее.
+    */
+    await expect(
+      page.locator("#manageEditorBody")
+    ).toContainText("Запланированные тарифы");
+
+    await expect(
+      page.locator("#manageEditorBody")
+    ).toContainText("28 сентября 2026");
+
+    const tariffs=await page.evaluate(()=>
+      globalThis.__stubDb.point_tariffs
+        .filter(
+          tariff=>tariff.point_id==="point-2"
+        )
+        .map(tariff=>tariff.effective_from)
+        .sort()
+    );
+
+    expect(tariffs).toEqual([
+      "2026-01-01",
+      "2026-09-28"
+    ]);
+
+    /* Верхнее «Готово» по-прежнему завершает работу с ПВЗ. */
+    await page
+      .locator("#managePointName")
+      .fill("Корабельная 1 (обновлён)");
+
+    await page
+      .locator("#manageEditorSave")
+      .click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("ПВЗ сохранён");
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).not.toHaveClass(/\bon\b/);
+  }
+);
+
+test(
+  "a tariff version can be edited from the open card",
+  async({page})=>{
+    const seed=structuredClone(ADMIN_SEED);
+
+    seed.point_tariffs=[
+      ...seed.point_tariffs,
+      {
+        id:"tariff-2b",
+        point_id:"point-2",
+        effective_from:"2026-09-01",
+        pricing_type:"fixed",
+        fixed_rate:3400,
+        shk_tiers:null,
+        created_at:"2026-09-01T00:00:00Z"
+      }
+    ];
+
+    await openApp(page,{seed});
+    await openPoints(page);
+    await openPointEditor(page,"point-2");
+
+    /* История свёрнута: версия раскрывается своим заголовком. */
+    await page
+      .locator(
+        'details:has([data-tariff-edit="tariff-2"]) summary'
+      )
+      .click();
+
+    await page
+      .locator('[data-tariff-edit="tariff-2"]')
+      .click();
+
+    /*
+      Редактор один на карточку: правка версии не открывает вторую форму
+      с теми же полями.
+    */
+    await expect(
+      page.locator("#manageFixedRate")
+    ).toHaveCount(1);
+
+    await expect(
+      page.locator("#manageTariffDateOpen")
+    ).toContainText("1 января 2026");
+
+    await page
+      .locator("#manageFixedRate")
+      .fill("2900");
+
+    await page
+      .locator("#manageTariffSave")
+      .click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Тариф из истории сохранён");
+
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    const tariffs=await page.evaluate(()=>
+      globalThis.__stubDb.point_tariffs
+        .filter(
+          tariff=>tariff.point_id==="point-2"
+        )
+        .map(tariff=>tariff.fixed_rate)
+        .sort((first,second)=>first-second)
+    );
+
+    expect(tariffs).toEqual([2900,3400]);
+  }
+);
+
+test(
+  "cancelling the tariff cancels only the tariff",
+  async({page})=>{
+    await openApp(page);
+    await openPoints(page);
+    await openPointEditor(page,"point-2");
+
+    await page
+      .locator("#managePointName")
+      .fill("Корабельная 1 (черновик)");
+
+    await page
+      .locator('[data-tariff-intent="edit-current"]')
+      .click();
+
+    await page
+      .locator("#manageFixedRate")
+      .fill("9999");
+
+    await page
+      .locator("#manageTariffCancel")
+      .click();
+
+    await expect(
+      page.locator("#manageTariffSave")
+    ).toHaveCount(0);
+
+    /* Карточка осталась открытой, и правка названия не потерялась. */
+    await expect(
+      page.locator("#manageEditorSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator("#managePointName")
+    ).toHaveValue("Корабельная 1 (черновик)");
+
+    const tariffs=await page.evaluate(()=>
+      globalThis.__stubDb.point_tariffs.filter(
+        tariff=>tariff.point_id==="point-2"
+      )
+    );
+
+    expect(tariffs).toHaveLength(1);
+    expect(tariffs[0].fixed_rate).toBe(3000);
+
+    expect(
+      await page.evaluate(()=>
+        globalThis.__stubCalls
+          .map(call=>call.name)
+      )
+    ).not.toContain("admin_update_point_tariff");
+  }
+);
+
 test(
   "typing in the point search keeps focus and caret",
   async({page})=>{

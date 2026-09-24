@@ -3707,7 +3707,7 @@ function tariffHistoryItemHTML(
         </div>
         <div class="tariff-history-edit-body">
           ${tariffBoxHTML()}
-          <button type="button" class="btn b tariff-inline-save" data-tariff-edit-save>Сохранить тариф</button>
+          <button type="button" class="btn gold tariff-inline-save" data-tariff-edit-save>Сохранить тариф</button>
         </div>
       </div>
     `;
@@ -4301,6 +4301,15 @@ function drawManageEditor(){
       return;
     }
 
+    /*
+      История тарифов нужна и в режиме правки, а не только в просмотре.
+      Тариф сохраняется, не закрывая карточку, и результат должен быть
+      виден сразу: новый тариф с будущей даты не меняет текущий, и без
+      списка «Запланированные тарифы» сохранение выглядело бы как
+      ничего не сделавшее. Пока открыт редактор тарифа, список скрыт —
+      иначе правка версии из истории открыла бы вторую форму с теми же
+      идентификаторами полей.
+    */
     const tariffSection=
       manageEditorDraft.isNew
         ? `
@@ -4321,13 +4330,25 @@ function drawManageEditor(){
               </div>
             </div>
 
-            <button
-              type="button"
-              class="btn tariff-change-button"
-              id="manageTariffCancel"
-            >
-              Отменить
-            </button>
+            <div class="tariff-editor-actions">
+              <button
+                type="button"
+                class="btn tariff-change-button"
+                id="manageTariffCancel"
+              >
+                Отменить
+              </button>
+
+              <button
+                type="button"
+                class="btn gold tariff-change-button"
+                id="manageTariffSave"
+              >
+                ${manageEditorDraft.tariffIntent==="create"
+                  ? "Добавить тариф"
+                  : "Сохранить тариф"}
+              </button>
+            </div>
           ` : `
             ${tariffCardHTML(current)}
 
@@ -4346,15 +4367,20 @@ function drawManageEditor(){
               class="btn tariff-change-button"
               data-tariff-intent="create"
             >
-              ${current ? "Новый тариф с даты" : "Задать тариф"}
+              ${current ? "Новый тариф" : "Задать тариф"}
             </button>
 
             ${current ? `
               <div class="tariff-editor-help">
                 Изменение текущего тарифа не создаёт новую запись.
-                Новый тариф с даты сохраняет предыдущий в истории.
+                Новый тариф сохраняет предыдущий в истории.
               </div>
             ` : ""}
+
+            ${pointTariffHistoryHTML(
+              manageEditorDraft.point.id,
+              current
+            )}
           `}
         `;
 
@@ -4943,46 +4969,119 @@ function normalizedTariffEditorDraft({
   };
 }
 
-async function saveInlineTariff(){
-  const id=
-    manageEditorDraft
-      ?.tariffInlineEditId;
+/*
+  Сохранение тарифа само по себе, без карточки ПВЗ.
 
-  if(!id || manageEditorSaving){
+  Раньше открытый тариф сохраняла только верхняя «Готово», и она же
+  закрывала карточку: чтобы поправить ставку, приходилось выходить из
+  ПВЗ и заходить обратно — посмотреть, что получилось. Теперь у тарифа
+  своя кнопка, а карточка остаётся открытой и сразу показывает новое
+  состояние вместе с историей.
+
+  Все три намерения проходят здесь одним путём: правка текущего тарифа,
+  правка записи из истории и новый тариф отличаются только тем, какую
+  запись писать и какие ограничения на дату проверять. Проверки те же,
+  что и у «Готово», — иначе одна кнопка пропускала бы то, что другая
+  запрещает.
+*/
+async function saveOpenTariff(){
+  if(
+    !manageEditorDraft?.tariffOpen ||
+    !manageEditorDraft.point ||
+    manageEditorSaving
+  ){
+    return;
+  }
+
+  const intent=
+    manageEditorDraft.tariffIntent;
+
+  const id=
+    manageEditorDraft.tariffInlineEditId;
+
+  const updatesRecord=
+    tariffIntentUpdatesRecord(intent);
+
+  if(updatesRecord && !id){
+    toast("Тариф не найден");
     return;
   }
 
   try{
     const payload=
       normalizedTariffEditorDraft({
-        excludeId:id
+        excludeId:id || ""
       });
+
+    const tariffs=pointTariffs(
+      manageEditorDraft.point.id
+    );
+
+    if(intent==="edit-current"){
+      assertCurrentTariffDate({
+        tariffs,
+        tariffId:id,
+        effectiveFrom:payload.effectiveFrom,
+        today:localYMD()
+      });
+    }else if(intent==="edit-version"){
+      assertTariffVersionDate({
+        tariffs,
+        tariffId:id,
+        effectiveFrom:payload.effectiveFrom
+      });
+    }else{
+      assertNewTariffDate({
+        tariffs,
+        effectiveFrom:payload.effectiveFrom,
+        today:localYMD()
+      });
+    }
 
     manageEditorSaving=true;
 
-    await updateAdminTariff({
-      id,
-      ...payload
-    });
+    if(updatesRecord){
+      await updateAdminTariff({
+        id,
+        ...payload
+      });
+    }else{
+      await addAdminTariff({
+        pointId:manageEditorDraft.point.id,
+        ...payload
+      });
+    }
 
     await refreshTeamData({
       renderAfter:false
     });
 
+    /*
+      Карточка остаётся открытой, поэтому её черновик берёт свежий ПВЗ:
+      иначе она показывала бы состояние до сохранения.
+    */
     manageEditorDraft.point=
       teamData.points.find(
         point=>
           point.id===
           manageEditorDraft.id
       ) || manageEditorDraft.point;
+
     closeTariffEditor();
     drawManageEditor();
-    toast("Тариф изменён");
+
+    toast(
+      updatesRecord
+        ? intent==="edit-version"
+          ? "Тариф из истории сохранён"
+          : "Текущий тариф сохранён"
+        : "Новый тариф добавлен"
+    );
   }catch(error){
     toast(
       error instanceof Error
         ? error.message
-        : "Не удалось изменить тариф",
+        : "Не удалось сохранить тариф",
       4200
     );
   }finally{
@@ -12639,7 +12738,7 @@ manageEditorSheetElement.addEventListener(
       button.dataset.tariffEditSave!==
       undefined
     ){
-      void saveInlineTariff();
+      void saveOpenTariff();
       return;
     }
 
@@ -12657,6 +12756,11 @@ manageEditorSheetElement.addEventListener(
 
     if(button.id==="manageTariffDateOpen"){
       openDatePicker("tariff");
+      return;
+    }
+
+    if(button.id==="manageTariffSave"){
+      void saveOpenTariff();
       return;
     }
 

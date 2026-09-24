@@ -524,3 +524,18 @@
     transition:none;
   }
 }
+
+/*
+  У тарифа своё завершение: сохранить и отменить стоят парой внутри его
+  блока, а не растворяются в кнопках всей карточки ПВЗ. Главное действие
+  справа — там же, где «Готово» у карточки.
+*/
+.tariff-editor-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.tariff-editor-actions .btn{
+  margin-top:10px;
+}

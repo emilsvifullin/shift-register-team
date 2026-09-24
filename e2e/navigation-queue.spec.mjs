@@ -94,3 +94,42 @@ test(
     ).toHaveAttribute("data-active-tab","stats");
   }
 );
+
+/*
+  Из нескольких быстрых тапов побеждает последний, а не тот, что успел
+  попасть в очередь.
+
+  Пока идёт переход, tab остаётся прежним, и тап по разделу, в котором
+  человек визуально уже стоит, выглядел повтором: он молча пропадал, а
+  из очереди приезжал предыдущий выбор. «Смены → Данные → Управление →
+  Смены» подряд заканчивались «Управлением».
+*/
+test(
+  "the last tap wins over the one already queued",
+  async({page})=>{
+    await openApp(page);
+
+    await page.locator("#nextM").click();
+
+    for(const id of [
+      "#tab-data",
+      "#tab-manage",
+      "#tab-shifts"
+    ]){
+      await page.locator(id).click();
+    }
+
+    await settle(page);
+
+    await expect(
+      page.locator("body")
+    ).toHaveAttribute("data-active-tab","shifts");
+
+    /* И очередь пуста: экран никуда не уезжает следом. */
+    await page.waitForTimeout(600);
+
+    await expect(
+      page.locator("body")
+    ).toHaveAttribute("data-active-tab","shifts");
+  }
+);

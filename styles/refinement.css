@@ -166,9 +166,14 @@ body[data-active-tab="stats"] #app > .card:has(.stats-filter-row){
   margin-bottom:12px;
 }
 
+/*
+  По бокам — те же 16px, что у каждой строки приложения: тогда подпись
+  слева и стрелка справа стоят на одинаковом отступе от краёв плитки.
+  Ниже и выше отступ меньше: строка одна и должна остаться компактной.
+*/
 body[data-active-tab="stats"] .stats-filter-row{
   min-height:50px;
-  padding:10px 14px;
+  padding:10px 16px;
 }
 
 body[data-active-tab="stats"] .stats-filter-row .t{
@@ -185,17 +190,18 @@ body[data-active-tab="stats"] .stats-filter-row .point-value{
   font-weight:550;
 }
 
-body[data-active-tab="stats"] .stats-filter-row::after{
-  content:"";
-  width:7px;
-  height:7px;
-  flex:none;
-  margin-left:2px;
-  border-right:1.5px solid var(--ink3);
-  border-bottom:1.5px solid var(--ink3);
-  transform:rotate(45deg) translateY(-2px);
-}
+/*
+  Стрелка раскрытия у строки сотрудника — общая, из inline-fields.css.
 
+  Своя была нарисована раньше, когда строка открывала окно снизу и
+  стрелка была флексовым соседом текста. После переезда списка внутрь
+  плитки общее правило сделало стрелку абсолютной, а здешнее продолжало
+  задавать ей размер и поворот — и побеждало по весу селектора. Выходило
+  сразу три расхождения с остальными селекторами приложения: стрелка
+  висела ниже середины строки (своего translateY у неё не осталось), не
+  поворачивалась при раскрытии и стояла дальше от имени. Остаётся только
+  то, ради чего это правило и нужно: выбирать нечего — стрелки нет.
+*/
 body[data-active-tab="stats"] .stats-filter-row:disabled::after{
   display:none;
 }

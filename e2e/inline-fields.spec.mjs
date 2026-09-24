@@ -235,6 +235,128 @@ test(
 );
 
 /*
+  Стрелка раскрытия в «Итогах» — та же, что у остальных селекторов.
+
+  У строки сотрудника была своя стрелка, оставшаяся с тех пор, когда
+  список открывался окном снизу. Она перебивала общее правило по весу
+  селектора: висела ниже середины строки, не поворачивалась при
+  раскрытии и стояла дальше от имени, чем везде.
+*/
+test(
+  "the stats employee arrow is the shared one",
+  async({page})=>{
+    await openApp(page,{seed:seed({employees:10})});
+
+    await page.locator("#tab-stats").click();
+
+    const arrow=()=>page.evaluate(()=>{
+      const row=document.getElementById(
+        "statsEmployeeOpen"
+      );
+
+      const after=getComputedStyle(row,"::after");
+
+      return {
+        position:after.position,
+        right:after.right,
+        width:after.width,
+        height:after.height,
+        transform:after.transform,
+        /* Середина строки: стрелке незачем висеть ниже имени. */
+        centered:
+          after.top===
+          Math.round(
+            row.getBoundingClientRect().height/2
+          )+"px"
+      };
+    });
+
+    const closed=await arrow();
+
+    expect(closed.position).toBe("absolute");
+    expect(closed.right).toBe("16px");
+    expect(closed.width).toBe("6px");
+    expect(closed.height).toBe("6px");
+    expect(closed.centered).toBe(true);
+
+    await page.locator("#statsEmployeeOpen").click();
+
+    await expect(
+      page.locator("#statsEmployeeOpen")
+    ).toHaveAttribute("aria-expanded","true");
+
+    /* Поворот идёт переходом: читаем, когда он закончился. */
+    const settled=selector=>page.evaluate(
+      value=>document
+        .querySelector(value)
+        .getAnimations({subtree:true})
+        .filter(
+          animation=>
+            animation.playState==="running"
+        )
+        .length,
+      selector
+    );
+
+    await expect
+      .poll(()=>settled("#statsEmployeeOpen"))
+      .toBe(0);
+
+    const open=await arrow();
+
+    expect(open.transform).not.toBe(closed.transform);
+
+    expect(open.centered).toBe(true);
+
+    /*
+      Та же стрелка, что у строк карточки смены: правило одно на всё
+      приложение, поэтому и размер, и поворот совпадают.
+    */
+    await page.locator("#tab-shifts").click();
+    await page.locator("#shiftAdd").click();
+
+    const reference=page.locator("#f-point-open");
+
+    const referenceClosed=await reference.evaluate(row=>{
+      const after=getComputedStyle(row,"::after");
+
+      return {
+        position:after.position,
+        right:after.right,
+        width:after.width,
+        height:after.height,
+        transform:after.transform
+      };
+    });
+
+    expect(referenceClosed).toEqual({
+      position:closed.position,
+      right:closed.right,
+      width:closed.width,
+      height:closed.height,
+      transform:closed.transform
+    });
+
+    await reference.click();
+
+    await expect(reference).toHaveAttribute(
+      "aria-expanded",
+      "true"
+    );
+
+    await expect
+      .poll(()=>settled("#f-point-open"))
+      .toBe(0);
+
+    expect(
+      await reference.evaluate(row=>
+        getComputedStyle(row,"::after").transform
+      )
+    ).toBe(open.transform);
+  }
+);
+
+/*
   Поиск фильтрует по ходу ввода, а поле при этом остаётся под курсором.
 
   Перерисовка переиспользует узлы, но «личность» поля считалась вместе со

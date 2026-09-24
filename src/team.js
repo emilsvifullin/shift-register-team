@@ -22,6 +22,7 @@ export {
   deleteAdminShift,
   importAdminLegacyShift,
   importAdminLegacyShifts,
+  repriceAdminShift,
   saveAdminShift
 } from "./api/shifts.js";
 

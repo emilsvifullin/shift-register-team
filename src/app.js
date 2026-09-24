@@ -55,6 +55,7 @@ import {
   saveAdminEmployeeAuth,
   saveAdminPoint,
   saveAdminPayout,
+  repriceAdminShift,
   saveAdminShift,
   subscribeTeamChanges,
   updateAdminTariff
@@ -67,6 +68,7 @@ import {
   legacyShiftPayload,
   normalizeShkTiers,
   pricingDriversChanged,
+  rateForTariff,
   shiftEmployeeChoices,
   shiftPointChoices,
   sortPointsAlphabetically,
@@ -8784,6 +8786,123 @@ function selectedDatesHTML(){
   `;
 }
 
+/*
+  По какому тарифу посчитана смена.
+
+  Стоимость смены фиксируется снимком тарифа в момент сохранения и потом
+  сама не меняется. Пока этот снимок нигде не показывался, отличие цены
+  от текущего тарифа выглядело ошибкой расчёта: человек видел 3 000 ₽ на
+  дате, где тариф уже 3 500 ₽, и не мог узнать, что смена просто заведена
+  раньше этого тарифа.
+*/
+function appliedTariffRowHTML(value){
+  const pricing=value?.pricing;
+
+  if(!pricing?.rate){
+    return "";
+  }
+
+  const from=pricing.effectiveFrom
+    ? `тариф с ${shortDateLabel(pricing.effectiveFrom)}`
+    : "тариф ПВЗ";
+
+  return `
+    <div class="row shift-detail-readonly-row">
+      <div class="l">
+        <div class="s">Ставка</div>
+        <div class="t">${money(pricing.rate)} · ${esc(from)}</div>
+      </div>
+    </div>
+  `;
+}
+
+/*
+  Тариф, действующий на дату смены сейчас. Если он разошёлся со снимком,
+  смена заведена до его появления — это не ошибка, но и молчать об этом
+  нельзя.
+*/
+function currentTariffFor(value){
+  if(!value?.dbPointId || !value?.date){
+    return null;
+  }
+
+  try{
+    return tariffForDate(
+      teamData.tariffs,
+      value.dbPointId,
+      value.date
+    );
+  }catch{
+    return null;
+  }
+}
+
+/*
+  Расхождение считается по ставке, а не только по идентификатору тарифа:
+  администратор может изменить ставку существующего тарифа на месте —
+  идентификатор тогда прежний, а деньги другие.
+*/
+function tariffDivergesFromSnapshot(value){
+  const pricing=value?.pricing;
+  const current=currentTariffFor(value);
+
+  if(!pricing?.rate || !current){
+    return null;
+  }
+
+  let rate;
+
+  try{
+    /* Та же функция, что считает ставку при сохранении смены. */
+    rate=Number(
+      rateForTariff(current,value.shk)
+    );
+  }catch{
+    return null;
+  }
+
+  return rate!==Number(pricing.rate)
+    ? current
+    : null;
+}
+
+/*
+  Пересчёт предлагается только там, где он что-то значит: у смены с
+  оплатой, назначенной вручную, тариф сумму не определяет.
+*/
+function canRepriceShift(value){
+  return Boolean(
+    isAdmin &&
+    !value?.baseOverrideReason &&
+    tariffDivergesFromSnapshot(value)
+  );
+}
+
+function tariffDivergenceHTML(value){
+  const current=tariffDivergesFromSnapshot(value);
+
+  if(!current){
+    return "";
+  }
+
+  const rate=current.pricing_type==="fixed"
+    ? money(current.fixed_rate)
+    : "другой тариф";
+
+  return `
+    <div class="note shift-tariff-note">
+      Смена посчитана по тарифу, который действовал на момент её
+      сохранения. Сейчас на ${esc(dateLabel(value.date))} действует
+      ${esc(rate)} с ${esc(shortDateLabel(current.effective_from))}.
+      ${value?.baseOverrideReason
+        ? "Сумма этой смены задана вручную, поэтому тариф её не меняет."
+        : isAdmin
+          ? "Пересчитать можно кнопкой ниже."
+          : ""}
+    </div>
+  `;
+}
+
 function drawSheet(isEdit){
   const result=previewCalc(draft);
   const fixed=result.fixed;
@@ -8813,7 +8932,9 @@ function drawSheet(isEdit){
         ${fixed ? "" : `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Объём</div><div class="t">${nf(Number(draft.shk)||0)} ШК</div></div></div>`}
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Смена</div><div class="t">${money(result.base)}</div></div></div>
         ${draft.baseOverrideReason ? `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Причина корректировки</div><div class="t">${esc(draft.baseOverrideReason)}</div></div></div>` : ""}
+        ${appliedTariffRowHTML(draft)}
       </div>
+      ${tariffDivergenceHTML(draft)}
       ${adjustmentReadOnlyHTML("Премии",draft.bonuses)}
       ${adjustmentReadOnlyHTML("Штрафы",draft.penalties,true)}
       ${draft.note ? `
@@ -9053,6 +9174,10 @@ function drawSheet(isEdit){
 
     <div class="ml">Расчёт</div>
     <div class="calc" id="calcBox">${calcHTML()}</div>
+    ${isEdit ? tariffDivergenceHTML(draft) : ""}
+    ${isEdit && canRepriceShift(draft) ? `
+      <button type="button" class="btn" id="f-reprice">Пересчитать по текущему тарифу</button>
+    ` : ""}
     ${isEdit?`<button type="button" class="btn warn" id="f-del">Удалить смену</button>`:""}
     <div class="sheet-spacer" aria-hidden="true"></div>`
   );
@@ -13479,6 +13604,48 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
       syncDraftDates(rest);
       drawSheet(isEdit);
       saveUIState();
+    }
+
+    return;
+  }
+
+  if(t.id==="f-reprice"){
+    const current=
+      tariffDivergesFromSnapshot(draft);
+
+    if(!current){
+      return;
+    }
+
+    /*
+      Пересчёт меняет уже посчитанные деньги, поэтому подтверждается:
+      человек видит, с чего и на что.
+    */
+    if(
+      !await appConfirm(
+        "Пересчитать смену?",
+        {
+          detail:`Смена за ${dateLabel(draft.date)} будет посчитана по тарифу с ${shortDateLabel(current.effective_from)}. Прежняя сумма ${money(previewCalc(draft).base)} изменится.`,
+          okText:"Пересчитать"
+        }
+      )
+    ){
+      return;
+    }
+
+    try{
+      await repriceAdminShift(draft.id);
+      await refreshTeamData({renderAfter:false});
+      closeSheet();
+      render();
+      toast("Смена пересчитана");
+    }catch(error){
+      toast(
+        error instanceof Error
+          ? error.message
+          : "Не удалось пересчитать смену",
+        4400
+      );
     }
 
     return;

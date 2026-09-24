@@ -1821,6 +1821,74 @@ test(
 );
 
 /*
+  Тариф смены определяется её собственной датой, а уже посчитанная смена
+  сама не переоценивается.
+*/
+test(
+  "the tariff of a shift is chosen by its own date",
+  async()=>{
+    const app=
+      await read("src/app.js");
+
+    const reprice=
+      await read(
+        "supabase/migrations/20260924160000_reprice_shift_by_current_tariff.sql"
+      );
+
+    const stub=
+      await read("e2e/support/supabase-stub.mjs");
+
+    /* Каждая дата пачки уходит на сервер своей записью. */
+    assert.match(
+      app,
+      /for\(const date of dates\)\{[\s\S]*?saveAdminShift\([\s\S]*?date,/
+    );
+
+    /*
+      Стаб разрешает тариф так же, как сервер. Раньше он подставлял 3000
+      всем сменам подряд, и ошибка с границей тарифа прошла бы мимо
+      тестов.
+    */
+    assert.match(
+      stub,
+      /function resolveTariff\([\s\S]*?item\.effective_from<=date[\s\S]*?sort\(/
+    );
+
+    assert.doesNotMatch(
+      stub,
+      /base_amount:args\.p_base_amount_override \?\? 3000/
+    );
+
+    /* Снимок не пересчитывается, пока не изменились его основания. */
+    assert.match(
+      stub,
+      /const keepsPricing=[\s\S]*?previous\.shift_date===args\.p_shift_date/
+    );
+
+    /* Пересчёт — отдельное действие, а не побочный эффект сохранения. */
+    assert.match(
+      reprice,
+      /create or replace function public\.admin_reprice_shift/
+    );
+
+    assert.match(
+      reprice,
+      /effective_from <= v_shift\.shift_date[\s\S]*?order by t\.effective_from desc/
+    );
+
+    assert.match(
+      reprice,
+      /shift_has_manual_amount/
+    );
+
+    assert.match(
+      app,
+      /function canRepriceShift\([\s\S]*?!value\?\.baseOverrideReason[\s\S]*?tariffDivergesFromSnapshot/
+    );
+  }
+);
+
+/*
   Один номер телефона может принадлежать нескольким сотрудникам: мать и
   сын работают отдельно, а деньги обоим уходят на один номер.
 */

@@ -144,6 +144,21 @@ export async function saveAdminShift(
     "Не удалось сохранить смену"
   );
 }
+/*
+  Явный пересчёт смены по тарифу, действующему на её дату сейчас.
+  Обычное сохранение ничего не переоценивает — это отдельное решение
+  администратора.
+*/
+export async function repriceAdminShift(id){
+  return resultData(
+    await supabaseClient.rpc(
+      "admin_reprice_shift",
+      {p_shift_id:id}
+    ),
+    "Не удалось пересчитать смену"
+  );
+}
+
 export async function deleteAdminShift(
   id
 ){

@@ -200,6 +200,75 @@ export function stubScript(seed){
     return builder;
   }
 
+  /*
+    Разрешение тарифа — та же логика, что в admin_save_shift на сервере:
+    последний тариф ПВЗ, начавший действовать не позже даты смены; для
+    тарифа по ШК — первая граница, которую объём не перешагнул.
+  */
+  function resolveTariff(db,{pointId,date,shk}){
+    const point=db.points.find(item=>
+      item.id===pointId
+    ) || {};
+
+    const tariff=[...(db.point_tariffs || [])]
+      .filter(item=>
+        item.point_id===pointId &&
+        item.effective_from<=date
+      )
+      .sort((first,second)=>
+        second.effective_from.localeCompare(
+          first.effective_from
+        )
+      )[0];
+
+    if(!tariff){
+      throw new Error("tariff_not_found_for_date");
+    }
+
+    const fixed=tariff.pricing_type==="fixed";
+
+    const rate=fixed
+      ? Number(tariff.fixed_rate)
+      : (()=>{
+          const volume=Number(shk);
+
+          if(!Number.isFinite(volume) || volume<0){
+            throw new Error("invalid_shk");
+          }
+
+          const tier=(tariff.shk_tiers || []).find(item=>
+            item.up_to===null ||
+            volume<Number(item.up_to)
+          );
+
+          if(!tier){
+            throw new Error("tariff_rate_not_found");
+          }
+
+          return Number(tier.rate);
+        })();
+
+    return {
+      snapshot:{
+        version:2,
+        rulesVersion:"supabase-point-tariffs-v1",
+        tariffId:tariff.id,
+        pointId:point.id,
+        pointName:point.name,
+        effectiveFrom:tariff.effective_from,
+        pricingType:tariff.pricing_type,
+        fixed,
+        fixedRate:tariff.fixed_rate,
+        shkTiers:tariff.shk_tiers,
+        shk:fixed ? 0 : Number(shk) || 0,
+        rate,
+        fullHours:12,
+        advanceEnabled:point.advance_enabled===true,
+        shiftDate:date
+      }
+    };
+  }
+
   const rpc={
     admin_account_options_v2(){
       return db.accounts;
@@ -358,11 +427,53 @@ export function stubScript(seed){
 
       return args.p_shift_id;
     },
+    /*
+      Явный пересчёт по тарифу, действующему на дату смены сейчас. Смену
+      с ручной суммой не трогает — там решение человека.
+    */
+    admin_reprice_shift(args){
+      const shift=db.shifts.find(item=>
+        item.id===args.p_shift_id
+      );
+
+      if(!shift){
+        throw new Error("shift_not_found");
+      }
+
+      if(shift.base_amount_override_reason){
+        throw new Error("shift_has_manual_amount");
+      }
+
+      const pricing=resolveTariff(db,{
+        pointId:shift.point_id,
+        date:shift.shift_date,
+        shk:shift.shk
+      });
+
+      shift.pricing_snapshot=pricing.snapshot;
+      shift.base_amount=shift.partial
+        ? Math.round(
+            Number(pricing.snapshot.rate)/12*Number(shift.hours)
+          )
+        : Number(pricing.snapshot.rate);
+
+      return {
+        shift_id:shift.id,
+        rate:pricing.snapshot.rate,
+        base_amount:shift.base_amount,
+        effective_from:pricing.snapshot.effectiveFrom
+      };
+    },
     admin_save_shift_v3(args){
       return rpc.admin_save_shift_v2(args);
     },
     admin_save_shift_v2(args){
       db.saved_shifts.push(args);
+
+      const previous=db.shifts.find(shift=>
+        shift.id===args.p_shift_id
+      );
+
       db.shifts=db.shifts.filter(shift=>
         shift.id!==args.p_shift_id
       );
@@ -375,24 +486,66 @@ export function stubScript(seed){
         item.id===args.p_point_id
       ) || {};
 
+      /*
+        Тариф берётся ровно так же, как на сервере: последний, начавший
+        действовать не позже даты самой смены. Раньше стаб подставлял
+        3000 всем сменам подряд и о тарифах не знал — из-за этого любая
+        ошибка с границами тарифа и с пакетным созданием проходила через
+        тесты незамеченной.
+      */
+      const pricing=resolveTariff(db,{
+        pointId:args.p_point_id,
+        date:args.p_shift_date,
+        shk:args.p_shk
+      });
+
+      /*
+        Снимок пересчитывается, только если изменилось то, от чего он
+        зависит: сохранённая смена свой тариф не теряет.
+      */
+      const keepsPricing=
+        previous &&
+        previous.employee_id===args.p_employee_id &&
+        previous.point_id===args.p_point_id &&
+        previous.shift_date===args.p_shift_date &&
+        (previous.shk ?? null)===(args.p_shk ?? null) &&
+        previous.partial===args.p_partial &&
+        (previous.hours ?? null)===
+          (args.p_partial ? args.p_hours : null);
+
+      const snapshot=keepsPricing
+        ? previous.pricing_snapshot
+        : pricing.snapshot;
+
+      const rate=Number(snapshot.rate);
+
+      const calculated=keepsPricing
+        ? Number(previous.base_amount)
+        : args.p_partial
+          ? Math.round(rate/12*Number(args.p_hours))
+          : rate;
+
+      const override=
+        args.p_base_amount_override===null ||
+        args.p_base_amount_override===undefined
+          ? null
+          : Number(args.p_base_amount_override);
+
       db.shifts.push({
         id:args.p_shift_id,
         employee_id:args.p_employee_id,
         shift_date:args.p_shift_date,
         point_id:args.p_point_id,
         shift_type:args.p_shift_type,
-        shk:args.p_shk,
+        shk:snapshot.pricingType==="fixed" ? null : args.p_shk,
         partial:args.p_partial,
         hours:args.p_hours,
         full_hours:12,
-        base_amount:args.p_base_amount_override ?? 3000,
-        pricing_snapshot:{
-          version:2,
-          fixed:true,
-          pricingType:"fixed",
-          rate:3000,
-          fullHours:12
-        },
+        base_amount:
+          override!==null && override!==calculated
+            ? override
+            : calculated,
+        pricing_snapshot:snapshot,
         note:args.p_note,
         base_amount_override_reason:
           args.p_base_amount_reason ?? null,

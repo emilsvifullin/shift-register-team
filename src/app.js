@@ -7653,8 +7653,48 @@ function inlineSearchHTML({
 }
 
 /*
+  Поле, в котором человек прямо сейчас набирает текст.
+
+  Проверяется не «есть ли фокус», а «можно ли туда печатать»: забирать
+  фокус у кнопки или у страницы безобидно, у поля ввода — нет.
+*/
+function typingTarget(element){
+  if(!(element instanceof HTMLElement)){
+    return false;
+  }
+
+  if(element.isContentEditable){
+    return true;
+  }
+
+  if(
+    element.tagName!=="INPUT" &&
+    element.tagName!=="TEXTAREA"
+  ){
+    return false;
+  }
+
+  return (
+    !element.disabled &&
+    !element.readOnly
+  );
+}
+
+/*
   Поле поиска забирает фокус только там, где есть аппаратная клавиатура:
   на телефоне раскрытие списка не должно поднимать клавиатуру поверх него.
+
+  И не отбирает поле у того, кто уже печатает.
+
+  Фокус ставится следующим кадром: раскрытие только что перерисовало
+  форму, и до кадра поля ещё нет. Кадр может задержаться — на медленном
+  устройстве, в фоновой вкладке, под идущей анимацией, — и прийти, когда
+  человек уже ушёл в соседнее поле и набирает там. Тогда фокус
+  перепрыгивал, а набранное уходило в чужое поле: в «Фактическую оплату»
+  оно попадало под фильтр цифр и исчезало совсем.
+
+  Поэтому перед тем, как забрать фокус, смотрим, не печатает ли человек
+  уже где-то ещё. Печатает — значит фокус принадлежит ему.
 */
 function focusInlineSearch(id){
   if(
@@ -7666,9 +7706,22 @@ function focusInlineSearch(id){
   }
 
   requestAnimationFrame(()=>{
-    document
-      .getElementById(id)
-      ?.focus({preventScroll:true});
+    const field=document.getElementById(id);
+
+    if(!field){
+      return;
+    }
+
+    const active=document.activeElement;
+
+    if(
+      active!==field &&
+      typingTarget(active)
+    ){
+      return;
+    }
+
+    field.focus({preventScroll:true});
   });
 }
 
@@ -9748,9 +9801,28 @@ function normalizedDraft(value){
 function showValidationError(error){
   toast(error.message,3000);
 
+  /*
+    Фокус на незаполненном поле откладывается, чтобы не спорить с
+    всплывающим сообщением, и по той же причине не отбирается у того, кто
+    за эти миллисекунды успел начать печатать в другом поле.
+  */
   setTimeout(()=>{
     const field=document.getElementById(error.fieldId);
-    if(field) field.focus();
+
+    if(!field){
+      return;
+    }
+
+    const active=document.activeElement;
+
+    if(
+      active!==field &&
+      typingTarget(active)
+    ){
+      return;
+    }
+
+    field.focus();
   },50);
 }
 
@@ -13635,6 +13707,23 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
   const isEdit=shifts.some(x=>x.id===draft.id);
 
   /*
+    Набранное забирается в черновик на входе, до разбора нажатия.
+
+    Почти каждая ветка ниже перерисовывает лист, а перерисовка берёт
+    значения полей из черновика: поле, которое туда не попало, теряет
+    набранное. Раньше readForm стоял в отдельных ветках, и те, где о нём
+    забыли — стрелки месяца в календаре, переключение года, выбор дня, —
+    стирали причину корректировки и комментарии премий. Держалось это
+    только на постороннем: прокрутка листа роняла таймер сохранения
+    состояния, а он читает форму заодно.
+
+    Ветки, которые очищают поля черновика намеренно (переход на тариф
+    убирает ручную сумму и её причину), идут после и перекрывают
+    прочитанное — порядок именно такой.
+  */
+  readForm();
+
+  /*
     Раскрытие строки — такая же правка черновика, как ввод в поле: перед
     перерисовкой введённое надо забрать, иначе оно потеряется.
   */
@@ -14324,6 +14413,9 @@ function stepInlineDate(direction){
       direction
     );
 
+  /* Жест по календарю перерисовывает весь лист вместе с полями. */
+  readForm();
+
   drawSheet(
     shifts.some(
       item=>item.id===draft.id
@@ -14443,11 +14535,18 @@ document
   );
 
 document.getElementById("sheetBody").addEventListener("input",e=>{
+  if(!draft){
+    return;
+  }
+
   if(
     e.target.id==="shiftPointSearch" ||
     e.target.id==="shiftEmployeeSearch"
   ){
     shiftInlineQuery=e.target.value;
+
+    /* Поиск перерисовывает весь лист, а не только список. */
+    readForm();
 
     drawSheet(
       shifts.some(
@@ -14533,6 +14632,16 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
     e.target.value=value;
   }
 
+  /*
+    В черновик попадает любой ввод, а не только тот, что меняет расчёт.
+
+    Перечисление полей поимённо уже подводило: причина корректировки
+    оклада и комментарии премий со штрафами в список не попали, и
+    набранное в них жило только в разметке — до первой же перерисовки.
+    Пересчитывать расчёт по-прежнему нужно лишь для сумм и часов.
+  */
+  readForm();
+
   if(
     [
       "f-shk",
@@ -14543,8 +14652,6 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
       "[data-adjustment-amount]"
     )
   ){
-    readForm();
-
     const box=
       document.getElementById(
         "calcBox"
@@ -14556,14 +14663,9 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
         calcHTML()
       );
     }
-
-    saveUIState();
   }
 
-  if(e.target.id==="f-note"){
-    readForm();
-    saveUIState();
-  }
+  saveUIState();
 });
 
 const sheetBody=

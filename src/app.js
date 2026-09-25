@@ -149,6 +149,10 @@ import {
 } from "./workflow.js?shell=7";
 
 import {
+  reviewPeriod
+} from "./payroll-review.js";
+
+import {
   PERIOD_KINDS,
   findPeriod,
   periodKindForDate,
@@ -318,6 +322,7 @@ let shiftFilterDraft=null;
 let shiftFilterSheetPreviousFocus=null;
 let expandedPayoutKind="";
 let payrollPeriodSaving="";
+let payrollReviewOpen="";
 let payoutEditor=null;
 let payoutSaving=false;
 let legacyMigrationEmployeeId="";
@@ -2205,13 +2210,77 @@ function payrollPeriodState(kind){
     status,
     stale,
     entries,
-    totals
+    totals,
+    review:payrollPeriodReview(kind,entries)
   };
+}
+
+/*
+  Смены периода в том виде, в каком их читает проверка: только то, от
+  чего она может сделать вывод, и уже посчитанное общим расчётом.
+*/
+function payrollReviewShifts(kind){
+  return inMonth(cursor,shifts)
+    .filter(shift=>
+      periodKindForDate(shift.date)===kind
+    )
+    .map(shift=>{
+      const result=calc(shift);
+
+      return {
+        id:shift.id,
+        employeeId:shift.employeeId,
+        date:shift.date,
+        dateLabel:shortDateLabel(shift.date),
+        point:shift.point,
+        rate:Number(shift.pricing?.rate) || 0,
+        base:result.base,
+        tariffBase:result.calculatedBase,
+        manual:Boolean(shift.baseOverrideReason),
+        diverged:Boolean(
+          tariffDivergesFromSnapshot(shift)
+        )
+      };
+    });
+}
+
+function payrollPeriodReview(kind,entries){
+  return reviewPeriod({
+    entries,
+    shifts:payrollReviewShifts(kind),
+    payoutsFor:employeeId=>
+      payoutRecords(employeeId,kind),
+    today:localYMD()
+  });
+}
+
+function payrollFindingHTML(finding){
+  return `
+    <button
+      type="button"
+      class="payroll-finding payroll-finding-${finding.severity}"
+      data-review-target="${esc(
+        finding.target.type
+      )}"
+      data-review-id="${esc(finding.target.id)}"
+      ${finding.target.date
+        ? `data-review-date="${esc(finding.target.date)}"`
+        : ""}
+    >
+      <span class="payroll-finding-main">
+        <strong>${esc(finding.title)}</strong>
+        <small>${esc(finding.employeeName)} · ${esc(finding.detail)}</small>
+      </span>
+      <span class="payroll-finding-go" aria-hidden="true">›</span>
+    </button>
+  `;
 }
 
 function payrollPeriodRowHTML(kind){
   const state=payrollPeriodState(kind);
   const busy=payrollPeriodSaving===kind;
+  const open=payrollReviewOpen===kind;
+  const closed=["closed","paid"].includes(state.status);
 
   const actions=[];
 
@@ -2313,6 +2382,38 @@ function payrollPeriodRowHTML(kind){
         <span>К выплате <b>${money(state.totals.due)}</b></span>
         <span>Выплачено <b>${money(state.totals.paid)}</b></span>
       </div>
+
+      ${state.review.employees && !closed ? `
+        <button
+          type="button"
+          class="payroll-review-summary ${
+            state.review.troubled ? "has-questions" : "clean"
+          }"
+          data-period-review="${kind}"
+          aria-expanded="${open ? "true" : "false"}"
+        >
+          <span>
+            ${
+              state.review.troubled
+                ? `${state.review.ready} из ${state.review.employees} готовы, у ${state.review.troubled} есть вопросы`
+                : `Все ${state.review.employees} готовы`
+            }
+          </span>
+          ${state.review.troubled ? `
+            <span class="payroll-review-count">
+              ${state.review.findings.length}
+            </span>
+          ` : ""}
+        </button>
+      ` : ""}
+
+      ${open && state.review.findings.length ? `
+        <div class="payroll-findings">
+          ${state.review.findings
+            .map(payrollFindingHTML)
+            .join("")}
+        </div>
+      ` : ""}
 
       ${actions.length ? `
         <div class="payroll-period-actions">
@@ -16144,6 +16245,43 @@ app.addEventListener("click",async event=>{
       button.dataset.statsEmployee;
     statsEmployeeOpen=false;
     statsEmployeeQuery="";
+    saveUIState();
+    render();
+    return;
+  }
+
+  if(button.dataset.periodReview){
+    payrollReviewOpen=
+      payrollReviewOpen===button.dataset.periodReview
+        ? ""
+        : button.dataset.periodReview;
+
+    render();
+    return;
+  }
+
+  /*
+    Из находки — сразу туда, где её видно: смена открывается карточкой,
+    сотрудник выбирается в «Итогах». Смотреть проблему там, где её
+    нашли, невозможно: в списке нет ни полей, ни истории.
+  */
+  if(button.dataset.reviewTarget){
+    const type=button.dataset.reviewTarget;
+    const id=button.dataset.reviewId;
+
+    if(type==="shift"){
+      const date=button.dataset.reviewDate;
+
+      if(date && date.slice(0,7)!==cursor){
+        cursor=date.slice(0,7);
+      }
+
+      openSheet(id);
+      return;
+    }
+
+    statsEmployeeId=id;
+    statsEmployeeOpen=false;
     saveUIState();
     render();
     return;

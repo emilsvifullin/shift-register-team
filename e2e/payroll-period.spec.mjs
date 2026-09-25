@@ -301,3 +301,72 @@ test(
     await expect(second).toContainText("В работе");
   }
 );
+
+/*
+  Проверка периода: сводка отвечает на вопрос «можно ли закрывать», а из
+  находки человек уходит туда, где проблему видно.
+*/
+test(
+  "the review counts people and leads to the problem",
+  async({page})=>{
+    const source=seed();
+
+    /* У одной смены нет ставки на её дату — это и есть находка. */
+    source.shifts[0].pricing_snapshot={
+      ...source.shifts[0].pricing_snapshot,
+      rate:0
+    };
+
+    source.shifts[0].base_amount=0;
+
+    await openApp(page,{seed:source});
+    await openStats(page);
+
+    const first=periodRow(page,0);
+
+    const summary=first.locator(
+      "[data-period-review]"
+    );
+
+    await expect(summary).toContainText(
+      "есть вопросы"
+    );
+
+    await summary.click();
+
+    const finding=first
+      .locator(".payroll-finding")
+      .first();
+
+    await expect(finding).toContainText(
+      "Смена без ставки"
+    );
+
+    /* Клик уводит в саму смену. */
+    await finding.click();
+
+    await expect(
+      page.locator("#sheet")
+    ).toHaveClass(/\bon\b/);
+
+    await expect(
+      page.locator("#sheetBody")
+    ).toContainText("Корабельная 1");
+  }
+);
+
+test(
+  "a clean period says everyone is ready",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    await expect(
+      periodRow(page,0).locator("[data-period-review]")
+    ).toContainText("готовы");
+
+    await expect(
+      periodRow(page,0).locator(".payroll-review-count")
+    ).toHaveCount(0);
+  }
+);

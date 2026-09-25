@@ -850,3 +850,107 @@
   padding:10px;
   font-size:13.5px;
 }
+
+/*
+  Проверка периода: одна строка с итогом и, если развернуть, находки.
+
+  Находка — кнопка, потому что из неё идут смотреть проблему. Цвет
+  сдержанный: это список того, что стоит посмотреть, а не тревога.
+*/
+.payroll-review-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+
+  margin-top:10px;
+  padding:9px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+
+  background:var(--tint-soft);
+  color:var(--ink2);
+
+  font-size:12.5px;
+  text-align:left;
+}
+
+.payroll-review-summary.clean{
+  color:var(--green);
+  border-color:var(--green-line);
+}
+
+.payroll-review-summary.has-questions{
+  color:var(--ink);
+}
+
+.payroll-review-count{
+  flex:none;
+  min-width:20px;
+  padding:1px 6px;
+  border-radius:999px;
+
+  background:var(--rust);
+  color:#fff;
+
+  font-size:11px;
+  font-weight:650;
+  text-align:center;
+}
+
+.payroll-findings{
+  display:flex;
+  flex-direction:column;
+  margin-top:8px;
+}
+
+.payroll-finding{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+
+  padding:9px 2px;
+  border:0;
+  border-top:1px solid var(--line);
+  background:transparent;
+  color:var(--ink);
+  text-align:left;
+}
+
+.payroll-finding:first-child{
+  border-top:0;
+}
+
+.payroll-finding-main{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+
+.payroll-finding-main strong{
+  font-size:13.5px;
+  font-weight:550;
+}
+
+.payroll-finding-main small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  color:var(--ink3);
+  font-size:12px;
+}
+
+.payroll-finding-error .payroll-finding-main strong{
+  color:var(--rust);
+}
+
+.payroll-finding-go{
+  flex:none;
+  color:var(--ink3);
+  font-size:16px;
+}

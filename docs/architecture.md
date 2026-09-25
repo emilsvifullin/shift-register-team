@@ -336,6 +336,27 @@ in the final settlement. That is a rule of the payment, not a reason to
 move the working day into another period, and the payout card already
 marks such shifts «первая половина».
 
+## Reports and the PDF
+
+A report is a view of the period, not a second calculation. It takes the
+rows the period already lives on — the closing snapshot for a closed
+period, the current figures for an open one — and lays them out in
+columns. `src/payroll-report.js` does no arithmetic beyond rounding and
+summing what it was handed; `src/payroll-pdf.js` only renders.
+
+Column names had to be decided once. "За смены", "Премии" and "Штрафы"
+add up to "Начислено", and for a period "Начислено" **is** the amount
+payable — a separate "К выплате" column beside it would be the same
+number under a second name, so there isn't one. Corrections appear as a
+column only when there are any.
+
+The PDF opens as a print-ready document in a new window; the browser's
+"save as PDF" writes it out under a filename that names the period and,
+for a personal report, the employee. There are two formats — short and
+detailed — and the scope is either everybody or one person, so the
+personal report is the detailed one narrowed down rather than a third
+design.
+
 ## Who may read a table
 
 The application reaches Postgres through the Data API, so a table is

@@ -560,3 +560,69 @@ test(
     ).toContainText("после закрытия");
   }
 );
+
+/*
+  Отчёт — представление того же периода. Проверяется, что он открывается
+  готовым документом и что суммы в нём те же, что на экране.
+*/
+test(
+  "the report opens with the same figures the period shows",
+  async({page,context})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    const first=periodRow(page,0);
+
+    await expect(first).toContainText("6 000 ₽");
+
+    const [report]=await Promise.all([
+      context.waitForEvent("page"),
+      first
+        .locator('[data-period-report]:not([data-report-detailed])')
+        .click()
+    ]);
+
+    await report.waitForLoadState("domcontentloaded");
+
+    const text=(await report.locator("body").innerText())
+      .replace(/\s+/g," ");
+
+    expect(text).toContain("Shift Register");
+    expect(text).toContain("сентябрь 2026");
+    expect(text).toContain("1–15");
+    expect(text).toContain("Марина Абрамова");
+    expect(text).toContain("6 000 ₽");
+
+    /* Одна и та же сумма не называется двумя словами. */
+    expect(text).not.toContain("К выплате");
+
+    await report.close();
+  }
+);
+
+test(
+  "the detailed report explains where the sum came from",
+  async({page,context})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    const [report]=await Promise.all([
+      context.waitForEvent("page"),
+      periodRow(page,0)
+        .locator('[data-report-detailed]')
+        .first()
+        .click()
+    ]);
+
+    await report.waitForLoadState("domcontentloaded");
+
+    const text=(await report.locator("body").innerText())
+      .replace(/\s+/g," ");
+
+    expect(text).toContain("Корабельная 1");
+    expect(text).toContain("тариф ПВЗ");
+    expect(text).toContain("3 000 ₽");
+
+    await report.close();
+  }
+);

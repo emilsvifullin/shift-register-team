@@ -149,6 +149,16 @@ import {
 } from "./workflow.js?shell=7";
 
 import {
+  payrollReportDocument
+} from "./payroll-pdf.js";
+
+import {
+  REPORT_FORMATS,
+  buildPayrollReport,
+  reportFileName
+} from "./payroll-report.js";
+
+import {
   buildRecalcPlan,
   invalidRows,
   recalcTotals,
@@ -2407,6 +2417,212 @@ function eventMoment(value){
   }`;
 }
 
+/*
+  Строки отчёта — те же, что у периода: снимок для закрытого, текущий
+  счёт для открытого. Отчёт только добавляет к ним подробности, которые
+  нужны человеку для объяснения суммы, и ничего не пересчитывает.
+*/
+function payrollReportRows(kind,state){
+  const source=state.closed && state.snapshot.length
+    ? state.snapshot.map(row=>{
+        const stored=(teamData.periodEntries || []).find(
+          item=>
+            item.period_id===state.period.id &&
+            item.employee_id===row.employeeId
+        );
+
+        return {
+          employeeId:row.employeeId,
+          employeeName:row.employeeName,
+          shifts:Number(stored?.shifts) || 0,
+          base:Number(stored?.base) || 0,
+          bonus:Number(stored?.bonus) || 0,
+          fine:Number(stored?.fine) || 0,
+          due:row.due,
+          paid:row.paid,
+          detail:reportDetail(
+            row.employeeId,
+            kind,
+            stored?.detail?.shifts || []
+          )
+        };
+      })
+    : state.entries.map(entry=>({
+        ...entry,
+        detail:reportDetail(
+          entry.employeeId,
+          kind,
+          entry.detail?.shifts || []
+        )
+      }));
+
+  return source.map(row=>({
+    ...row,
+    corrections:correctionsFor(row.employeeId,kind)
+  }));
+}
+
+/* Ручные корректировки смен периода — тем же признаком, что и везде. */
+function correctionsFor(employeeId,kind){
+  return inMonth(cursor,shifts)
+    .filter(shift=>
+      shift.employeeId===employeeId &&
+      periodKindForDate(shift.date)===kind &&
+      shift.baseOverrideReason
+    )
+    .reduce((sum,shift)=>{
+      const result=calc(shift);
+
+      return sum+(
+        result.base-result.calculatedBase
+      );
+    },0);
+}
+
+/*
+  Подробности для одного сотрудника: смены с источником ставки, премии,
+  штрафы и настоящие записи выплат, а не одна свёрнутая цифра.
+*/
+function reportDetail(employeeId,kind,snapshotShifts){
+  const own=inMonth(cursor,shifts).filter(shift=>
+    shift.employeeId===employeeId &&
+    periodKindForDate(shift.date)===kind
+  );
+
+  const rows=own.length
+    ? own.map(shift=>{
+        const result=calc(shift);
+
+        return {
+          dateLabel:shortDateLabel(shift.date),
+          point:shift.point,
+          typeLabel:
+            shift.type==="extra"
+              ? "Доп"
+              : shift.partial
+                ? hoursWord(result.hours)
+                : "Основная",
+          rate:Number(shift.pricing?.rate) || 0,
+          rateSource:
+            shift.pricing?.rateSource==="employee"
+              ? "employee"
+              : "point",
+          base:result.base,
+          manual:Boolean(shift.baseOverrideReason)
+        };
+      })
+    : snapshotShifts.map(shift=>({
+        dateLabel:shortDateLabel(shift.date),
+        point:shift.point,
+        typeLabel:shift.type==="extra" ? "Доп" : "Основная",
+        rate:shift.rate,
+        rateSource:shift.rateSource,
+        base:shift.base,
+        manual:shift.manual
+      }));
+
+  const bonuses=[];
+  const fines=[];
+
+  for(const shift of own){
+    for(const item of shift.bonuses || []){
+      bonuses.push({
+        label:`${shortDateLabel(shift.date)} · ${
+          item.comment || "премия"
+        }`,
+        amount:Number(item.amount) || 0
+      });
+    }
+
+    for(const item of shift.penalties || []){
+      fines.push({
+        label:`${shortDateLabel(shift.date)} · ${
+          item.comment || "штраф"
+        }`,
+        amount:Number(item.amount) || 0
+      });
+    }
+  }
+
+  return {
+    shifts:rows,
+    bonuses,
+    fines,
+    payouts:payoutRecords(employeeId,kind).map(item=>({
+      label:`${dateLabel(item.paid_on)}${
+        item.comment ? ` · ${item.comment}` : ""
+      }`,
+      amount:Number(item.amount) || 0
+    }))
+  };
+}
+
+/*
+  Открыть отчёт готовым к печати. Отдельного расчёта у документа нет —
+  он показывает те же строки, что и период на экране.
+*/
+function openPayrollReport({kind,detailed,employeeId}){
+  const state=payrollPeriodState(kind);
+
+  const monthLabel=ymLabel(cursor).toLowerCase();
+
+  const periodLabel=kind==="first_half"
+    ? "1–15"
+    : "16–конец месяца";
+
+  const report=buildPayrollReport({
+    periodLabel,
+    monthLabel,
+    statusLabel:state.stale
+      ? "проверено, данные изменились"
+      : periodStatusLabel(state.status).toLowerCase(),
+    rows:payrollReportRows(kind,state),
+    generatedAt:new Date().toLocaleString("ru-RU",{
+      day:"numeric",
+      month:"long",
+      year:"numeric",
+      hour:"2-digit",
+      minute:"2-digit"
+    }),
+    employeeId
+  });
+
+  if(!report.lines.length){
+    toast("За этот период нечего показать");
+    return;
+  }
+
+  report.fileName=reportFileName({
+    monthLabel,
+    periodLabel,
+    employeeName:employeeId
+      ? report.lines[0].employeeName
+      : "",
+    detailed
+  });
+
+  const html=payrollReportDocument(report,{detailed});
+
+  const printWindow=window.open("","_blank");
+
+  if(!printWindow){
+    toast(
+      "Разрешите всплывающие окна, чтобы открыть отчёт",
+      4200
+    );
+
+    return;
+  }
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+
+  printWindow.addEventListener("load",()=>{
+    printWindow.focus();
+    printWindow.print();
+  });
+}
+
 function payrollPeriodRowHTML(kind){
   const state=payrollPeriodState(kind);
   const busy=payrollPeriodSaving===kind;
@@ -2583,6 +2799,37 @@ function payrollPeriodRowHTML(kind){
       ${historyOpen && events.length ? `
         <div class="payroll-events">
           ${events.map(payrollEventHTML).join("")}
+        </div>
+      ` : ""}
+
+      ${state.totals.employees ? `
+        <div class="payroll-report-actions">
+          <button
+            type="button"
+            class="payroll-report-link"
+            data-period-report="${kind}"
+          >
+            Отчёт
+          </button>
+          <button
+            type="button"
+            class="payroll-report-link"
+            data-period-report="${kind}"
+            data-report-detailed="1"
+          >
+            Подробно
+          </button>
+          ${statsEmployeeId ? `
+            <button
+              type="button"
+              class="payroll-report-link"
+              data-period-report="${kind}"
+              data-report-detailed="1"
+              data-report-employee="${esc(statsEmployeeId)}"
+            >
+              По сотруднику
+            </button>
+          ` : ""}
         </div>
       ` : ""}
 
@@ -16979,6 +17226,16 @@ app.addEventListener("click",async event=>{
     statsEmployeeQuery="";
     saveUIState();
     render();
+    return;
+  }
+
+  if(button.dataset.periodReport){
+    openPayrollReport({
+      kind:button.dataset.periodReport,
+      detailed:Boolean(button.dataset.reportDetailed),
+      employeeId:button.dataset.reportEmployee || null
+    });
+
     return;
   }
 

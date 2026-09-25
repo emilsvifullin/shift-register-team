@@ -231,12 +231,19 @@ export function periodDifferences({
       const paid=round2(row.paid);
       const gap=round2(due-paid);
 
+      /*
+        Пока период не закрыт и по нему ещё не платили, разница — это не
+        недоплата, а просто «ещё не выплачено». Недоплатой она становится
+        тогда, когда расчёт утверждён закрытием или деньги уже пошли.
+      */
+      const pending=!closed && paid<=0;
+
       return {
         employeeId:row.employeeId || row.employee_id,
         employeeName:row.employeeName || "",
         due,
         paid,
-        underpaid:gap>0 ? gap : 0,
+        underpaid:gap>0 && !pending ? gap : 0,
         overpaid:gap<0 ? -gap : 0
       };
     })

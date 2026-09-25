@@ -1,0 +1,122 @@
+/*
+  Зарплатный отчёт за расчётный период.
+
+  Отчёт ничего не считает. Он получает те же строки, которыми живёт
+  период — снимок закрытия или текущий счёт из payouts(), — и только
+  раскладывает их по колонкам. Любая своя формула здесь означала бы
+  второй ответ на вопрос «сколько начислено», а он должен быть один.
+
+  Колонки выбраны так, чтобы не повторять одно и то же разными словами.
+  «За смены», «Премии» и «Штрафы» складываются в «Начислено», а
+  «Начислено» за период — это и есть сумма к выплате: отдельной колонки
+  «К выплате» рядом с ней быть не может, она была бы той же цифрой под
+  другим именем.
+*/
+
+export const REPORT_FORMATS=Object.freeze([
+  "short",
+  "detailed"
+]);
+
+export function buildPayrollReport({
+  periodLabel,
+  monthLabel,
+  statusLabel,
+  rows,
+  generatedAt,
+  employeeId=null
+}){
+  const scoped=employeeId
+    ? rows.filter(row=>
+        row.employeeId===employeeId
+      )
+    : rows;
+
+  const lines=scoped.map(row=>{
+    const accrued=round(row.due);
+    const paid=round(row.paid);
+    const gap=round(accrued-paid);
+
+    return {
+      employeeId:row.employeeId,
+      employeeName:row.employeeName,
+      shifts:row.shifts,
+      base:round(row.base),
+      bonus:round(row.bonus),
+      fine:round(row.fine),
+      corrections:round(row.corrections || 0),
+      accrued,
+      paid,
+      unpaid:gap>0 ? gap : 0,
+      overpaid:gap<0 ? -gap : 0,
+      detail:row.detail || null
+    };
+  });
+
+  return {
+    periodLabel,
+    monthLabel,
+    statusLabel,
+    generatedAt,
+    employeeId,
+    lines,
+    totals:lines.reduce(
+      (total,line)=>({
+        employees:total.employees+1,
+        shifts:total.shifts+line.shifts,
+        base:round(total.base+line.base),
+        bonus:round(total.bonus+line.bonus),
+        fine:round(total.fine+line.fine),
+        corrections:round(
+          total.corrections+line.corrections
+        ),
+        accrued:round(total.accrued+line.accrued),
+        paid:round(total.paid+line.paid),
+        unpaid:round(total.unpaid+line.unpaid),
+        overpaid:round(total.overpaid+line.overpaid)
+      }),
+      {
+        employees:0,
+        shifts:0,
+        base:0,
+        bonus:0,
+        fine:0,
+        corrections:0,
+        accrued:0,
+        paid:0,
+        unpaid:0,
+        overpaid:0
+      }
+    )
+  };
+}
+
+/*
+  Имя файла человеку, а не машине: по нему видно, что это за отчёт, за
+  какой период и по кому.
+*/
+export function reportFileName({
+  monthLabel,
+  periodLabel,
+  employeeName,
+  detailed
+}){
+  const parts=[
+    "Shift Register",
+    detailed ? "зарплата подробно" : "зарплата",
+    `${monthLabel} ${periodLabel}`
+  ];
+
+  if(employeeName){
+    parts.push(employeeName);
+  }
+
+  return parts
+    .join(" — ")
+    .replace(/[\\/:*?"<>|]/g,"")
+    .trim();
+}
+
+function round(value){
+  return Math.round(Number(value) || 0);
+}

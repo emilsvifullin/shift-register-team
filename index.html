@@ -350,6 +350,35 @@ body{
 
 <div
   class="veil"
+  id="recalcVeil"
+  aria-hidden="true"
+></div>
+
+<!--
+  Перерасчёт задним числом показывается целиком до применения: список
+  затронутых смен, старая и новая сумма, разница и возможность оставить
+  отдельную смену как есть или назначить ей свою сумму.
+-->
+<div
+  class="sheet"
+  id="recalcSheet"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="recalcSheetTitle"
+  aria-hidden="true"
+  tabindex="-1"
+>
+  <div class="grab"></div>
+  <div class="shead">
+    <button type="button" class="lnk" id="recalcCancel">Отмена</button>
+    <div class="ttl" id="recalcSheetTitle">Перерасчёт смен</div>
+    <button type="button" class="lnk b" id="recalcApply">Применить</button>
+  </div>
+  <div class="sbody" id="recalcSheetBody"></div>
+</div>
+
+<div
+  class="veil"
   id="manageEditorVeil"
   aria-hidden="true"
 ></div>

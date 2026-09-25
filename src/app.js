@@ -149,6 +149,13 @@ import {
 } from "./workflow.js?shell=7";
 
 import {
+  buildRecalcPlan,
+  invalidRows,
+  recalcTotals,
+  resolvedAmount
+} from "./payroll-recalc.js";
+
+import {
   reviewPeriod
 } from "./payroll-review.js";
 
@@ -809,7 +816,7 @@ function focusableElements(container){
 }
 
 function activeModal(){
-  const ids=["appConfirm","datePicker","pointPicker","monthPicker","manageEditorSheet","shiftFilterSheet","employeeFilterSheet","employeeSheet","sheet"];
+  const ids=["appConfirm","datePicker","pointPicker","monthPicker","manageEditorSheet","recalcSheet","shiftFilterSheet","employeeFilterSheet","employeeSheet","sheet"];
   return ids.map(id=>document.getElementById(id)).find(element=>
     element && (element.classList.contains("on") || element.getAttribute("aria-hidden")==="false")
   ) || null;
@@ -2644,6 +2651,383 @@ function payrollPeriodError(error){
   }
 
   return message || "Не удалось изменить состояние периода";
+}
+
+/*
+  Перерасчёт после изменения условий задним числом.
+
+  Черновик держит план целиком: строки со старой и новой суммой и то, что
+  человек с каждой решил. Ничего не применяется, пока он не подтвердит.
+*/
+let recalcDraft=null;
+let recalcSaving=false;
+
+const recalcSheetElement=
+  document.getElementById("recalcSheet");
+
+/*
+  Смены, которых касается изменение условий: этого сотрудника (или всех,
+  если менялся тариф ПВЗ) на этом ПВЗ, начиная с даты, с которой новые
+  условия действуют.
+*/
+function affectedShifts({pointId,employeeId,from}){
+  return shifts
+    .filter(shift=>
+      (shift.dbPointId || shift.pointId)===pointId &&
+      shift.date>=from &&
+      (!employeeId || shift.employeeId===employeeId)
+    )
+    .map(shift=>({
+      id:shift.id,
+      date:shift.date,
+      dateLabel:shortDateLabel(shift.date),
+      employeeId:shift.employeeId,
+      employeeName:shift.employeeName,
+      point:shift.point,
+      base:calc(shift).base,
+      manual:Boolean(shift.baseOverrideReason)
+    }));
+}
+
+/*
+  Сколько смена стоила бы по действующим сейчас условиям — тем же
+  расчётом, что и при сохранении: ставка выбирается общим правилом,
+  неполная смена делится по часам.
+*/
+function priceByCurrentRules(row){
+  const shift=shifts.find(
+    item=>item.id===row.id
+  );
+
+  if(!shift){
+    throw new Error("shift_not_found");
+  }
+
+  const point=teamData.points.find(
+    item=>item.id===(shift.dbPointId || shift.pointId)
+  );
+
+  const resolved=shiftRateForDate({
+    tariffs:teamData.tariffs,
+    employeeRates:teamData.employeeRates,
+    employeeId:shift.employeeId,
+    pointId:point?.id,
+    shiftDate:shift.date
+  });
+
+  const pricing=createPricingSnapshot({
+    tariff:resolved.tariff,
+    point,
+    shiftDate:shift.date,
+    shk:shift.shk,
+    source:resolved.source,
+    employeeId:shift.employeeId
+  });
+
+  return calculateBaseAmount(pricing,{
+    partial:shift.partial,
+    hours:shift.hours
+  });
+}
+
+function openRecalcSheet({title,pointId,employeeId,from}){
+  const rows=buildRecalcPlan({
+    shifts:affectedShifts({
+      pointId,
+      employeeId,
+      from
+    }),
+    priceOf:priceByCurrentRules
+  });
+
+  if(!rows.length){
+    return false;
+  }
+
+  recalcDraft={title,rows};
+  recalcSaving=false;
+
+  drawRecalcSheet();
+
+  prepareBottomSheetOpen(
+    recalcSheetElement,
+    "--sheet-drag"
+  );
+
+  const veil=document.getElementById("recalcVeil");
+
+  recalcSheetElement.style.display="block";
+  recalcSheetElement.classList.remove("on");
+  recalcSheetElement.setAttribute("aria-hidden","false");
+  veil.setAttribute("aria-hidden","false");
+  setBackgroundInert(true);
+
+  void recalcSheetElement.offsetHeight;
+  document.body.classList.add("sheet-open");
+  veil.classList.add("on");
+  recalcSheetElement.classList.add("on");
+
+  return true;
+}
+
+function closeRecalcSheet(){
+  const veil=document.getElementById("recalcVeil");
+
+  recalcSheetElement.classList.remove("on");
+  recalcSheetElement.setAttribute("aria-hidden","true");
+  veil.classList.remove("on");
+  veil.setAttribute("aria-hidden","true");
+  document.body.classList.remove("sheet-open");
+
+  recalcDraft=null;
+  recalcSaving=false;
+
+  if(!activeModal()){
+    setBackgroundInert(false);
+  }
+
+  setTimeout(()=>{
+    if(!recalcSheetElement.classList.contains("on")){
+      recalcSheetElement.style.display="none";
+    }
+  },MODAL_HIDE_DELAY);
+}
+
+function recalcRowHTML(row,index){
+  const amount=resolvedAmount(row);
+
+  return `
+    <div class="recalc-row" data-key="recalc-${esc(row.id)}">
+      <div class="recalc-row-head">
+        <span class="recalc-row-main">
+          <strong>${esc(row.dateLabel)} · ${esc(row.employeeName)}</strong>
+          <small>${esc(row.point)}</small>
+        </span>
+
+        <span class="recalc-row-sum">
+          <s>${money(row.current)}</s>
+          <b class="${
+            amount===null
+              ? ""
+              : amount>row.current
+                ? "pos"
+                : "neg"
+          }">${
+            amount===null
+              ? money(row.current)
+              : money(amount)
+          }</b>
+        </span>
+      </div>
+
+      <div class="segbox recalc-row-modes">
+        <div class="seg">
+          <button
+            type="button"
+            data-recalc-mode="apply"
+            data-recalc-index="${index}"
+            class="${row.mode==="apply" ? "on" : ""}"
+          >
+            Пересчитать
+          </button>
+          <button
+            type="button"
+            data-recalc-mode="skip"
+            data-recalc-index="${index}"
+            class="${row.mode==="skip" ? "on" : ""}"
+          >
+            Оставить
+          </button>
+          <button
+            type="button"
+            data-recalc-mode="manual"
+            data-recalc-index="${index}"
+            class="${row.mode==="manual" ? "on" : ""}"
+          >
+            Своя сумма
+          </button>
+        </div>
+      </div>
+
+      ${row.mode==="manual" ? `
+        <label class="row recalc-row-manual">
+          <div class="t">Сумма</div>
+          <input
+            type="text"
+            inputmode="decimal"
+            data-recalc-amount="${index}"
+            value="${esc(row.manualAmount)}"
+            placeholder="${row.next}"
+            aria-label="Своя сумма смены ${esc(row.dateLabel)}"
+            autocomplete="off"
+          >
+        </label>
+      ` : ""}
+
+      ${row.wasManual ? `
+        <div class="recalc-row-note">
+          Сумма этой смены была задана вручную.
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function drawRecalcSheet(){
+  if(!recalcDraft){
+    return;
+  }
+
+  const totals=recalcTotals(recalcDraft.rows);
+
+  document.getElementById("recalcApply").disabled=
+    recalcSaving ||
+    invalidRows(recalcDraft.rows).length>0 ||
+    totals.apply+totals.manual===0;
+
+  setHTML(
+    document.getElementById("recalcSheetBody"),
+    `
+    <div class="ml">${esc(recalcDraft.title)}</div>
+
+    <div class="card recalc-summary">
+      <div class="row">
+        <div class="l">
+          <div class="s">Затронуто смен</div>
+          <div class="t">${totals.rows}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="l">
+          <div class="s">Пересчитать · оставить · своя сумма</div>
+          <div class="t">${totals.apply} · ${totals.skip} · ${totals.manual}</div>
+        </div>
+      </div>
+      <div class="row total">
+        <div class="t">Разница</div>
+        <div class="v ${
+          totals.diff>0 ? "pos" : totals.diff<0 ? "neg" : ""
+        }">${totals.diff>0 ? "+" : ""}${money(totals.diff)}</div>
+      </div>
+    </div>
+
+    <div class="ml">Смены</div>
+    <div class="card recalc-rows">
+      ${recalcDraft.rows
+        .map(recalcRowHTML)
+        .join("")}
+    </div>
+
+    <div class="sheet-spacer" aria-hidden="true"></div>
+  `
+  );
+}
+
+/*
+  Применение плана.
+
+  Пересчёт идёт тем же путём, что и кнопка «Пересчитать» в одной смене, а
+  своя сумма — обычной ручной корректировкой оклада с причиной. Никакого
+  отдельного способа записать деньги здесь нет: он бы и стал второй
+  финансовой моделью.
+*/
+/*
+  Предложить перерасчёт, если изменение условий застаёт сохранённые
+  смены. Если таких смен нет или их суммы не меняются, ничего не
+  спрашиваем: показывать пустой список незачем.
+*/
+function offerRecalcAfterRateChange(options){
+  if(options.from>localYMD()){
+    return;
+  }
+
+  openRecalcSheet(options);
+}
+
+async function applyRecalc(){
+  if(!recalcDraft || recalcSaving){
+    return;
+  }
+
+  const rows=recalcDraft.rows.filter(row=>
+    row.mode!=="skip"
+  );
+
+  if(!rows.length){
+    return;
+  }
+
+  recalcSaving=true;
+  drawRecalcSheet();
+
+  let done=0;
+
+  try{
+    for(const row of rows){
+      const shift=shifts.find(
+        item=>item.id===row.id
+      );
+
+      if(!shift){
+        continue;
+      }
+
+      if(row.mode==="apply"){
+        const result=await withClosedPeriodConfirm(
+          "Пересчитать смену",
+          force=>repriceAdminShift(row.id,{
+            force,
+            reason:recalcDraft.title
+          })
+        );
+
+        if(result===null){
+          continue;
+        }
+      }else{
+        const amount=resolvedAmount(row);
+
+        const result=await withClosedPeriodConfirm(
+          "Изменить сумму смены",
+          force=>saveAdminShift(
+            normalizedDraft({
+              ...shift,
+              baseOverride:amount,
+              baseOverrideReason:recalcDraft.title
+            }),
+            {force,reason:recalcDraft.title}
+          )
+        );
+
+        if(result===null){
+          continue;
+        }
+      }
+
+      done+=1;
+    }
+
+    await refreshTeamData({renderAfter:false});
+
+    closeRecalcSheet();
+    render();
+
+    toast(
+      done
+        ? `Пересчитано ${shiftsWord(done)}`
+        : "Ничего не изменилось"
+    );
+  }catch(error){
+    recalcSaving=false;
+    drawRecalcSheet();
+
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Не удалось пересчитать смены",
+      4400
+    );
+  }
 }
 
 function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
@@ -5837,6 +6221,18 @@ async function saveOpenTariff(){
           : "Текущий тариф сохранён"
         : "Новый тариф добавлен"
     );
+
+    /*
+      Тариф изменился с даты, которая застаёт уже сохранённые смены: их
+      стоимость заморожена, и решать, пересчитывать ли её, человек
+      должен видя весь список и разницу.
+    */
+    offerRecalcAfterRateChange({
+      title:`Новый тариф ПВЗ «${manageEditorDraft.point.name}» с ${shortDateLabel(payload.effectiveFrom)}`,
+      pointId:manageEditorDraft.point.id,
+      employeeId:null,
+      from:payload.effectiveFrom
+    });
   }catch(error){
     toast(
       error instanceof Error
@@ -6502,6 +6898,13 @@ async function saveEmployeeRate(){
         ? "Ставка сохранена"
         : "Индивидуальная ставка задана"
     );
+
+    offerRecalcAfterRateChange({
+      title:`Своя ставка ${employeeDraft.fullName} с ${shortDateLabel(effectiveFrom)}`,
+      pointId,
+      employeeId:employeeDraft.id,
+      from:effectiveFrom
+    });
   }catch(error){
     toast(
       error instanceof Error
@@ -14804,6 +15207,57 @@ employeeSheetElement.addEventListener(
     }
   }
 );
+
+document
+  .getElementById("recalcCancel")
+  .addEventListener("click",closeRecalcSheet);
+
+document
+  .getElementById("recalcVeil")
+  .addEventListener("click",closeRecalcSheet);
+
+document
+  .getElementById("recalcApply")
+  .addEventListener("click",()=>{
+    void applyRecalc();
+  });
+
+recalcSheetElement.addEventListener("click",event=>{
+  const button=event.target.closest("button");
+
+  if(!button || !recalcDraft){
+    return;
+  }
+
+  if(button.dataset.recalcMode){
+    const row=recalcDraft.rows[
+      Number(button.dataset.recalcIndex)
+    ];
+
+    if(row){
+      row.mode=button.dataset.recalcMode;
+      drawRecalcSheet();
+    }
+  }
+});
+
+recalcSheetElement.addEventListener("input",event=>{
+  if(
+    !recalcDraft ||
+    event.target.dataset.recalcAmount===undefined
+  ){
+    return;
+  }
+
+  const row=recalcDraft.rows[
+    Number(event.target.dataset.recalcAmount)
+  ];
+
+  if(row){
+    row.manualAmount=event.target.value;
+    drawRecalcSheet();
+  }
+});
 
 bindBottomSheetDismiss({
   element:

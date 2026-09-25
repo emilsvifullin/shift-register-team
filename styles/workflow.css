@@ -954,3 +954,117 @@
   color:var(--ink3);
   font-size:16px;
 }
+
+/*
+  Лист перерасчёта: строка на смену со старой и новой суммой и выбором,
+  что с ней сделать. Старая сумма зачёркнута — разница читается без
+  подписи.
+*/
+.recalc-rows{
+  padding:2px 0;
+}
+
+.recalc-row{
+  padding:12px 14px;
+  border-top:1px solid var(--line);
+}
+
+.recalc-row:first-child{
+  border-top:0;
+}
+
+.recalc-row-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.recalc-row-main{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+
+.recalc-row-main strong{
+  font-size:14px;
+  font-weight:550;
+  letter-spacing:-.15px;
+}
+
+.recalc-row-main small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  color:var(--ink3);
+  font-size:12px;
+}
+
+.recalc-row-sum{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  flex:none;
+  gap:1px;
+}
+
+.recalc-row-sum s{
+  color:var(--ink3);
+  font-size:12px;
+}
+
+.recalc-row-sum b{
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:-.2px;
+}
+
+.recalc-row-modes{
+  margin-top:10px;
+  padding:0;
+}
+
+.recalc-row-modes .seg button{
+  font-size:12px;
+}
+
+.recalc-row-manual{
+  margin-top:8px;
+  padding-right:0;
+  padding-left:0;
+  border-top:0;
+}
+
+.recalc-row-manual input{
+  text-align:right;
+}
+
+.recalc-row-note{
+  margin-top:6px;
+  color:var(--ink3);
+  font-size:11.5px;
+}
+
+.recalc-summary .total .v.pos{
+  color:var(--green);
+}
+
+.recalc-summary .total .v.neg{
+  color:var(--rust);
+}
+
+/*
+  Перерасчёт открывается поверх карточки, из которой пришёл: ставка уже
+  сохранена, а решение про смены — следующий шаг того же действия.
+  Поэтому лист и его шторка стоят слоем выше обычных листов, как окно
+  подтверждения поверх формы.
+*/
+#recalcVeil{
+  z-index:46;
+}
+
+#recalcSheet{
+  z-index:47;
+}

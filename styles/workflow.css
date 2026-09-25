@@ -539,3 +539,150 @@
 .tariff-editor-actions .btn{
   margin-top:10px;
 }
+
+/*
+  Индивидуальные ставки в карточке сотрудника.
+
+  Строка ставки называется именем ПВЗ, а не подписью поля, поэтому общая
+  ширина подписи в 56px ей не годится: имя пункта под неё не помещается и
+  превращается в «Комм…». Имя занимает столько, сколько нужно, а
+  ужимается при нехватке места значение — оно короче и предсказуемее.
+*/
+.employee-rate-row .t,
+.employee-rate-editor .point-row > .t{
+  flex:1;
+  width:auto;
+  min-width:0;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* У строки со ставкой подпись своей ширины, а растягивается поле. */
+.employee-rate-editor label.row > .t{
+  flex:none;
+  width:auto;
+}
+
+.employee-rate-editor label.row > input{
+  flex:1;
+  min-width:0;
+}
+
+.employee-rate-row .point-value,
+.employee-rate-editor .point-value{
+  flex:none;
+  max-width:60%;
+}
+
+/* Своя ставка отличается от «по тарифу ПВЗ» не только словами. */
+.employee-rate-row .employee-rate-own{
+  color:var(--gold);
+  font-weight:600;
+}
+
+.employee-rate-editor{
+  padding:0 0 12px;
+  border-top:1px solid var(--line);
+  background:var(--tint-soft);
+}
+
+.employee-rate-editor input{
+  text-align:right;
+}
+
+.employee-rate-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  padding:0 14px;
+}
+
+.employee-rate-actions .btn{
+  margin-top:10px;
+}
+
+.employee-rate-note{
+  padding:12px 14px;
+  color:var(--ink3);
+  font-size:12.5px;
+  line-height:1.45;
+}
+
+.employee-rate-history{
+  margin-top:12px;
+  padding:12px 14px 0;
+  border-top:1px solid var(--line);
+}
+
+.employee-rate-history-title{
+  margin-bottom:8px;
+
+  color:var(--ink3);
+  font-size:10.5px;
+  font-weight:650;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.employee-rate-history-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+
+  padding:7px 0;
+  border-top:1px solid var(--line);
+}
+
+.employee-rate-history-row:first-of-type{
+  border-top:0;
+}
+
+.employee-rate-history-main{
+  min-width:0;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  font-size:13.5px;
+}
+
+.employee-rate-history-actions{
+  display:flex;
+  flex:none;
+  gap:10px;
+}
+
+.employee-rate-history-actions button{
+  border:0;
+  padding:0;
+
+  background:transparent;
+  color:var(--ink2);
+
+  font-size:12.5px;
+  cursor:pointer;
+}
+
+.employee-rate-history-actions button.warn{
+  color:var(--rust);
+}
+
+.employee-rate-hint{
+  padding-top:8px;
+}
+
+/*
+  Откуда ставка — строка расчёта, но не итог: тише суммы и рядом с ней.
+*/
+.calc-rate-source span{
+  color:var(--ink3);
+}
+
+.calc-rate-source b{
+  color:var(--ink2);
+  font-weight:500;
+}

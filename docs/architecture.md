@@ -232,6 +232,41 @@ A path that neither Vercel nor Cloudflare fronts — a relay under
 `shiftregister.ru` on Russian hosting — would close the remaining gap for
 networks that cut both. It is one more entry in the route list.
 
+## What a shift costs
+
+A shift's price has one rule and one place where it is frozen.
+
+**The rule.** The rate comes from the individual rate of that employee at
+that point, and if there is none on that date, from the point's tariff.
+`employee_point_rates` is shaped exactly like `point_tariffs` — the same
+two kinds (a fixed rate or shk tiers), the same `private.validate_tariff_payload`,
+the same versioning by `effective_from`, the same "latest row that starts
+no later than the shift date" lookup. That is deliberate: an individual
+rate is not a discount bolted onto a tariff, it is the same thing with a
+narrower scope, so the rest of the pipeline cannot tell them apart.
+
+`private.employee_rate_for_date` holds the lookup so that saving a shift
+and repricing one cannot drift apart. The client repeats the same rule in
+`shiftRateForDate` (`src/team-domain.js`), because the form has to show
+the price the server is going to compute.
+
+**The freezing.** `shifts.pricing_snapshot` records what the shift was
+priced by, and nothing recalculates it on its own. `admin_save_shift`
+rebuilds it only when something it depends on changes — employee, point,
+date, volume, partial hours — and `admin_reprice_shift` rebuilds it when
+an admin asks in so many words. So a new rate, whatever date it starts
+from, never moves money that is already counted; the shift card says the
+current rate differs and offers the recalculation.
+
+The snapshot names its own source: `rateSource` is `employee` or `point`,
+with `employeeRateId` or `tariffId` beside it. Snapshots written before
+individual rates existed have no `rateSource`, and code that reads them
+must treat that as `point` — there was nothing else then.
+
+A day is never described as "should have had a shift" and a rate is never
+silently applied backwards: both would be the application inventing facts
+it does not have.
+
 ## Who may read a table
 
 The application reaches Postgres through the Data API, so a table is

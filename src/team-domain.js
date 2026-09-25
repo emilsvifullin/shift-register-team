@@ -178,6 +178,83 @@ export function tariffForDate(
     )[0] || null;
 }
 
+/*
+  Индивидуальная ставка сотрудника на ПВЗ, действующая на эту дату.
+
+  Устроена как тариф ПВЗ и ищется так же: берётся запись с самой поздней
+  датой начала, не превышающей дату смены. Разница только в том, по чему
+  отбираем — по паре «сотрудник + ПВЗ».
+*/
+export function employeeRateForDate(
+  rates,
+  employeeId,
+  pointId,
+  shiftDate
+){
+  if(!isValidDateString(shiftDate)){
+    throw new Error(
+      "Некорректная дата смены"
+    );
+  }
+
+  if(!employeeId || !pointId){
+    return null;
+  }
+
+  return (rates || [])
+    .filter(
+      rate=>
+        rate.employee_id===employeeId &&
+        rate.point_id===pointId &&
+        rate.effective_from<=shiftDate
+    )
+    .sort((a,b)=>
+      b.effective_from.localeCompare(
+        a.effective_from
+      )
+    )[0] || null;
+}
+
+/*
+  Условия, по которым считается смена: одно правило на всё приложение.
+
+  Есть индивидуальная ставка на эту дату — берётся она, нет — тариф ПВЗ.
+  Дальше обе идут одинаково: тот же расчёт ставки, тот же снимок, то же
+  округление. Ровно это же правило исполняет сервер в admin_save_shift —
+  иначе предварительный расчёт в форме расходился бы с сохранённым.
+*/
+export function shiftRateForDate({
+  tariffs,
+  employeeRates,
+  employeeId,
+  pointId,
+  shiftDate
+}){
+  const employeeRate=
+    employeeRateForDate(
+      employeeRates,
+      employeeId,
+      pointId,
+      shiftDate
+    );
+
+  if(employeeRate){
+    return {
+      source:"employee",
+      tariff:employeeRate
+    };
+  }
+
+  return {
+    source:"point",
+    tariff:tariffForDate(
+      tariffs,
+      pointId,
+      shiftDate
+    )
+  };
+}
+
 export function rateForTariff(
   tariff,
   shk
@@ -250,7 +327,9 @@ export function createPricingSnapshot({
   point,
   shiftDate,
   shk,
-  fullHours=FULL_HOURS
+  fullHours=FULL_HOURS,
+  source="point",
+  employeeId=null
 }){
   if(!point?.id){
     throw new Error(
@@ -268,11 +347,31 @@ export function createPricingSnapshot({
     tariff.pricing_type===
     "fixed";
 
+  const fromEmployee=
+    source==="employee";
+
   return {
     version:2,
     rulesVersion:
       TEAM_RULES_VERSION,
-    tariffId:tariff.id,
+    /*
+      Снимок называет источник ставки и саму запись. У снимков, сделанных
+      до появления индивидуальных ставок, поля нет — читающий код обязан
+      считать такие смены посчитанными по тарифу ПВЗ.
+    */
+    rateSource:
+      fromEmployee
+        ? "employee"
+        : "point",
+    tariffId:
+      fromEmployee
+        ? null
+        : tariff.id,
+    employeeRateId:
+      fromEmployee
+        ? tariff.id
+        : null,
+    employeeId,
     pointId:point.id,
     pointName:point.name,
     effectiveFrom:

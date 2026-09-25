@@ -42,11 +42,13 @@ import {
 } from "./phone.js?shell=7";
 
 import {
+  addAdminEmployeeRate,
   addAdminTariff,
+  deleteAdminEmployee,
+  deleteAdminEmployeeRate,
   deleteAdminPayout,
   deleteAdminPointWithHistory,
   deleteAdminTariff,
-  deleteAdminEmployee,
   deleteAdminShift,
   importAdminLegacyShifts,
   loadTeamData,
@@ -58,6 +60,7 @@ import {
   repriceAdminShift,
   saveAdminShift,
   subscribeTeamChanges,
+  updateAdminEmployeeRate,
   updateAdminTariff
 } from "./team.js?shell=7";
 
@@ -70,6 +73,7 @@ import {
   pricingDriversChanged,
   rateForTariff,
   shiftEmployeeChoices,
+  shiftRateForDate,
   shiftPointChoices,
   sortPointsAlphabetically,
   tariffForDate
@@ -243,6 +247,7 @@ let teamData={
   employeePoints:[],
   accounts:[],
   tariffs:[],
+  employeeRates:[],
   shifts:[],
   payouts:[],
   employee:null,
@@ -256,6 +261,22 @@ let teamDataError=null;
 
 let employeeDraft=null;
 let employeeSaving=false;
+
+/*
+  Редактор индивидуальной ставки внутри карточки сотрудника.
+
+  Держит одну открытую ставку: пару «сотрудник + ПВЗ», саму запись (если
+  правится существующая) и её поля. Ставка живёт рядом с назначением на
+  ПВЗ, потому что это условие работы именно на этом пункте, а не свойство
+  человека вообще.
+
+  Редактор задаёт фиксированную ставку — ровно ту договорённость, ради
+  которой он и нужен: «здесь этот сотрудник работает за столько». Таблица
+  и сервер принимают и ступени по ШК, как у тарифа ПВЗ, но заводить их
+  руками пока негде: для этого нет ни одного живого случая.
+*/
+let employeeRateEditor=null;
+let employeeRateSaving=false;
 let employeeSheetMode="create";
 let employeeSheetPreviousFocus=null;
 
@@ -5434,6 +5455,509 @@ function pointDeleteError(error){
   return message || "Не удалось удалить ПВЗ";
 }
 
+/*
+  Ставки сотрудника на одном ПВЗ, новые сверху.
+*/
+function employeeRatesFor(employeeId,pointId){
+  return (teamData.employeeRates || [])
+    .filter(
+      rate=>
+        rate.employee_id===employeeId &&
+        rate.point_id===pointId
+    )
+    .sort((a,b)=>
+      b.effective_from.localeCompare(
+        a.effective_from
+      )
+    );
+}
+
+/* Ставка, действующая сегодня. Её и видно в строке ПВЗ. */
+function currentEmployeeRate(employeeId,pointId){
+  const today=localYMD();
+
+  return employeeRatesFor(
+    employeeId,
+    pointId
+  ).find(
+    rate=>
+      rate.effective_from<=today
+  ) || null;
+}
+
+function employeeRateLabel(rate){
+  if(!rate){
+    return "По тарифу ПВЗ";
+  }
+
+  return rate.pricing_type==="fixed"
+    ? `${money(rate.fixed_rate)} с ${shortDateLabel(rate.effective_from)}`
+    : `По ШК с ${shortDateLabel(rate.effective_from)}`;
+}
+
+/*
+  Дата, с которой предлагается начать новую ставку: день после последней
+  имеющейся, но не раньше сегодня — задним числом ставка меняла бы уже
+  посчитанные смены только после явного пересчёта, и предлагать такое по
+  умолчанию не стоит.
+*/
+function nextEmployeeRateDate(employeeId,pointId){
+  const today=localYMD();
+
+  const last=employeeRatesFor(
+    employeeId,
+    pointId
+  )[0];
+
+  if(!last){
+    return today;
+  }
+
+  const next=nextYMD(
+    last.effective_from
+  );
+
+  return next>today ? next : today;
+}
+
+function openEmployeeRateEditor(
+  pointId,
+  rate=null
+){
+  employeeRateEditor={
+    pointId,
+    id:rate?.id || null,
+    rate:
+      rate && rate.pricing_type==="fixed"
+        ? String(rate.fixed_rate).replace(".",",")
+        : "",
+    effectiveFrom:
+      rate?.effective_from ||
+      nextEmployeeRateDate(
+        employeeDraft?.id,
+        pointId
+      ),
+    /* Ступени по ШК редактором не правятся — см. employeeRateEditor. */
+    readOnlyTiers:
+      Boolean(rate) &&
+      rate.pricing_type!=="fixed"
+  };
+}
+
+function closeEmployeeRateEditor(){
+  employeeRateEditor=null;
+  employeeRateSaving=false;
+}
+
+function readEmployeeRateEditor(){
+  if(!employeeRateEditor){
+    return;
+  }
+
+  const field=
+    document.getElementById(
+      "employeeRateAmount"
+    );
+
+  if(field){
+    employeeRateEditor.rate=
+      field.value;
+  }
+}
+
+function employeeRateEditorHTML(point){
+  const history=employeeRatesFor(
+    employeeDraft.id,
+    point.id
+  );
+
+  const editing=
+    employeeRateEditor?.pointId===
+    point.id;
+
+  const current=currentEmployeeRate(
+    employeeDraft.id,
+    point.id
+  );
+
+  const rows=history
+    .map(rate=>`
+      <div class="employee-rate-history-row">
+        <span class="employee-rate-history-main">
+          ${esc(employeeRateLabel(rate))}
+        </span>
+
+        <span class="employee-rate-history-actions">
+          <button
+            type="button"
+            data-employee-rate-edit="${esc(rate.id)}"
+          >
+            Изменить
+          </button>
+
+          <button
+            type="button"
+            class="warn"
+            data-employee-rate-delete="${esc(rate.id)}"
+          >
+            Убрать
+          </button>
+        </span>
+      </div>
+    `)
+    .join("");
+
+  return `
+    <div class="employee-rate">
+      <button
+        type="button"
+        class="row point-row employee-rate-row"
+        data-employee-rate-point="${esc(point.id)}"
+        aria-expanded="${editing ? "true" : "false"}"
+      >
+        <div class="t">${esc(point.name)}</div>
+        <div class="point-value ${current ? "employee-rate-own" : ""}">
+          ${esc(employeeRateLabel(current))}
+        </div>
+      </button>
+
+      ${editing ? `
+        <div class="employee-rate-editor">
+          ${employeeRateEditor.readOnlyTiers ? `
+            <div class="employee-rate-note">
+              Эта ставка задана ступенями по ШК. Менять ступени можно
+              только в тарифе ПВЗ — здесь её получится убрать.
+            </div>
+          ` : `
+            <label class="row">
+              <div class="t">Ставка</div>
+              <input
+                type="text"
+                inputmode="decimal"
+                id="employeeRateAmount"
+                value="${esc(employeeRateEditor.rate)}"
+                placeholder="0"
+                aria-label="Индивидуальная ставка"
+                autocomplete="off"
+              >
+            </label>
+
+            <button
+              type="button"
+              class="row point-row"
+              id="employeeRateDateOpen"
+            >
+              <div class="t">Действует с</div>
+              <div class="point-value">
+                ${esc(dateLabel(employeeRateEditor.effectiveFrom))}
+              </div>
+            </button>
+          `}
+
+          <div class="employee-rate-actions">
+            <button
+              type="button"
+              class="btn"
+              id="employeeRateCancel"
+            >
+              Отменить
+            </button>
+
+            ${employeeRateEditor.readOnlyTiers ? "" : `
+              <button
+                type="button"
+                class="btn gold"
+                id="employeeRateSave"
+                ${employeeRateSaving ? "disabled" : ""}
+              >
+                ${employeeRateEditor.id
+                  ? "Сохранить ставку"
+                  : "Задать ставку"}
+              </button>
+            `}
+          </div>
+
+          ${history.length ? `
+            <div class="employee-rate-history">
+              <div class="employee-rate-history-title">
+                История ставок
+              </div>
+              ${rows}
+            </div>
+          ` : `
+            <div class="employee-rate-note">
+              Своей ставки здесь ещё не было: смены считались по тарифу ПВЗ.
+            </div>
+          `}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+/*
+  В режиме просмотра — только те ПВЗ, где ставка своя: остальные считаются
+  по тарифу пункта, и перечислять их значило бы повторить список выше.
+*/
+function employeeRatesReadonlyHTML(employee){
+  if(!isAdmin || !employee){
+    return "";
+  }
+
+  const rows=orderedTeamPoints()
+    .map(point=>({
+      point,
+      rate:currentEmployeeRate(
+        employee.id,
+        point.id
+      )
+    }))
+    .filter(item=>item.rate);
+
+  if(!rows.length){
+    return "";
+  }
+
+  return `
+    <div class="ml">Индивидуальные ставки</div>
+    <div class="card">
+      ${rows
+        .map(item=>`
+          <div class="row">
+            <div class="l">
+              <div class="s">${esc(item.point.name)}</div>
+              <div class="t">
+                ${esc(employeeRateLabel(item.rate))}
+              </div>
+            </div>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+/*
+  Раздел ставок показывается только у сохранённого сотрудника: ставка
+  принадлежит паре «сотрудник + ПВЗ», а у несохранённого нет ни того, ни
+  назначения на ПВЗ.
+*/
+function employeeRatesSectionHTML(){
+  if(!isAdmin || employeeDraft?.isSystem){
+    return "";
+  }
+
+  if(!employeeDraft?.id){
+    return `
+      <div class="ml">Индивидуальные ставки</div>
+      <div class="card">
+        <div class="employee-rate-note">
+          Сохраните сотрудника и назначьте ему ПВЗ — после этого здесь
+          можно будет задать ставку, отличную от тарифа пункта.
+        </div>
+      </div>
+    `;
+  }
+
+  const points=orderedTeamPoints()
+    .filter(point=>
+      employeeDraft.pointIds.includes(
+        point.id
+      )
+    );
+
+  if(!points.length){
+    return `
+      <div class="ml">Индивидуальные ставки</div>
+      <div class="card">
+        <div class="employee-rate-note">
+          Назначьте сотруднику ПВЗ, чтобы задать ставку для него.
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="ml">Индивидуальные ставки</div>
+    <div class="card">
+      ${points
+        .map(point=>
+          employeeRateEditorHTML(point)
+        )
+        .join("")}
+    </div>
+    <div class="note employee-rate-hint">
+      Пустая строка значит «по тарифу ПВЗ». Своя ставка действует с
+      выбранной даты и не меняет уже сохранённые смены: их стоимость
+      заморожена в момент сохранения.
+    </div>
+  `;
+}
+
+/*
+  Сохранение ставки живёт отдельно от сохранения карточки сотрудника:
+  это отдельная запись в своей таблице, и её «Готово» — своя кнопка. То
+  же решение, что у тарифа ПВЗ, и по той же причине: карточка остаётся
+  открытой и сразу показывает новое состояние.
+*/
+async function saveEmployeeRate(){
+  if(
+    !employeeRateEditor ||
+    !employeeDraft?.id ||
+    employeeRateSaving
+  ){
+    return;
+  }
+
+  readEmployeeRateEditor();
+
+  const {
+    pointId,
+    id,
+    effectiveFrom
+  }=employeeRateEditor;
+
+  try{
+    if(!isValidDateString(effectiveFrom)){
+      throw new Error(
+        `Выберите дату с ${MIN_YEAR} по ${MAX_YEAR} год`
+      );
+    }
+
+    const amount=
+      validateMoneyField(
+        employeeRateEditor.rate
+          .trim()
+          .replace(",","."),
+        "Ставка",
+        {
+          allowEmpty:false,
+          max:MAX_MONEY
+        }
+      );
+
+    if(amount){
+      throw new Error(amount);
+    }
+
+    const value=Number(
+      employeeRateEditor.rate
+        .trim()
+        .replace(",",".")
+    );
+
+    if(!(value>0)){
+      throw new Error(
+        "Ставка должна быть больше нуля"
+      );
+    }
+
+    /*
+      Две ставки с одной датой начала — это противоречие: какая из них
+      действует, ответить нечем. Сервер ловит это ограничением, но
+      сказать об этом понятнее стоит здесь.
+    */
+    const clash=employeeRatesFor(
+      employeeDraft.id,
+      pointId
+    ).some(
+      rate=>
+        rate.id!==id &&
+        rate.effective_from===
+          effectiveFrom
+    );
+
+    if(clash){
+      throw new Error(
+        "Ставка с этой даты уже есть"
+      );
+    }
+
+    employeeRateSaving=true;
+
+    if(id){
+      await updateAdminEmployeeRate({
+        id,
+        effectiveFrom,
+        pricingType:"fixed",
+        fixedRate:value
+      });
+    }else{
+      await addAdminEmployeeRate({
+        employeeId:employeeDraft.id,
+        pointId,
+        effectiveFrom,
+        pricingType:"fixed",
+        fixedRate:value
+      });
+    }
+
+    await refreshTeamData({
+      renderAfter:false
+    });
+
+    closeEmployeeRateEditor();
+    drawEmployeeSheet();
+
+    toast(
+      id
+        ? "Ставка сохранена"
+        : "Индивидуальная ставка задана"
+    );
+  }catch(error){
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Не удалось сохранить ставку",
+      4200
+    );
+  }finally{
+    employeeRateSaving=false;
+  }
+}
+
+async function removeEmployeeRate(id){
+  const rate=(teamData.employeeRates || [])
+    .find(item=>item.id===id);
+
+  if(!rate){
+    toast("Ставка не найдена");
+    return;
+  }
+
+  const agreed=await appConfirm(
+    "Убрать индивидуальную ставку?",
+    {
+      detail:`Смены с этой даты будут считаться по тарифу ПВЗ. Уже сохранённые смены не изменятся: их стоимость заморожена.`,
+      okText:"Убрать",
+      danger:true
+    }
+  );
+
+  if(!agreed){
+    return;
+  }
+
+  try{
+    await deleteAdminEmployeeRate(id);
+
+    await refreshTeamData({
+      renderAfter:false
+    });
+
+    closeEmployeeRateEditor();
+    drawEmployeeSheet();
+    toast("Ставка убрана");
+  }catch(error){
+    toast(
+      error instanceof Error
+        ? error.message
+        : "Не удалось убрать ставку",
+      4200
+    );
+  }
+}
+
 function drawEmployeeSheet(){
   if(!employeeDraft){
     return;
@@ -5660,6 +6184,8 @@ function drawEmployeeSheet(){
       <div class="card">
         ${pointRows}
       </div>
+
+      ${employeeRatesReadonlyHTML(employee)}
 
       <div
         class="sheet-spacer"
@@ -5955,6 +6481,8 @@ function drawEmployeeSheet(){
     <div class="card employee-points">
       ${pointRows}
     </div>
+
+    ${employeeRatesSectionHTML()}
 
     ${!isCreate && employeeDraft.id && !employeeDraft.isSystem ? `
       <button
@@ -6512,6 +7040,8 @@ function openEmployeeEditor(
   employeeDraft=
     nextDraft;
 
+  closeEmployeeRateEditor();
+
   employeeSheetMode=
     employeeId
       ? "view"
@@ -6606,6 +7136,7 @@ function closeEmployeeEditor(){
   employeeDraft=null;
   employeeSaving=false;
   employeeSheetMode="create";
+  closeEmployeeRateEditor();
 
   if(!activeModal()){
     setBackgroundInert(false);
@@ -7204,6 +7735,7 @@ function changeManageSection(
 
       employeeDraft=null;
       employeeSaving=false;
+      closeEmployeeRateEditor();
 
       setPageScrollTop(0);
       render();
@@ -8373,6 +8905,11 @@ function openDatePicker(
   ) return;
 
   if(
+    target==="employeeRate" &&
+    !employeeRateEditor
+  ) return;
+
+  if(
     target==="payout" &&
     !payoutEditor
   ) return;
@@ -8383,6 +8920,8 @@ function openDatePicker(
     readForm();
   }else if(target==="tariff"){
     readManageEditor();
+  }else if(target==="employeeRate"){
+    readEmployeeRateEditor();
   }
 
   datePreviousFocus=document.activeElement;
@@ -8400,8 +8939,10 @@ function openDatePicker(
       ? draft.date
       : target==="payout"
         ? payoutEditor.paidOn
-        : manageEditorDraft
-            .effectiveFrom;
+        : target==="employeeRate"
+          ? employeeRateEditor.effectiveFrom
+          : manageEditorDraft
+              .effectiveFrom;
   dateCalendarCursor=datePickerValue.slice(0,7);
   closeDateJump();
   drawDatePicker();
@@ -8450,6 +8991,17 @@ function selectDate(ymd){
 
     closeDatePicker();
     render();
+    return;
+  }
+
+  if(datePickerTarget==="employeeRate"){
+    if(!employeeRateEditor) return;
+
+    employeeRateEditor.effectiveFrom=
+      ymd;
+
+    closeDatePicker();
+    drawEmployeeSheet();
     return;
   }
 
@@ -8754,17 +9306,26 @@ function previewCalc(value){
         );
       }
 
-      const tariff=tariffForDate(
-        teamData.tariffs,
-        point.id,
-        value.date
-      );
+      /*
+        Ставка выбирается тем же правилом, что и на сервере: сначала
+        индивидуальная ставка сотрудника на этом ПВЗ, потом тариф ПВЗ.
+        Иначе расчёт в форме расходился бы с сохранённой суммой.
+      */
+      const resolved=shiftRateForDate({
+        tariffs:teamData.tariffs,
+        employeeRates:teamData.employeeRates,
+        employeeId:value.employeeId,
+        pointId:point.id,
+        shiftDate:value.date
+      });
 
       pricing=createPricingSnapshot({
-        tariff,
+        tariff:resolved.tariff,
         point,
         shiftDate:value.date,
-        shk:value.shk
+        shk:value.shk,
+        source:resolved.source,
+        employeeId:value.employeeId || null
       });
     }
   }catch(error){
@@ -8816,6 +9377,8 @@ function previewCalc(value){
   return {
     available:!pricingError,
     error:pricingError,
+    /* Снимок нужен целиком: по нему видно, откуда взялась ставка. */
+    pricing,
     fixed:pricing.fixed,
     rate:pricing.rate,
     hours,
@@ -8989,6 +9552,18 @@ function adjustmentReadOnlyHTML(
   `;
 }
 
+/*
+  С какой даты действует то, по чему смена посчитана. У старых снимков
+  даты может не быть — тогда и говорить нечего.
+*/
+function rateEffectiveLabel(pricing){
+  const from=pricing?.effectiveFrom;
+
+  return typeof from==="string" && from
+    ? `с ${shortDateLabel(from)}`
+    : "—";
+}
+
 function calcHTML(){
   const result=previewCalc(draft);
 
@@ -9000,10 +9575,28 @@ function calcHTML(){
     `;
   }
 
+  /*
+    Откуда ставка — часть расчёта, а не украшение: при одинаковой сумме
+    «своя ставка» и «тариф ПВЗ» означают разные договорённости, и
+    увидеть это нужно в самой смене, а не восстанавливать по карточкам.
+  */
+  const fromEmployeeRate=
+    result.pricing?.rateSource==="employee";
+
   return `
     <div class="ln">
       <span>${result.fixed ? "Оклад смены" : "Ставка по объёму"}</span>
       <b>${money(result.rate)}</b>
+    </div>
+    <div class="ln calc-rate-source">
+      <span>${
+        fromEmployeeRate
+          ? "Индивидуальная ставка сотрудника"
+          : "Тариф ПВЗ"
+      }</span>
+      <b>${esc(
+        rateEffectiveLabel(result.pricing)
+      )}</b>
     </div>
     ${draft.partial?`<div class="ln"><span>${nf(result.perHour)} ₽/час × ${hoursWord(result.hours)}</span><b>${money(result.calculatedBase)}</b></div>`:""}
     ${result.baseOverridden?`<div class="ln"><span>Оплата за смену</span><b>${money(result.base)}</b></div>`:""}
@@ -9124,9 +9717,18 @@ function appliedTariffRowHTML(value){
     return "";
   }
 
+  /*
+    У снимков до появления индивидуальных ставок поля нет, и других
+    ставок тогда не существовало — значит тариф ПВЗ.
+  */
+  const source=
+    pricing.rateSource==="employee"
+      ? "своя ставка"
+      : "тариф ПВЗ";
+
   const from=pricing.effectiveFrom
-    ? `тариф с ${shortDateLabel(pricing.effectiveFrom)}`
-    : "тариф ПВЗ";
+    ? `${source} с ${shortDateLabel(pricing.effectiveFrom)}`
+    : source;
 
   return `
     <div class="row shift-detail-readonly-row">
@@ -9149,11 +9751,19 @@ function currentTariffFor(value){
   }
 
   try{
-    return tariffForDate(
-      teamData.tariffs,
-      value.dbPointId,
-      value.date
-    );
+    /*
+      Сравнивать нужно с тем, по чему смена посчиталась бы сейчас, —
+      включая индивидуальную ставку. Иначе появление своей ставки у
+      сотрудника осталось бы незамеченным, а пересчёт менял бы сумму
+      молча.
+    */
+    return shiftRateForDate({
+      tariffs:teamData.tariffs,
+      employeeRates:teamData.employeeRates,
+      employeeId:value.employeeId,
+      pointId:value.dbPointId,
+      shiftDate:value.date
+    }).tariff;
   }catch{
     return null;
   }
@@ -9673,8 +10283,21 @@ function validateDraft(value){
         value
       )
     ){
-      const tariff=tariffForDate(teamData.tariffs,point.id,value.date);
-      const pricing=createPricingSnapshot({tariff,point,shiftDate:value.date,shk:value.shk});
+      const resolved=shiftRateForDate({
+        tariffs:teamData.tariffs,
+        employeeRates:teamData.employeeRates,
+        employeeId:value.employeeId,
+        pointId:point.id,
+        shiftDate:value.date
+      });
+      const pricing=createPricingSnapshot({
+        tariff:resolved.tariff,
+        point,
+        shiftDate:value.date,
+        shk:value.shk,
+        source:resolved.source,
+        employeeId:value.employeeId || null
+      });
       calculateBaseAmount(
         pricing,
         {
@@ -13238,6 +13861,75 @@ employeeSheetElement.addEventListener(
     }
 
     syncEmployeeDraftFromForm();
+
+    /* Индивидуальные ставки: строка ПВЗ, её редактор и история. */
+    if(button.dataset.employeeRatePoint){
+      const pointId=
+        button.dataset.employeeRatePoint;
+
+      if(
+        employeeRateEditor?.pointId===
+        pointId
+      ){
+        closeEmployeeRateEditor();
+      }else{
+        openEmployeeRateEditor(
+          pointId,
+          currentEmployeeRate(
+            employeeDraft.id,
+            pointId
+          )
+        );
+      }
+
+      drawEmployeeSheet();
+      return;
+    }
+
+    if(button.dataset.employeeRateEdit){
+      const rate=(teamData.employeeRates || [])
+        .find(item=>
+          item.id===
+          button.dataset.employeeRateEdit
+        );
+
+      if(!rate){
+        toast("Ставка не найдена");
+        return;
+      }
+
+      openEmployeeRateEditor(
+        rate.point_id,
+        rate
+      );
+
+      drawEmployeeSheet();
+      return;
+    }
+
+    if(button.dataset.employeeRateDelete){
+      void removeEmployeeRate(
+        button.dataset.employeeRateDelete
+      );
+
+      return;
+    }
+
+    if(button.id==="employeeRateDateOpen"){
+      openDatePicker("employeeRate");
+      return;
+    }
+
+    if(button.id==="employeeRateCancel"){
+      closeEmployeeRateEditor();
+      drawEmployeeSheet();
+      return;
+    }
+
+    if(button.id==="employeeRateSave"){
+      void saveEmployeeRate();
+      return;
+    }
 
     if(
       button.id===

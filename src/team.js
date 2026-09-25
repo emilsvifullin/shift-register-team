@@ -9,9 +9,12 @@ export {
 } from "./api/read.js";
 
 export {
+  addAdminEmployeeRate,
   deleteAdminEmployee,
+  deleteAdminEmployeeRate,
   rollbackAdminEmployeeCreation,
-  saveAdminEmployee
+  saveAdminEmployee,
+  updateAdminEmployeeRate
 } from "./api/employees.js";
 
 export {

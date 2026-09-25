@@ -92,6 +92,7 @@ export const ADMIN_SEED={
       sort_order:3
     }
   ],
+  employee_point_rates:[],
   employee_points:[
     {
       employee_id:"employee-1",
@@ -205,12 +206,28 @@ export function stubScript(seed){
     последний тариф ПВЗ, начавший действовать не позже даты смены; для
     тарифа по ШК — первая граница, которую объём не перешагнул.
   */
-  function resolveTariff(db,{pointId,date,shk}){
+  function resolveTariff(db,{pointId,date,shk,employeeId}){
     const point=db.points.find(item=>
       item.id===pointId
     ) || {};
 
-    const tariff=[...(db.point_tariffs || [])]
+    /*
+      Тот же порядок, что и на сервере: индивидуальная ставка сотрудника
+      на этом ПВЗ, а если её нет — тариф пункта.
+    */
+    const employeeRate=[...(db.employee_point_rates || [])]
+      .filter(item=>
+        item.employee_id===employeeId &&
+        item.point_id===pointId &&
+        item.effective_from<=date
+      )
+      .sort((first,second)=>
+        second.effective_from.localeCompare(
+          first.effective_from
+        )
+      )[0];
+
+    const tariff=employeeRate || [...(db.point_tariffs || [])]
       .filter(item=>
         item.point_id===pointId &&
         item.effective_from<=date
@@ -252,7 +269,10 @@ export function stubScript(seed){
       snapshot:{
         version:2,
         rulesVersion:"supabase-point-tariffs-v1",
-        tariffId:tariff.id,
+        tariffId:employeeRate ? null : tariff.id,
+        rateSource:employeeRate ? "employee" : "point",
+        employeeRateId:employeeRate ? tariff.id : null,
+        employeeId:employeeId || null,
         pointId:point.id,
         pointName:point.name,
         effectiveFrom:tariff.effective_from,
@@ -381,6 +401,63 @@ export function stubScript(seed){
 
       return summary;
     },
+    admin_add_employee_rate(args){
+      const assigned=(db.employee_points || []).some(link=>
+        link.employee_id===args.p_employee_id &&
+        link.point_id===args.p_point_id &&
+        link.active!==false
+      );
+
+      if(!assigned){
+        throw new Error("point_not_assigned");
+      }
+
+      const id="rate-"+
+        ((db.employee_point_rates || []).length+1)+
+        "-new";
+
+      db.employee_point_rates.push({
+        id,
+        employee_id:args.p_employee_id,
+        point_id:args.p_point_id,
+        effective_from:args.p_effective_from,
+        pricing_type:args.p_pricing_type,
+        fixed_rate:args.p_fixed_rate,
+        shk_tiers:args.p_shk_tiers,
+        created_at:new Date().toISOString()
+      });
+
+      return id;
+    },
+    admin_update_employee_rate(args){
+      const rate=(db.employee_point_rates || []).find(item=>
+        item.id===args.p_rate_id
+      );
+
+      if(!rate){
+        throw new Error("employee_rate_not_found");
+      }
+
+      rate.effective_from=args.p_effective_from;
+      rate.pricing_type=args.p_pricing_type;
+      rate.fixed_rate=args.p_fixed_rate;
+      rate.shk_tiers=args.p_shk_tiers;
+
+      return rate.id;
+    },
+    admin_delete_employee_rate(args){
+      const before=(db.employee_point_rates || []).length;
+
+      db.employee_point_rates=(db.employee_point_rates || []).filter(item=>
+        item.id!==args.p_rate_id
+      );
+
+      if(db.employee_point_rates.length===before){
+        throw new Error("employee_rate_not_found");
+      }
+
+      return null;
+    },
     admin_add_point_tariff(args){
       const id="tariff-"+
         (db.point_tariffs.length+1)+
@@ -447,7 +524,8 @@ export function stubScript(seed){
       const pricing=resolveTariff(db,{
         pointId:shift.point_id,
         date:shift.shift_date,
-        shk:shift.shk
+        shk:shift.shk,
+        employeeId:shift.employee_id
       });
 
       shift.pricing_snapshot=pricing.snapshot;
@@ -461,6 +539,7 @@ export function stubScript(seed){
         shift_id:shift.id,
         rate:pricing.snapshot.rate,
         base_amount:shift.base_amount,
+        rate_source:pricing.snapshot.rateSource,
         effective_from:pricing.snapshot.effectiveFrom
       };
     },
@@ -496,7 +575,8 @@ export function stubScript(seed){
       const pricing=resolveTariff(db,{
         pointId:args.p_point_id,
         date:args.p_shift_date,
-        shk:args.p_shk
+        shk:args.p_shk,
+        employeeId:args.p_employee_id
       });
 
       /*

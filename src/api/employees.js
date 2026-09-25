@@ -78,3 +78,93 @@ export async function deleteAdminEmployee(
     }
   );
 }
+
+/*
+  Индивидуальная ставка сотрудника на ПВЗ.
+
+  Три функции повторяют тарифные один в один — и это намеренно: ставка
+  устроена как тариф, и любое расхождение в проверках или в порядке
+  доводов означало бы, что где-то из двух путей правила другие.
+*/
+export async function addAdminEmployeeRate({
+  employeeId,
+  pointId,
+  effectiveFrom,
+  pricingType,
+  fixedRate=null,
+  shkTiers=null
+}){
+  const result=
+    await supabaseClient
+      .rpc(
+        "admin_add_employee_rate",
+        {
+          p_employee_id:employeeId,
+          p_point_id:pointId,
+          p_effective_from:
+            effectiveFrom,
+          p_pricing_type:
+            pricingType,
+          p_fixed_rate:
+            fixedRate===null ||
+            fixedRate===""
+              ? null
+              : Number(fixedRate),
+          p_shk_tiers:shkTiers
+        }
+      );
+
+  return resultData(
+    result,
+    "Не удалось добавить ставку"
+  );
+}
+
+export async function updateAdminEmployeeRate({
+  id,
+  effectiveFrom,
+  pricingType,
+  fixedRate=null,
+  shkTiers=null
+}){
+  const result=
+    await supabaseClient
+      .rpc(
+        "admin_update_employee_rate",
+        {
+          p_rate_id:id,
+          p_effective_from:
+            effectiveFrom,
+          p_pricing_type:
+            pricingType,
+          p_fixed_rate:
+            fixedRate===null ||
+            fixedRate===""
+              ? null
+              : Number(fixedRate),
+          p_shk_tiers:shkTiers
+        }
+      );
+
+  return resultData(
+    result,
+    "Не удалось сохранить ставку"
+  );
+}
+
+export async function deleteAdminEmployeeRate(
+  id
+){
+  const result=
+    await supabaseClient.rpc(
+      "admin_delete_employee_rate",
+      {
+        p_rate_id:id
+      }
+    );
+
+  return resultData(
+    result,
+    "Не удалось удалить ставку"
+  );
+}

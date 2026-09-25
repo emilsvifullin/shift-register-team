@@ -99,6 +99,7 @@ export async function loadAdminTeamData(){
     employeePointsResult,
     accountsResult,
     tariffsResult,
+    employeeRatesResult,
     shiftsResult,
     payoutsResult
   ]=
@@ -156,6 +157,18 @@ export async function loadAdminTeamData(){
           }
         ),
 
+      supabaseClient
+        .from("employee_point_rates")
+        .select(
+          "id, employee_id, point_id, effective_from, pricing_type, fixed_rate, shk_tiers, created_at"
+        )
+        .order(
+          "effective_from",
+          {
+            ascending:false
+          }
+        ),
+
       loadShiftRows(),
 
       supabaseClient
@@ -204,6 +217,11 @@ export async function loadAdminTeamData(){
         tariffsResult,
         "Не удалось загрузить тарифы"
       ) || [],
+    employeeRates:
+      resultData(
+        employeeRatesResult,
+        "Не удалось загрузить индивидуальные ставки"
+      ) || [],
     shifts:
       mapShifts(
         resultData(
@@ -250,6 +268,7 @@ export async function loadEmployeeTeamData(
       employeePoints:[],
       accounts:[],
       tariffs:[],
+      employeeRates:[],
       shifts:[],
       payouts:[]
     };
@@ -265,6 +284,7 @@ export async function loadEmployeeTeamData(
       employeePoints:[],
       accounts:[],
       tariffs:[],
+      employeeRates:[],
       shifts:[],
       payouts:[]
     };
@@ -299,6 +319,11 @@ export async function loadEmployeeTeamData(
     employeePoints:[],
     accounts:[],
     tariffs:[],
+    /*
+      Сотруднику ставки не нужны отдельно: стоимость каждой его смены уже
+      заморожена снимком, а чужие ставки он видеть не должен.
+    */
+    employeeRates:[],
     shifts:
       mapShifts(
         resultData(

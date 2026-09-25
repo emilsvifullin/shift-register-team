@@ -95,6 +95,7 @@ export const ADMIN_SEED={
   employee_point_rates:[],
   payroll_periods:[],
   payroll_period_entries:[],
+  payroll_events:[],
   employee_points:[
     {
       employee_id:"employee-1",
@@ -181,6 +182,10 @@ export function stubScript(seed){
     const builder={
       select(){return builder;},
       order(){return builder;},
+      limit(count){
+        rows=rows.slice(0,count);
+        return builder;
+      },
       eq(column,value){
         rows=rows.filter(row=>
           String(row[column])===String(value)
@@ -291,6 +296,19 @@ export function stubScript(seed){
     };
   }
 
+  function recordEvent(db,event){
+    db.payroll_events=db.payroll_events || [];
+
+    db.payroll_events.unshift({
+      id:"event-"+(db.payroll_events.length+1),
+      occurred_at:new Date().toISOString(),
+      reason:null,
+      effect:null,
+      period_status:null,
+      ...event
+    });
+  }
+
   function assertPeriodOpen(db,date,force){
     const month=date.slice(0,7)+"-01";
 
@@ -312,6 +330,15 @@ export function stubScript(seed){
         "payroll_period_closed:"+month+":"+kind+":"+period.status
       );
     }
+
+    recordEvent(db,{
+      period_month:month,
+      payout_kind:kind,
+      employee_id:null,
+      kind:"closed_period_change",
+      summary:"изменение в закрытом периоде",
+      period_status:period.status
+    });
   }
 
   function findPeriod(db,args){
@@ -554,7 +581,18 @@ export function stubScript(seed){
         );
       }
 
-      return rpc.admin_save_employee_payout(args);
+      const id=rpc.admin_save_employee_payout(args);
+
+      recordEvent(db,{
+        period_month:args.p_period_month,
+        payout_kind:args.p_payout_kind,
+        employee_id:args.p_employee_id,
+        kind:args.p_payout_id ? "payout_changed" : "payout_added",
+        summary:"выплата "+args.p_amount+" ₽",
+        effect:args.p_amount
+      });
+
+      return id;
     },
     admin_delete_employee_payout_v2(args){
       const payout=(db.employee_payouts || []).find(item=>

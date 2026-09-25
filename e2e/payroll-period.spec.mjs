@@ -431,3 +431,132 @@ test(
       .toContain("Правка после закрытия");
   }
 );
+
+/*
+  История выплат не переписывается. Если после закрытия расчёт изменился,
+  разница показывается недоплатой или переплатой, а факт выплаты остаётся
+  как был.
+*/
+test(
+  "a change after closing shows up as an underpayment",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    const first=periodRow(page,0);
+
+    await first
+      .locator("[data-period-check]")
+      .click();
+
+    await first
+      .locator("[data-period-close]")
+      .click();
+
+    await page.locator("#appConfirmOk").click();
+
+    await expect(first).toContainText("Закрыто");
+
+    /* Зафиксировано 6 000, выплачено 6 000 — разницы нет. */
+    await page.evaluate(month=>{
+      window.__stubDb.employee_payouts.push({
+        id:"payout-1",
+        employee_id:"employee-1",
+        period_month:month,
+        payout_kind:"first_half",
+        amount:6000,
+        paid_on:month,
+        comment:null
+      });
+    },`${YEAR}-${MONTH}-01`);
+
+    await page.evaluate(()=>
+      window.dispatchEvent(new Event("online"))
+    );
+
+    await expect(
+      first.locator(".payroll-gap")
+    ).toHaveCount(0);
+
+    /* Выплату уменьшили — появилась недоплата, снимок не изменился. */
+    await page.evaluate(()=>{
+      window.__stubDb.employee_payouts[0].amount=4000;
+    });
+
+    await page.evaluate(()=>
+      window.dispatchEvent(new Event("online"))
+    );
+
+    await expect(
+      first.locator(".payroll-gap.underpaid")
+    ).toContainText("2 000");
+
+    /* Переплата — та же механика в обратную сторону. */
+    await page.evaluate(()=>{
+      window.__stubDb.employee_payouts[0].amount=6500;
+    });
+
+    await page.evaluate(()=>
+      window.dispatchEvent(new Event("online"))
+    );
+
+    await expect(
+      first.locator(".payroll-gap.overpaid")
+    ).toContainText("500");
+  }
+);
+
+/*
+  История периода читается человеком: что изменилось, когда и что это
+  дало. Правка после закрытия в ней помечена отдельно — именно ради этого
+  история и нужна.
+*/
+test(
+  "the period keeps a readable history of what happened",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    const first=periodRow(page,0);
+
+    /* Пока ничего не происходило — истории нет. */
+    await expect(
+      first.locator("[data-period-history]")
+    ).toHaveCount(0);
+
+    await first
+      .locator("[data-period-check]")
+      .click();
+
+    await first
+      .locator("[data-period-close]")
+      .click();
+
+    await page.locator("#appConfirmOk").click();
+
+    /* Правка после закрытия оставляет след. */
+    await page.locator("#tab-shifts").click();
+    await page.locator(".sh").first().click();
+    await page.locator("#sheetSave").click();
+    await page.locator("#f-note").fill("Исправление");
+    await page.locator("#sheetSave").click();
+    await page.locator("#appConfirmOk").click();
+
+    await page.locator("#tab-stats").click();
+
+    const history=periodRow(page,0)
+      .locator("[data-period-history]");
+
+    await expect(history).toBeVisible();
+
+    await history.click();
+
+    await expect(
+      periodRow(page,0).locator(".payroll-event")
+    ).toContainText("Правка в закрытом периоде");
+
+    await expect(
+      periodRow(page,0).locator(".payroll-event-meta")
+    ).toContainText("после закрытия");
+  }
+);

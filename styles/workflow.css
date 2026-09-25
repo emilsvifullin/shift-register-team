@@ -1068,3 +1068,112 @@
 #recalcSheet{
   z-index:47;
 }
+
+/*
+  Недоплата и переплата — это факты периода, а не предупреждения формы:
+  стоят рядом с его цифрами и окрашены по смыслу.
+*/
+.payroll-period-gaps{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+
+.payroll-gap{
+  padding:3px 9px;
+  border:1px solid var(--line2);
+  border-radius:999px;
+  font-size:11.5px;
+  font-weight:600;
+}
+
+.payroll-gap.underpaid{
+  border-color:var(--rust-line);
+  color:var(--rust);
+}
+
+.payroll-gap.overpaid{
+  border-color:var(--gold-line);
+  color:var(--gold);
+}
+
+/* История периода: события списком, с эффектом и временем. */
+.payroll-history-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  width:100%;
+
+  margin-top:10px;
+  padding:9px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+
+  background:transparent;
+  color:var(--ink2);
+  font-size:12.5px;
+  text-align:left;
+}
+
+.payroll-history-count{
+  flex:none;
+  padding:1px 7px;
+  border-radius:999px;
+  background:var(--tint2);
+  color:var(--ink3);
+  font-size:11px;
+  font-weight:650;
+}
+
+.payroll-events{
+  margin-top:8px;
+}
+
+.payroll-event{
+  padding:9px 2px;
+  border-top:1px solid var(--line);
+}
+
+.payroll-event:first-child{
+  border-top:0;
+}
+
+.payroll-event-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.payroll-event-head strong{
+  font-size:13.5px;
+  font-weight:550;
+}
+
+.payroll-event-effect{
+  flex:none;
+  font-size:13px;
+  font-weight:600;
+}
+
+.payroll-event-effect.pos{
+  color:var(--green);
+}
+
+.payroll-event-effect.neg{
+  color:var(--rust);
+}
+
+.payroll-event-body{
+  margin-top:2px;
+  color:var(--ink2);
+  font-size:12.5px;
+}
+
+.payroll-event-meta{
+  margin-top:2px;
+  color:var(--ink3);
+  font-size:11.5px;
+}

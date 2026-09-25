@@ -203,3 +203,58 @@ export function periodTotals(entries){
     }
   );
 }
+
+/*
+  Разница между тем, что зафиксировано снимком, и тем, что записано
+  выплатами.
+
+  Историю выплат никто не переписывает: выплатили 30 000 — так и
+  осталось. Если после закрытия расчёт изменился и правильная сумма стала
+  35 000, разница показывается как недоплата 5 000, а не подменяет факт.
+  В обратную сторону — как переплата.
+
+  Для закрытого периода за основу берётся снимок: он и есть утверждённый
+  расчёт. Для открытого — текущий счёт, потому что утверждать ещё нечего.
+*/
+export function periodDifferences({
+  entries,
+  snapshot,
+  closed
+}){
+  const source=closed && snapshot?.length
+    ? snapshot
+    : entries;
+
+  const rows=source
+    .map(row=>{
+      const due=round2(row.due);
+      const paid=round2(row.paid);
+      const gap=round2(due-paid);
+
+      return {
+        employeeId:row.employeeId || row.employee_id,
+        employeeName:row.employeeName || "",
+        due,
+        paid,
+        underpaid:gap>0 ? gap : 0,
+        overpaid:gap<0 ? -gap : 0
+      };
+    })
+    .filter(row=>row.underpaid || row.overpaid);
+
+  return {
+    rows,
+    underpaid:round2(
+      rows.reduce(
+        (sum,row)=>sum+row.underpaid,
+        0
+      )
+    ),
+    overpaid:round2(
+      rows.reduce(
+        (sum,row)=>sum+row.overpaid,
+        0
+      )
+    )
+  };
+}

@@ -165,6 +165,7 @@ import {
   periodKindForDate,
   periodEntry,
   periodFingerprint,
+  periodDifferences,
   periodMonthKey,
   periodStatus,
   periodStatusLabel,
@@ -330,6 +331,7 @@ let shiftFilterSheetPreviousFocus=null;
 let expandedPayoutKind="";
 let payrollPeriodSaving="";
 let payrollReviewOpen="";
+let payrollHistoryOpen="";
 let payoutEditor=null;
 let payoutSaving=false;
 let legacyMigrationEmployeeId="";
@@ -2212,12 +2214,51 @@ function payrollPeriodState(kind){
     period?.checked_fingerprint!==
       periodFingerprint(entries);
 
+  /*
+    Снимок закрытия — утверждённый расчёт периода. Пока он есть, разница
+    считается от него, а не от текущего счёта: иначе «недоплата» менялась
+    бы от любой правки, и закрывать период было бы незачем.
+  */
+  const snapshot=period
+    ? (teamData.periodEntries || [])
+        .filter(item=>item.period_id===period.id)
+        .map(item=>({
+          employeeId:item.employee_id,
+          employeeName:
+            teamData.employees.find(
+              employee=>
+                employee.id===item.employee_id
+            )?.full_name || "",
+          due:Number(item.due) || 0,
+          /*
+            Выплачено берётся текущее: снимок фиксирует, сколько
+            причитается, а деньги могут прийти и после закрытия — ради
+            этого период и закрывают.
+          */
+          paid:payoutRecords(item.employee_id,kind)
+            .reduce(
+              (sum,record)=>
+                sum+(Number(record.amount) || 0),
+              0
+            )
+        }))
+    : [];
+
+  const closed=["closed","paid"].includes(status);
+
   return {
     period,
     status,
     stale,
+    closed,
     entries,
+    snapshot,
     totals,
+    differences:periodDifferences({
+      entries,
+      snapshot,
+      closed
+    }),
     review:payrollPeriodReview(kind,entries)
   };
 }
@@ -2283,11 +2324,96 @@ function payrollFindingHTML(finding){
   `;
 }
 
+/*
+  История периода — то, что человек должен понять, не зная устройства
+  базы: что изменилось, когда и с каким эффектом. Действия до закрытия и
+  после различаются подписью, потому что это разные по весу события.
+*/
+const PAYROLL_EVENT_LABELS={
+  closed_period_change:"Правка в закрытом периоде",
+  shift_repriced:"Смена пересчитана",
+  payout_added:"Выплата записана",
+  payout_changed:"Выплата изменена",
+  payout_deleted:"Выплата удалена"
+};
+
+function payrollPeriodEvents(kind){
+  const month=periodMonthKey(cursor);
+
+  return (teamData.periodEvents || []).filter(event=>
+    event.period_month===month &&
+    event.payout_kind===kind
+  );
+}
+
+function payrollEventHTML(event){
+  const employee=teamData.employees.find(
+    item=>item.id===event.employee_id
+  );
+
+  const effect=Number(event.effect);
+
+  return `
+    <div class="payroll-event">
+      <div class="payroll-event-head">
+        <strong>${esc(
+          PAYROLL_EVENT_LABELS[event.kind] ||
+          event.kind
+        )}</strong>
+
+        ${Number.isFinite(effect) && effect ? `
+          <span class="payroll-event-effect ${
+            effect>0 ? "pos" : "neg"
+          }">
+            ${effect>0 ? "+" : "−"}${money(Math.abs(effect))}
+          </span>
+        ` : ""}
+      </div>
+
+      <div class="payroll-event-body">
+        ${esc(event.summary)}
+      </div>
+
+      <div class="payroll-event-meta">
+        ${esc(eventMoment(event.occurred_at))}
+        ${employee ? ` · ${esc(employee.full_name)}` : ""}
+        ${
+          ["closed","paid"].includes(event.period_status)
+            ? " · после закрытия"
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}
+
+function eventMoment(value){
+  const date=new Date(value);
+
+  if(Number.isNaN(date.getTime())){
+    return "";
+  }
+
+  return `${
+    date.toLocaleDateString("ru-RU",{
+      day:"numeric",
+      month:"long"
+    })
+  }, ${
+    date.toLocaleTimeString("ru-RU",{
+      hour:"2-digit",
+      minute:"2-digit"
+    })
+  }`;
+}
+
 function payrollPeriodRowHTML(kind){
   const state=payrollPeriodState(kind);
   const busy=payrollPeriodSaving===kind;
   const open=payrollReviewOpen===kind;
-  const closed=["closed","paid"].includes(state.status);
+  const historyOpen=payrollHistoryOpen===kind;
+  const events=payrollPeriodEvents(kind);
+  const closed=state.closed;
 
   const actions=[];
 
@@ -2390,6 +2516,26 @@ function payrollPeriodRowHTML(kind){
         <span>Выплачено <b>${money(state.totals.paid)}</b></span>
       </div>
 
+      ${
+        state.differences.underpaid ||
+        state.differences.overpaid
+          ? `
+            <div class="payroll-period-gaps">
+              ${state.differences.underpaid ? `
+                <span class="payroll-gap underpaid">
+                  Недоплата ${money(state.differences.underpaid)}
+                </span>
+              ` : ""}
+              ${state.differences.overpaid ? `
+                <span class="payroll-gap overpaid">
+                  Переплата ${money(state.differences.overpaid)}
+                </span>
+              ` : ""}
+            </div>
+          `
+          : ""
+      }
+
       ${state.review.employees && !closed ? `
         <button
           type="button"
@@ -2419,6 +2565,24 @@ function payrollPeriodRowHTML(kind){
           ${state.review.findings
             .map(payrollFindingHTML)
             .join("")}
+        </div>
+      ` : ""}
+
+      ${events.length ? `
+        <button
+          type="button"
+          class="payroll-history-toggle"
+          data-period-history="${kind}"
+          aria-expanded="${historyOpen ? "true" : "false"}"
+        >
+          История изменений
+          <span class="payroll-history-count">${events.length}</span>
+        </button>
+      ` : ""}
+
+      ${historyOpen && events.length ? `
+        <div class="payroll-events">
+          ${events.map(payrollEventHTML).join("")}
         </div>
       ` : ""}
 
@@ -16814,6 +16978,16 @@ app.addEventListener("click",async event=>{
     statsEmployeeOpen=false;
     statsEmployeeQuery="";
     saveUIState();
+    render();
+    return;
+  }
+
+  if(button.dataset.periodHistory){
+    payrollHistoryOpen=
+      payrollHistoryOpen===button.dataset.periodHistory
+        ? ""
+        : button.dataset.periodHistory;
+
     render();
     return;
   }

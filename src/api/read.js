@@ -102,7 +102,9 @@ export async function loadAdminTeamData(){
     employeeRatesResult,
     shiftsResult,
     payoutsResult,
-    periodsResult
+    periodsResult,
+    periodEntriesResult,
+    periodEventsResult
   ]=
     await Promise.all([
       supabaseClient
@@ -190,7 +192,24 @@ export async function loadAdminTeamData(){
         .order(
           "period_month",
           {ascending:false}
+        ),
+
+      supabaseClient
+        .from("payroll_period_entries")
+        .select(
+          "id, period_id, employee_id, shifts, base, bonus, fine, due, paid, detail"
+        ),
+
+      supabaseClient
+        .from("payroll_events")
+        .select(
+          "id, period_month, payout_kind, employee_id, kind, summary, reason, effect, period_status, occurred_at"
         )
+        .order(
+          "occurred_at",
+          {ascending:false}
+        )
+        .limit(300)
     ]);
 
   const employees=
@@ -249,6 +268,16 @@ export async function loadAdminTeamData(){
       resultData(
         periodsResult,
         "Не удалось загрузить расчётные периоды"
+      ) || [],
+    periodEntries:
+      resultData(
+        periodEntriesResult,
+        "Не удалось загрузить снимки периодов"
+      ) || [],
+    periodEvents:
+      resultData(
+        periodEventsResult,
+        "Не удалось загрузить историю расчётов"
       ) || []
   };
 }
@@ -287,7 +316,9 @@ export async function loadEmployeeTeamData(
       employeeRates:[],
       shifts:[],
       payouts:[],
-      periods:[]
+      periods:[],
+      periodEntries:[],
+      periodEvents:[]
     };
   }
 
@@ -304,7 +335,9 @@ export async function loadEmployeeTeamData(
       employeeRates:[],
       shifts:[],
       payouts:[],
-      periods:[]
+      periods:[],
+      periodEntries:[],
+      periodEvents:[]
     };
   }
 
@@ -344,6 +377,8 @@ export async function loadEmployeeTeamData(
     employeeRates:[],
     /* Состояние периодов — инструмент администратора. */
     periods:[],
+    periodEntries:[],
+    periodEvents:[],
     shifts:
       mapShifts(
         resultData(

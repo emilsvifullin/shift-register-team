@@ -581,18 +581,28 @@ test.describe("desktop",()=>{
       ).toBe(month);
 
       /* Стрелка доводит до конца и там гаснет. */
-      for(let step=0;step<10;step++){
-        const ahead=page.locator(
-          '[data-points-scroll="1"]'
-        );
+      const ahead=page.locator(
+        '[data-points-scroll="1"]'
+      );
 
-        if(await ahead.isDisabled()){
-          break;
-        }
+      await expect
+        .poll(
+          async()=>{
+            if(await ahead.isEnabled()){
+              /*
+                Прокрутка плавная: стрелка может погаснуть между
+                проверкой и нажатием — это и есть конец ленты, а не сбой.
+              */
+              await ahead
+                .click({timeout:2000})
+                .catch(()=>{});
+            }
 
-        await ahead.click();
-        await page.waitForTimeout(380);
-      }
+            return (await stripState(page)).ahead;
+          },
+          {timeout:25000}
+        )
+        .toBe(true);
 
       const end=await stripState(page);
 

@@ -435,30 +435,49 @@ test(
   }
 );
 
+/*
+  Ставка живёт в строке своего ПВЗ: отдельного списка ставок в карточке
+  нет, и проходить по одним и тем же пунктам дважды не приходится.
+*/
+async function openEmployeeCard(page,name){
+  await page.locator("#tab-manage").click();
+
+  await page
+    .locator('#app [data-manage-section="employees"]')
+    .click();
+
+  await page
+    .locator("[data-employee-id]")
+    .filter({hasText:name})
+    .first()
+    .click();
+
+  await expect(
+    page.locator("#employeeSheet")
+  ).toHaveClass(/\bon\b/);
+}
+
 test(
-  "the employee card sets, changes and removes the rate",
+  "the rate is a property of the assigned point, not a second list",
   async({page})=>{
     await openApp(page,{seed:seed()});
-
-    await page.locator("#tab-manage").click();
-
-    await page
-      .locator('#app [data-manage-section="employees"]')
-      .click();
-
-    await page
-      .locator("[data-employee-id]")
-      .filter({hasText:"Марина"})
-      .first()
-      .click();
-
-    await expect(
-      page.locator("#employeeSheet")
-    ).toHaveClass(/\bon\b/);
+    await openEmployeeCard(page,"Марина");
 
     await page.locator("#employeeSheetSave").click();
 
-    /* Пока ставки нет, строка так и говорит. */
+    /* Один список ПВЗ, а не два. */
+    await expect(
+      page.locator("#employeeSheetBody .ml")
+        .filter({hasText:"Пункты выдачи"})
+    ).toHaveCount(1);
+
+    await expect(
+      page.locator("#employeeSheetBody")
+    ).not.toContainText(
+      "ИНДИВИДУАЛЬНЫЕ СТАВКИ"
+    );
+
+    /* Каждая назначенная строка сама говорит, по чему здесь считают. */
     const row=page.locator(
       '[data-employee-rate-point="point-2"]'
     );
@@ -466,6 +485,12 @@ test(
     await expect(row).toContainText(
       "По тарифу ПВЗ"
     );
+
+    await expect(
+      page.locator(
+        '[data-employee-rate-point="point-1"]'
+      )
+    ).toContainText("По тарифу ПВЗ");
 
     await row.click();
 
@@ -485,29 +510,202 @@ test(
 
     await expect(row).toContainText("3 300 ₽");
 
-    /* Ставку видно и в режиме просмотра карточки. */
-    await page.locator("#employeeSheetCancel").click();
+    /* Своя ставка выделена, а соседний ПВЗ остался на тарифе. */
+    await expect(
+      row.locator(".employee-rate-own")
+    ).toHaveCount(1);
 
     await expect(
-      page.locator("#employeeSheetBody")
-    ).toContainText("Индивидуальные ставки");
+      page.locator(
+        '[data-employee-rate-point="point-1"]'
+      )
+    ).toContainText("По тарифу ПВЗ");
+
+    /* В режиме просмотра ставка стоит там же — у своего ПВЗ. */
+    await page.locator("#employeeSheetCancel").click();
 
     await expect(
       page.locator("#employeeSheetBody")
     ).toContainText("3 300 ₽");
 
-    /* И её можно убрать — сотрудник возвращается на тариф ПВЗ. */
-    await page.locator("#employeeSheetSave").click();
+    await expect(
+      page.locator("#employeeSheetBody")
+    ).not.toContainText(
+      "ИНДИВИДУАЛЬНЫЕ СТАВКИ"
+    );
+  }
+);
+
+test(
+  "one pass creates an employee with a point and its own rate",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+
+    await page.locator("#tab-manage").click();
+
+    await page
+      .locator('#app [data-manage-section="employees"]')
+      .click();
+
+    await page.locator("#employeeAdd").click();
+
+    await expect(
+      page.locator("#employeeSheet")
+    ).toHaveClass(/\bon\b/);
+
+    await page
+      .locator("#employeeName")
+      .fill("Новый Сотрудник");
+
+    /* ПВЗ отмечают здесь же, и ставка раскрывается у него сразу. */
+    await page
+      .locator('[data-employee-point="point-2"]')
+      .click();
+
+    const row=page.locator(
+      '[data-employee-rate-point="point-2"]'
+    );
+
+    await expect(row).toContainText(
+      "По тарифу ПВЗ"
+    );
+
     await row.click();
 
     await page
-      .locator('[data-employee-rate-delete]')
-      .first()
+      .locator("#employeeRateAmount")
+      .fill("3700");
+
+    await page
+      .locator("#employeeRateSave")
+      .click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText(
+      "сохранится вместе с карточкой"
+    );
+
+    await expect(row).toContainText("3 700 ₽");
+
+    await page.locator("#employeeSheetSave").click();
+
+    await expect(
+      page.locator("#employeeSheet")
+    ).not.toHaveClass(/\bon\b/);
+
+    /* Карточка и ставка созданы за один проход. */
+    await expect
+      .poll(()=>page.evaluate(()=>
+        (window.__stubDb.employee_point_rates || []).map(item=>({
+          point:item.point_id,
+          rate:Number(item.fixed_rate)
+        }))
+      ))
+      .toMatchObject([
+        {point:"point-2",rate:3700}
+      ]);
+  }
+);
+
+test(
+  "unchecking a point takes its unsaved rate with it",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+
+    await page.locator("#tab-manage").click();
+
+    await page
+      .locator('#app [data-manage-section="employees"]')
+      .click();
+
+    await page.locator("#employeeAdd").click();
+
+    await page
+      .locator("#employeeName")
+      .fill("Передумали");
+
+    await page
+      .locator('[data-employee-point="point-2"]')
       .click();
 
     await page
-      .locator("#appConfirmOk")
+      .locator('[data-employee-rate-point="point-2"]')
       .click();
+
+    await page
+      .locator("#employeeRateAmount")
+      .fill("4200");
+
+    await page
+      .locator("#employeeRateSave")
+      .click();
+
+    await expect(
+      page.locator(
+        '[data-employee-rate-point="point-2"]'
+      )
+    ).toContainText("4 200 ₽");
+
+    /* Сняли ПВЗ — вместе с ним ушла и ставка, и её строка. */
+    await page
+      .locator('[data-employee-point="point-2"]')
+      .click();
+
+    await expect(
+      page.locator(
+        '[data-employee-rate-point="point-2"]'
+      )
+    ).toHaveCount(0);
+
+    /* Отметили снова — ставки нет, начинаем с тарифа ПВЗ. */
+    await page
+      .locator('[data-employee-point="point-2"]')
+      .click();
+
+    await expect(
+      page.locator(
+        '[data-employee-rate-point="point-2"]'
+      )
+    ).toContainText("По тарифу ПВЗ");
+
+    await page.locator("#employeeSheetSave").click();
+
+    await expect(
+      page.locator("#employeeSheet")
+    ).not.toHaveClass(/\bon\b/);
+
+    expect(
+      await page.evaluate(()=>
+        (window.__stubDb.employee_point_rates || []).length
+      )
+    ).toBe(0);
+  }
+);
+
+test(
+  "the rate returns to the point tariff from its own row",
+  async({page})=>{
+    await openApp(page,{
+      seed:seed({rates:[rate({amount:3300})]})
+    });
+
+    await openEmployeeCard(page,"Марина");
+    await page.locator("#employeeSheetSave").click();
+
+    const row=page.locator(
+      '[data-employee-rate-point="point-2"]'
+    );
+
+    await expect(row).toContainText("3 300 ₽");
+
+    await row.click();
+
+    await page
+      .locator("[data-employee-rate-drop]")
+      .click();
+
+    await page.locator("#appConfirmOk").click();
 
     await expect(
       page.locator("#toast")
@@ -516,6 +714,95 @@ test(
     await expect(row).toContainText(
       "По тарифу ПВЗ"
     );
+
+    expect(
+      await page.evaluate(()=>
+        (window.__stubDb.employee_point_rates || []).length
+      )
+    ).toBe(0);
+  }
+);
+
+test(
+  "history shows up only when there is more than one version",
+  async({page})=>{
+    await openApp(page,{
+      seed:seed({
+        rates:[
+          rate({
+            id:"rate-old",
+            from:`${YEAR}-01-01`,
+            amount:3300
+          })
+        ]
+      })
+    });
+
+    await openEmployeeCard(page,"Марина");
+    await page.locator("#employeeSheetSave").click();
+
+    const row=page.locator(
+      '[data-employee-rate-point="point-2"]'
+    );
+
+    await row.click();
+
+    /* Одна версия — она же в строке и в полях, списка не нужно. */
+    await expect(
+      page.locator(".employee-rate-history")
+    ).toHaveCount(0);
+
+    /* Убрать её всё равно есть чем. */
+    await expect(
+      page.locator("[data-employee-rate-drop]")
+    ).toHaveCount(1);
+  }
+);
+
+test(
+  "two versions bring the history back",
+  async({page})=>{
+    await openApp(page,{
+      seed:seed({
+        rates:[
+          rate({
+            id:"rate-old",
+            from:`${YEAR}-01-01`,
+            amount:3300
+          }),
+          rate({
+            id:"rate-new",
+            from:`${YEAR}-06-01`,
+            amount:3900
+          })
+        ]
+      })
+    });
+
+    await openEmployeeCard(page,"Марина");
+    await page.locator("#employeeSheetSave").click();
+
+    /* В строке — действующая ставка. */
+    const row=page.locator(
+      '[data-employee-rate-point="point-2"]'
+    );
+
+    await expect(row).toContainText("3 900 ₽");
+
+    await row.click();
+
+    await expect(
+      page.locator(".employee-rate-history-row")
+    ).toHaveCount(2);
+
+    /* Прошлую версию можно открыть и поправить. */
+    await page
+      .locator('[data-employee-rate-edit="rate-old"]')
+      .click();
+
+    await expect(
+      page.locator("#employeeRateAmount")
+    ).toHaveValue("3300");
   }
 );
 

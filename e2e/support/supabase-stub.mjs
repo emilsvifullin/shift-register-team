@@ -401,6 +401,54 @@ export function stubScript(seed){
 
       return summary;
     },
+    /*
+      Карточка сотрудника: создание и правка вместе с назначениями на
+      ПВЗ. Нужна тем сценариям, где сотрудника заводят за один проход —
+      вместе с индивидуальной ставкой.
+    */
+    admin_save_employee_profile(args){
+      const existing=(db.employees || []).find(item=>
+        item.id===args.p_employee_id
+      );
+
+      const id=existing
+        ? existing.id
+        : "employee-"+((db.employees || []).length+1)+"-new";
+
+      const record={
+        id,
+        user_id:args.p_user_id || null,
+        full_name:args.p_full_name,
+        status:args.p_status,
+        hired_at:args.p_hired_at,
+        is_system_substitute:false,
+        phone:args.p_phone || null,
+        transfer_phone:args.p_transfer_phone || null,
+        transfer_bank:args.p_transfer_bank || null,
+        transfer_recipient:args.p_transfer_recipient || null
+      };
+
+      if(existing){
+        Object.assign(existing,record);
+      }else{
+        db.employees.push(record);
+      }
+
+      const wanted=new Set(args.p_point_ids || []);
+
+      db.employee_points=(db.employee_points || [])
+        .filter(link=>link.employee_id!==id);
+
+      for(const pointId of wanted){
+        db.employee_points.push({
+          employee_id:id,
+          point_id:pointId,
+          active:true
+        });
+      }
+
+      return id;
+    },
     admin_add_employee_rate(args){
       const assigned=(db.employee_points || []).some(link=>
         link.employee_id===args.p_employee_id &&

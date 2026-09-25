@@ -258,6 +258,12 @@ an admin asks in so many words. So a new rate, whatever date it starts
 from, never moves money that is already counted; the shift card says the
 current rate differs and offers the recalculation.
 
+An individual rate is edited where it applies: on the point's own row in
+the employee card, not in a second list of the same points. A rate set
+before the assignment exists in the database — a new employee, or a point
+just ticked — waits in the draft and is created right after the card is
+saved, so one pass is enough.
+
 The snapshot names its own source: `rateSource` is `employee` or `point`,
 with `employeeRateId` or `tariffId` beside it. Snapshots written before
 individual rates existed have no `rateSource`, and code that reads them

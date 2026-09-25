@@ -2971,6 +2971,22 @@ function employeePointsLabel(
   );
 }
 
+/* Назначенные ПВЗ сотрудника, в том же порядке, что и везде. */
+function employeePointsOf(employeeId){
+  const ids=
+    new Set(
+      employeePointIds(
+        employeeId
+      )
+    );
+
+  return orderedTeamPoints()
+    .filter(
+      point=>
+        ids.has(point.id)
+    );
+}
+
 function employeePointNames(
   employeeId
 ){
@@ -5524,14 +5540,22 @@ function openEmployeeRateEditor(
   pointId,
   rate=null
 ){
+  const pending=
+    rate
+      ? null
+      : pendingEmployeeRate(pointId);
+
   employeeRateEditor={
     pointId,
     id:rate?.id || null,
     rate:
-      rate && rate.pricing_type==="fixed"
-        ? String(rate.fixed_rate).replace(".",",")
-        : "",
+      pending
+        ? String(pending.rate).replace(".",",")
+        : rate && rate.pricing_type==="fixed"
+          ? String(rate.fixed_rate).replace(".",",")
+          : "",
     effectiveFrom:
+      pending?.effectiveFrom ||
       rate?.effective_from ||
       nextEmployeeRateDate(
         employeeDraft?.id,
@@ -5565,20 +5589,76 @@ function readEmployeeRateEditor(){
   }
 }
 
+/*
+  Ставка, которую человек задал в карточке, но она ещё не сохранена: так
+  бывает у нового сотрудника и у ПВЗ, который только что отметили. Пока
+  назначения нет в базе, сервер ставку принять не может — её негде
+  привязать. Поэтому она ждёт в черновике и создаётся сразу после того,
+  как карточка сохранена.
+*/
+function pendingEmployeeRate(pointId){
+  return employeeDraft?.pendingRates?.[pointId] || null;
+}
+
+/*
+  Назначение уже есть в базе — значит ставку можно сохранять сразу, своей
+  кнопкой. Иначе она попадёт в черновик и уедет вместе с карточкой.
+*/
+function assignmentSaved(pointId){
+  return Boolean(
+    employeeDraft?.id &&
+    (teamData.employeePoints || []).some(
+      link=>
+        link.employee_id===
+          employeeDraft.id &&
+        link.point_id===pointId &&
+        link.active!==false
+    )
+  );
+}
+
+/*
+  Что написано в строке ПВЗ справа: сохранённая ставка, ещё не
+  сохранённая или «по тарифу ПВЗ».
+*/
+function employeeRowRateLabel(pointId){
+  const pending=pendingEmployeeRate(pointId);
+
+  if(pending){
+    return `${money(pending.rate)} с ${shortDateLabel(pending.effectiveFrom)}`;
+  }
+
+  return employeeRateLabel(
+    currentEmployeeRate(
+      employeeDraft?.id,
+      pointId
+    )
+  );
+}
+
+function employeeRowHasRate(pointId){
+  return Boolean(
+    pendingEmployeeRate(pointId) ||
+    currentEmployeeRate(
+      employeeDraft?.id,
+      pointId
+    )
+  );
+}
+
+/*
+  Редактор ставки раскрывается под своим ПВЗ — там же, где человек
+  только что отметил этот пункт. Отдельного списка ставок нет: ставка
+  принадлежит назначению, а не сотруднику вообще, и второй проход по тем
+  же ПВЗ был бы тем же списком дважды.
+*/
 function employeeRateEditorHTML(point){
   const history=employeeRatesFor(
     employeeDraft.id,
     point.id
   );
 
-  const editing=
-    employeeRateEditor?.pointId===
-    point.id;
-
-  const current=currentEmployeeRate(
-    employeeDraft.id,
-    point.id
-  );
+  const pending=pendingEmployeeRate(point.id);
 
   const rows=history
     .map(rate=>`
@@ -5608,188 +5688,93 @@ function employeeRateEditorHTML(point){
     .join("");
 
   return `
-    <div class="employee-rate">
-      <button
-        type="button"
-        class="row point-row employee-rate-row"
-        data-employee-rate-point="${esc(point.id)}"
-        aria-expanded="${editing ? "true" : "false"}"
-      >
-        <div class="t">${esc(point.name)}</div>
-        <div class="point-value ${current ? "employee-rate-own" : ""}">
-          ${esc(employeeRateLabel(current))}
+    <div class="employee-rate-editor">
+      ${employeeRateEditor.readOnlyTiers ? `
+        <div class="employee-rate-note">
+          Эта ставка задана ступенями по ШК. Менять ступени можно только
+          в тарифе ПВЗ — здесь её получится убрать.
         </div>
-      </button>
+      ` : `
+        <label class="row">
+          <div class="t">Ставка</div>
+          <input
+            type="text"
+            inputmode="decimal"
+            id="employeeRateAmount"
+            value="${esc(employeeRateEditor.rate)}"
+            placeholder="0"
+            aria-label="Индивидуальная ставка на ${esc(point.name)}"
+            autocomplete="off"
+          >
+        </label>
 
-      ${editing ? `
-        <div class="employee-rate-editor">
-          ${employeeRateEditor.readOnlyTiers ? `
-            <div class="employee-rate-note">
-              Эта ставка задана ступенями по ШК. Менять ступени можно
-              только в тарифе ПВЗ — здесь её получится убрать.
-            </div>
-          ` : `
-            <label class="row">
-              <div class="t">Ставка</div>
-              <input
-                type="text"
-                inputmode="decimal"
-                id="employeeRateAmount"
-                value="${esc(employeeRateEditor.rate)}"
-                placeholder="0"
-                aria-label="Индивидуальная ставка"
-                autocomplete="off"
-              >
-            </label>
-
-            <button
-              type="button"
-              class="row point-row"
-              id="employeeRateDateOpen"
-            >
-              <div class="t">Действует с</div>
-              <div class="point-value">
-                ${esc(dateLabel(employeeRateEditor.effectiveFrom))}
-              </div>
-            </button>
-          `}
-
-          <div class="employee-rate-actions">
-            <button
-              type="button"
-              class="btn"
-              id="employeeRateCancel"
-            >
-              Отменить
-            </button>
-
-            ${employeeRateEditor.readOnlyTiers ? "" : `
-              <button
-                type="button"
-                class="btn gold"
-                id="employeeRateSave"
-                ${employeeRateSaving ? "disabled" : ""}
-              >
-                ${employeeRateEditor.id
-                  ? "Сохранить ставку"
-                  : "Задать ставку"}
-              </button>
-            `}
+        <button
+          type="button"
+          class="row point-row"
+          id="employeeRateDateOpen"
+        >
+          <div class="t">Действует с</div>
+          <div class="point-value">
+            ${esc(dateLabel(employeeRateEditor.effectiveFrom))}
           </div>
+        </button>
+      `}
 
-          ${history.length ? `
-            <div class="employee-rate-history">
-              <div class="employee-rate-history-title">
-                История ставок
-              </div>
-              ${rows}
-            </div>
-          ` : `
-            <div class="employee-rate-note">
-              Своей ставки здесь ещё не было: смены считались по тарифу ПВЗ.
-            </div>
-          `}
+      <div class="employee-rate-actions">
+        <button
+          type="button"
+          class="btn"
+          id="employeeRateCancel"
+        >
+          Отменить
+        </button>
+
+        ${employeeRateEditor.readOnlyTiers ? "" : `
+          <button
+            type="button"
+            class="btn gold"
+            id="employeeRateSave"
+            ${employeeRateSaving ? "disabled" : ""}
+          >
+            ${
+              employeeRateEditor.id || pending
+                ? "Сохранить ставку"
+                : "Задать ставку"
+            }
+          </button>
+        `}
+      </div>
+
+      ${pending ? `
+        <div class="employee-rate-note">
+          Ставка будет создана вместе с карточкой сотрудника.
         </div>
       ` : ""}
-    </div>
-  `;
-}
 
-/*
-  В режиме просмотра — только те ПВЗ, где ставка своя: остальные считаются
-  по тарифу пункта, и перечислять их значило бы повторить список выше.
-*/
-function employeeRatesReadonlyHTML(employee){
-  if(!isAdmin || !employee){
-    return "";
-  }
+      ${employeeRowHasRate(point.id) && !employeeRateEditor.readOnlyTiers ? `
+        <button
+          type="button"
+          class="btn warn employee-rate-drop"
+          data-employee-rate-drop="${esc(point.id)}"
+        >
+          Вернуть на тариф ПВЗ
+        </button>
+      ` : ""}
 
-  const rows=orderedTeamPoints()
-    .map(point=>({
-      point,
-      rate:currentEmployeeRate(
-        employee.id,
-        point.id
-      )
-    }))
-    .filter(item=>item.rate);
-
-  if(!rows.length){
-    return "";
-  }
-
-  return `
-    <div class="ml">Индивидуальные ставки</div>
-    <div class="card">
-      ${rows
-        .map(item=>`
-          <div class="row">
-            <div class="l">
-              <div class="s">${esc(item.point.name)}</div>
-              <div class="t">
-                ${esc(employeeRateLabel(item.rate))}
-              </div>
-            </div>
+      ${/*
+          История показывается, когда ей есть что добавить. Одна
+          единственная запись — это и есть та ставка, что в строке ПВЗ и
+          в полях выше; повторять её третий раз значит превращать
+          карточку в список одного и того же.
+        */""}
+      ${history.length>1 ? `
+        <div class="employee-rate-history">
+          <div class="employee-rate-history-title">
+            История ставок
           </div>
-        `)
-        .join("")}
-    </div>
-  `;
-}
-
-/*
-  Раздел ставок показывается только у сохранённого сотрудника: ставка
-  принадлежит паре «сотрудник + ПВЗ», а у несохранённого нет ни того, ни
-  назначения на ПВЗ.
-*/
-function employeeRatesSectionHTML(){
-  if(!isAdmin || employeeDraft?.isSystem){
-    return "";
-  }
-
-  if(!employeeDraft?.id){
-    return `
-      <div class="ml">Индивидуальные ставки</div>
-      <div class="card">
-        <div class="employee-rate-note">
-          Сохраните сотрудника и назначьте ему ПВЗ — после этого здесь
-          можно будет задать ставку, отличную от тарифа пункта.
+          ${rows}
         </div>
-      </div>
-    `;
-  }
-
-  const points=orderedTeamPoints()
-    .filter(point=>
-      employeeDraft.pointIds.includes(
-        point.id
-      )
-    );
-
-  if(!points.length){
-    return `
-      <div class="ml">Индивидуальные ставки</div>
-      <div class="card">
-        <div class="employee-rate-note">
-          Назначьте сотруднику ПВЗ, чтобы задать ставку для него.
-        </div>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="ml">Индивидуальные ставки</div>
-    <div class="card">
-      ${points
-        .map(point=>
-          employeeRateEditorHTML(point)
-        )
-        .join("")}
-    </div>
-    <div class="note employee-rate-hint">
-      Пустая строка значит «по тарифу ПВЗ». Своя ставка действует с
-      выбранной даты и не меняет уже сохранённые смены: их стоимость
-      заморожена в момент сохранения.
+      ` : ""}
     </div>
   `;
 }
@@ -5800,10 +5785,45 @@ function employeeRatesSectionHTML(){
   же решение, что у тарифа ПВЗ, и по той же причине: карточка остаётся
   открытой и сразу показывает новое состояние.
 */
+/*
+  Создаёт ставки, дожидавшиеся сохранения карточки. Возвращает текст
+  ошибки, если хоть одна не создалась, и ничего — если всё прошло.
+*/
+async function createPendingEmployeeRates(employeeId){
+  const pending=
+    employeeDraft?.pendingRates || {};
+
+  const entries=Object.entries(pending);
+
+  if(!entries.length){
+    return null;
+  }
+
+  employeeDraft.pendingRates={};
+
+  for(const [pointId,value] of entries){
+    try{
+      await addAdminEmployeeRate({
+        employeeId,
+        pointId,
+        effectiveFrom:value.effectiveFrom,
+        pricingType:"fixed",
+        fixedRate:value.rate
+      });
+    }catch(error){
+      return error instanceof Error
+        ? error.message
+        : "не удалось сохранить";
+    }
+  }
+
+  return null;
+}
+
 async function saveEmployeeRate(){
   if(
     !employeeRateEditor ||
-    !employeeDraft?.id ||
+    !employeeDraft ||
     employeeRateSaving
   ){
     return;
@@ -5873,6 +5893,27 @@ async function saveEmployeeRate(){
       );
     }
 
+    /*
+      Назначения ещё нет в базе — привязать ставку не к чему. Она ждёт
+      в черновике и создаётся сразу после сохранения карточки, поэтому
+      нового сотрудника заводят за один проход, не открывая карточку
+      второй раз.
+    */
+    if(!assignmentSaved(pointId)){
+      employeeDraft.pendingRates={
+        ...employeeDraft.pendingRates,
+        [pointId]:{
+          rate:value,
+          effectiveFrom
+        }
+      };
+
+      closeEmployeeRateEditor();
+      drawEmployeeSheet();
+      toast("Ставка сохранится вместе с карточкой");
+      return;
+    }
+
     employeeRateSaving=true;
 
     if(id){
@@ -5914,6 +5955,43 @@ async function saveEmployeeRate(){
   }finally{
     employeeRateSaving=false;
   }
+}
+
+/*
+  «Вернуть на тариф ПВЗ» убирает действующую ставку. Незаписанную —
+  просто из черновика, сохранённую — записью, с подтверждением: это
+  меняет условия работы, а не оформление.
+*/
+async function dropEmployeeRate(pointId){
+  if(!employeeDraft){
+    return;
+  }
+
+  if(pendingEmployeeRate(pointId)){
+    const rest={...employeeDraft.pendingRates};
+
+    delete rest[pointId];
+
+    employeeDraft.pendingRates=rest;
+
+    closeEmployeeRateEditor();
+    drawEmployeeSheet();
+    toast("Ставка убрана");
+    return;
+  }
+
+  const current=currentEmployeeRate(
+    employeeDraft.id,
+    pointId
+  );
+
+  if(!current){
+    closeEmployeeRateEditor();
+    drawEmployeeSheet();
+    return;
+  }
+
+  await removeEmployeeRate(current.id);
 }
 
 async function removeEmployeeRate(id){
@@ -6055,23 +6133,36 @@ function drawEmployeeSheet(){
         employee
       );
 
-    const pointNames=
-      employeePointNames(
-        employee.id
-      );
+    /*
+      Ставка — свойство назначения, а не отдельный список: у каждого ПВЗ
+      сразу видно, по чему здесь считаются смены.
+    */
+    const assignedPoints=
+      employeePointsOf(employee.id);
 
     const pointRows=
-      pointNames.length
-        ? pointNames
-            .map(name=>`
-              <div class="row">
-                <div class="l">
-                  <div class="t">
-                    ${esc(name)}
+      assignedPoints.length
+        ? assignedPoints
+            .map(point=>{
+              const rate=
+                currentEmployeeRate(
+                  employee.id,
+                  point.id
+                );
+
+              return `
+                <div class="row">
+                  <div class="l">
+                    <div class="t">
+                      ${esc(point.name)}
+                    </div>
+                    <div class="s ${rate ? "employee-rate-own" : ""}">
+                      ${esc(employeeRateLabel(rate))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            `)
+              `;
+            })
             .join("")
         : `
             <div class="row">
@@ -6185,8 +6276,6 @@ function drawEmployeeSheet(){
         ${pointRows}
       </div>
 
-      ${employeeRatesReadonlyHTML(employee)}
-
       <div
         class="sheet-spacer"
         aria-hidden="true"
@@ -6229,31 +6318,83 @@ function drawEmployeeSheet(){
           const archived=
             point.active===false;
 
+          const archivedLabel=archived
+            ? `
+              <span class="employee-point-state">
+                В архиве
+              </span>
+            `
+            : "";
+
+          /*
+            Ставка показывается только у назначенного ПВЗ: у не
+            отмеченного пункта её негде применить, и предлагать её
+            значило бы звать задать условие для работы, которой нет.
+          */
+          const rateControl=
+            selected && isAdmin && !employeeDraft.isSystem
+              ? `
+                <button
+                  type="button"
+                  class="employee-point-rate"
+                  data-employee-rate-point="${esc(point.id)}"
+                  aria-expanded="${
+                    employeeRateEditor?.pointId===point.id
+                      ? "true"
+                      : "false"
+                  }"
+                  aria-label="Ставка на ${esc(point.name)}: ${esc(employeeRowRateLabel(point.id))}"
+                >
+                  <span class="employee-point-rate-value ${
+                    employeeRowHasRate(point.id)
+                      ? "employee-rate-own"
+                      : ""
+                  }">
+                    ${esc(employeeRowRateLabel(point.id))}
+                  </span>
+                </button>
+              `
+              : "";
+
           return `
-            <button
-              type="button"
-              class="employee-point ${selected ? "on" : ""} ${archived ? "employee-point-archived" : ""}"
+            <div
+              class="employee-point-item ${
+                employeeRateEditor?.pointId===point.id
+                  ? "is-open"
+                  : ""
+              }"
               data-key="employee-point-${esc(point.id)}"
-              data-employee-point="${esc(point.id)}"
-              aria-label="${esc(point.name)}, ${archived ? "в архиве" : "активен"}, ${selected ? "назначен" : "не назначен"}"
             >
-              <span
-                class="employee-point-check"
-                aria-hidden="true"
-              >
-                ${selected ? "✓" : ""}
-              </span>
+              <div class="employee-point-line">
+                <button
+                  type="button"
+                  class="employee-point ${selected ? "on" : ""} ${archived ? "employee-point-archived" : ""}"
+                  data-employee-point="${esc(point.id)}"
+                  aria-label="${esc(point.name)}, ${archived ? "в архиве" : "активен"}, ${selected ? "назначен" : "не назначен"}"
+                >
+                  <span
+                    class="employee-point-check"
+                    aria-hidden="true"
+                  >
+                    ${selected ? "✓" : ""}
+                  </span>
 
-              <span class="employee-point-name">
-                ${esc(point.name)}
-              </span>
+                  <span class="employee-point-name">
+                    ${esc(point.name)}
+                  </span>
 
-              ${archived ? `
-                <span class="employee-point-state">
-                  В архиве
-                </span>
-              ` : ""}
-            </button>
+                  ${archivedLabel}
+                </button>
+
+                ${rateControl}
+              </div>
+
+              ${
+                employeeRateEditor?.pointId===point.id
+                  ? employeeRateEditorHTML(point)
+                  : ""
+              }
+            </div>
           `;
         })
         .join("")
@@ -6482,7 +6623,11 @@ function drawEmployeeSheet(){
       ${pointRows}
     </div>
 
-    ${employeeRatesSectionHTML()}
+    <div class="note employee-rate-hint">
+      Ставка задаётся у самого ПВЗ. Пусто — значит по тарифу пункта. Своя
+      ставка действует с выбранной даты и не меняет уже сохранённые
+      смены: их стоимость заморожена в момент сохранения.
+    </div>
 
     ${!isCreate && employeeDraft.id && !employeeDraft.isSystem ? `
       <button
@@ -6642,7 +6787,12 @@ function createEmployeeDraft(
       transferBank:"",
       transferRecipient:"",
       password:"",
-      pointIds:[]
+      pointIds:[],
+      /*
+        Ставки, заданные до того, как появилось назначение в базе. См.
+        pendingEmployeeRate.
+      */
+      pendingRates:{}
     };
   }
 
@@ -6663,6 +6813,7 @@ function createEmployeeDraft(
     );
 
   return {
+    pendingRates:{},
     id:employee.id,
     fullName:employee.full_name,
     status:employee.status,
@@ -7365,6 +7516,17 @@ async function saveEmployeeDraft(){
     employeeDraft.id=
       employeeId;
 
+    /*
+      Ставки, заданные до появления назначения, создаются сразу после
+      карточки — назначения к этому моменту уже записаны, и привязать их
+      есть к чему. Отказ ставки карточку не отменяет: сотрудник сохранён,
+      а ставку можно задать ещё раз, поэтому о ней сообщается отдельно.
+    */
+    const pendingRateFailure=
+      await createPendingEmployeeRates(
+        employeeId
+      );
+
     let authFailure=null;
     let creationRolledBack=false;
 
@@ -7462,8 +7624,10 @@ async function saveEmployeeDraft(){
       toast(
         authFailure
           ? `Карточка сохранена. Вход не настроен: ${authFailure}`
-          : "Сотрудник сохранён",
-        authFailure
+          : pendingRateFailure
+            ? `Карточка сохранена. Ставка не задана: ${pendingRateFailure}`
+            : "Сотрудник сохранён",
+        authFailure || pendingRateFailure
           ? 5200
           : 2200
       );
@@ -7477,8 +7641,10 @@ async function saveEmployeeDraft(){
     toast(
       authFailure
         ? `Карточка сохранена. Вход не настроен: ${authFailure}`
-        : "Сотрудник сохранён",
-      authFailure
+        : pendingRateFailure
+          ? `Карточка сохранена. Ставка не задана: ${pendingRateFailure}`
+          : "Сотрудник сохранён",
+      authFailure || pendingRateFailure
         ? 5200
         : 2200
     );
@@ -13907,6 +14073,14 @@ employeeSheetElement.addEventListener(
       return;
     }
 
+    if(button.dataset.employeeRateDrop){
+      void dropEmployeeRate(
+        button.dataset.employeeRateDrop
+      );
+
+      return;
+    }
+
     if(button.dataset.employeeRateDelete){
       void removeEmployeeRate(
         button.dataset.employeeRateDelete
@@ -14045,22 +14219,35 @@ employeeSheetElement.addEventListener(
               pointId
             ];
 
-      button.classList.toggle(
-        "on",
-        !selected
-      );
+      /*
+        Снятый ПВЗ уносит с собой и незаписанную ставку, и открытый
+        редактор: условие работы там, где работы больше нет, — это
+        обещание, которое некому выполнить.
+      */
+      if(selected){
+        if(pendingEmployeeRate(pointId)){
+          const rest={
+            ...employeeDraft.pendingRates
+          };
 
-      const check=
-        button.querySelector(
-          ".employee-point-check"
-        );
+          delete rest[pointId];
 
-      if(check){
-        check.textContent=
-          selected
-            ? ""
-            : "✓";
+          employeeDraft.pendingRates=rest;
+        }
+
+        if(
+          employeeRateEditor?.pointId===
+          pointId
+        ){
+          closeEmployeeRateEditor();
+        }
       }
+
+      /*
+        Строка ПВЗ несёт ставку, поэтому отметка перерисовывает карточку,
+        а не подменяет галочку на месте.
+      */
+      drawEmployeeSheet();
     }
   }
 );

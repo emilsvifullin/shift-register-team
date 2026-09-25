@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="6683547511f04ee6e5a53d84cf4da7df3c8e7a9ae3df1fa1c57c65a3a5118ae0";
+const SHELL_FINGERPRINT="af7942f585a91ec58490cab2c8965392218c8a6d67ad38e870e81b3bfceb60ee";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -58,7 +58,8 @@ const STYLES=[
   "./styles/motion-reference.css",
   "./styles/modal-motion-exact.css",
   "./styles/inline-fields.css",
-  "./styles/interaction.css"
+  "./styles/interaction.css",
+  "./styles/shift-views.css"
 ];
 
 const SCRIPTS=[
@@ -90,6 +91,7 @@ const SCRIPTS=[
   "./src/reference-swipes.js",
   "./src/render/dom-patch.js",
   "./src/render/schedule.js",
+  "./src/shift-views.js",
   "./src/storage.js",
   "./src/supabase.js",
   "./src/swipe-close-guard.js",

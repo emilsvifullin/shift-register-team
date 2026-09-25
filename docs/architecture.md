@@ -103,6 +103,41 @@ backgrounded tab can never withhold fresh data. Navigation requested
 during a transition is queued and applied when it ends, instead of being
 dropped.
 
+## Shift views
+
+The «Смены» screen answers three different questions about the same month,
+so it offers three views. `src/shift-views.js` builds the markup for two of
+them; the registry stays in `app.js` with the rest of the screen.
+
+* **Реестр** — the list: what is actually recorded, with search and filter.
+* **Календарь** — a month grid for one point: which days have shifts, which
+  do not, how many each day has. Answers "what is in this day".
+* **Контроль** — every point of the month as one table, a row per point and
+  a column per day. Answers "where are the gaps at all".
+
+A day is never called "missed" in the sense of "a shift was due". The
+application does not know a point's schedule. It states a fact: the day has
+passed and no shift is recorded. Future days are marked neutrally.
+
+`src/shift-views.js` imports nothing from the application. Data and
+formatters arrive as arguments and markup comes back, so the module stays
+testable and the screen keeps its state in one place. The one exception is
+the point strip: its scrolling is behaviour of that markup, so
+`installShiftViewChips` and `afterShiftViewRender` live there too. The strip
+claims the wheel while the pointer is over it — month paging listens for a
+horizontal gesture on the whole document, and without that a two-finger
+swipe along the strip would page the month as well.
+
+The view, the selected point and the open day are settings of the screen,
+not a place where the person stopped, so they survive a re-render and a trip
+to another section — the same rule as the month cursor, search and filters
+(see `resetSectionOnLeave`). They are deliberately not persisted to
+`sessionStorage`: the section opens on the registry.
+
+Only the registry uses the `shifts-layout` class, which fits the list into
+the remaining height and stops the page from scrolling. The calendar and the
+control table set their own height and scroll like every other section.
+
 ## Rules
 
 1. New database reads or writes go into the matching `src/api/*` module,

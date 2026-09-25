@@ -1,0 +1,704 @@
+/*
+  Календарь и контроль в разделе «Смены».
+
+  Все правила здесь начинаются с sv- (shift views) и не пересекаются ни
+  с чем остальным: представления живут поверх общей вёрстки, а не вместо
+  неё. Цвета, радиусы и размеры берутся из общих переменных приложения —
+  календарь должен выглядеть частью Shift Register, а не вставкой.
+
+  Раскладка рассчитана прежде всего на desktop: там месяц виден целиком
+  и рядом помещается панель дня. На узком экране те же данные идут в
+  одну колонку, а клетка дня сжимается до числа и счётчика смен.
+*/
+
+/*
+  Реестр живёт в нерастущей раскладке: список подгоняется под остаток
+  высоты, а соседи должны быть flex:none. Без этого переключатель
+  сжимался вместо списка, и список уезжал под нижнюю панель.
+*/
+main.shifts-layout > .sv-switch{
+  flex:none;
+}
+
+.sv-switch{
+  margin-bottom:12px;
+}
+
+/* ===== выбор ПВЗ ===== */
+
+/*
+  Лента ПВЗ: сама полоса прокрутки скрыта, поэтому обрезанный край
+  показывают затенение и стрелка. Затенение включается классом, а не
+  живёт всегда: тень у края, за которым ничего нет, врала бы.
+*/
+.sv-points{
+  position:relative;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:0 0 14px;
+}
+
+.sv-chips{
+  display:flex;
+  gap:8px;
+  flex:1;
+  min-width:0;
+
+  padding:2px 2px 6px;
+
+  overflow-x:auto;
+  overscroll-behavior-x:contain;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+
+.sv-chips:focus-visible{
+  outline:2px solid var(--gold-line);
+  outline-offset:2px;
+  border-radius:12px;
+}
+
+.sv-chips::-webkit-scrollbar{
+  display:none;
+}
+
+.sv-points::before,
+.sv-points::after{
+  content:"";
+  position:absolute;
+  top:0;
+  bottom:6px;
+  width:28px;
+  z-index:1;
+
+  opacity:0;
+  pointer-events:none;
+  transition:opacity var(--ui-base) ease;
+}
+
+.sv-points::before{
+  left:0;
+  background:linear-gradient(
+    to right,
+    var(--bg),
+    transparent
+  );
+}
+
+.sv-points::after{
+  right:0;
+  background:linear-gradient(
+    to left,
+    var(--bg),
+    transparent
+  );
+}
+
+.sv-points.has-start::before,
+.sv-points.has-end::after{
+  opacity:1;
+}
+
+/*
+  Стрелки — для мыши: пальцем ленту двигают жестом, а колесо и клик
+  нужны тем, у кого жеста нет. Поэтому на сенсорных экранах их нет.
+*/
+.sv-points-nav{
+  display:none;
+}
+
+@media (hover:hover) and (pointer:fine){
+  .sv-points-nav{
+    display:grid;
+    place-items:center;
+    flex:none;
+
+    width:30px;
+    height:30px;
+    margin-bottom:4px;
+
+    border:1px solid var(--line);
+    border-radius:50%;
+
+    background:var(--surf);
+    color:var(--ink2);
+    cursor:pointer;
+
+    transition:
+      opacity var(--ui-base) ease,
+      color var(--ui-base) ease,
+      border-color var(--ui-base) ease;
+  }
+
+  .sv-points-nav[hidden]{
+    display:none;
+  }
+
+  .sv-points-nav:disabled{
+    opacity:.35;
+    cursor:default;
+  }
+
+  .sv-points-nav:not(:disabled):hover{
+    border-color:var(--line2);
+    color:var(--ink);
+  }
+
+  .sv-points-nav svg{
+    width:11px;
+    height:14px;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.7;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+
+  /* Затенение начинается за стрелкой, а не под ней. */
+  .sv-points.has-start::before{
+    left:36px;
+  }
+
+  .sv-points.has-end::after{
+    right:36px;
+  }
+}
+
+.sv-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  flex:none;
+
+  padding:9px 14px;
+  border:1px solid var(--line);
+  border-radius:999px;
+
+  background:var(--surf);
+  color:var(--ink2);
+
+  font-size:13px;
+  font-weight:550;
+  letter-spacing:-.1px;
+  white-space:nowrap;
+  cursor:pointer;
+
+  transition:
+    background-color var(--ui-base) ease,
+    border-color var(--ui-base) ease,
+    color var(--ui-base) ease;
+}
+
+.sv-chip.on{
+  border-color:var(--gold-line);
+  background:var(--gold-soft);
+  color:var(--ink);
+}
+
+.sv-chip-count{
+  padding:1px 6px;
+  border-radius:999px;
+
+  background:var(--tint2);
+  color:var(--ink3);
+
+  font-size:11px;
+  font-weight:600;
+}
+
+.sv-chip.on .sv-chip-count{
+  background:rgba(214,178,120,.22);
+  color:var(--gold);
+}
+
+/* ===== сводка месяца ===== */
+
+.sv-summary{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:4px 14px;
+
+  margin:0 2px 12px;
+  color:var(--ink3);
+  font-size:12.5px;
+}
+
+.sv-summary-name{
+  color:var(--ink);
+  font-size:14px;
+  font-weight:600;
+  letter-spacing:-.2px;
+}
+
+.sv-summary-item b{
+  color:var(--ink2);
+  font-weight:650;
+}
+
+.sv-summary-item.warn b{
+  color:var(--rust);
+}
+
+/* ===== раскладка ===== */
+
+.sv-layout{
+  display:grid;
+  gap:14px;
+  align-items:start;
+}
+
+@media (min-width:900px){
+  .sv-layout{
+    grid-template-columns:minmax(0,1fr) 320px;
+    align-items:stretch;
+  }
+}
+
+/* ===== календарь ===== */
+
+.sv-calendar{
+  padding:12px;
+}
+
+.sv-weekdays,
+.sv-grid{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  gap:6px;
+}
+
+.sv-weekdays{
+  margin-bottom:8px;
+}
+
+.sv-weekday{
+  padding:2px 4px;
+
+  color:var(--ink3);
+  font-size:10.5px;
+  font-weight:650;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  text-align:center;
+}
+
+.sv-day{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+
+  min-height:44px;
+  padding:6px;
+
+  border:1px solid var(--line);
+  border-radius:12px;
+
+  background:var(--tint-soft);
+  color:var(--ink);
+
+  text-align:left;
+  cursor:pointer;
+
+  transition:
+    background-color var(--ui-base) ease,
+    border-color var(--ui-base) ease,
+    transform var(--ui-fast) var(--ui-ease);
+}
+
+@media (min-width:900px){
+  .sv-day{
+    min-height:92px;
+  }
+}
+
+.sv-day.outside{
+  border-color:transparent;
+  background:transparent;
+  cursor:default;
+}
+
+.sv-day.has{
+  border-color:var(--line2);
+  background:var(--tint);
+}
+
+/*
+  Прошедший день без смен — единственное, что подсвечивается цветом:
+  ради этого календарь и открывают.
+*/
+.sv-day.missed{
+  border-color:var(--rust-line);
+  border-style:dashed;
+  background:rgba(190,113,104,.07);
+}
+
+.sv-day.ahead{
+  border-style:dashed;
+  background:transparent;
+  opacity:.75;
+}
+
+.sv-day.today .sv-day-num{
+  color:var(--gold);
+  font-weight:700;
+}
+
+.sv-day.on{
+  border-color:var(--gold-line);
+  background:var(--gold-soft);
+}
+
+.sv-day:active{
+  transform:scale(.98);
+}
+
+.sv-day-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px;
+}
+
+.sv-day-num{
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:-.2px;
+}
+
+.sv-day-count{
+  min-width:18px;
+  padding:1px 5px;
+  border-radius:999px;
+
+  background:var(--gold-soft);
+  color:var(--gold);
+
+  font-size:11px;
+  font-weight:650;
+  text-align:center;
+}
+
+.sv-day-gap{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--rust);
+  opacity:.75;
+}
+
+.sv-day-body{
+  display:none;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+
+.sv-day-line{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  min-width:0;
+}
+
+.sv-day-line-main{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  color:var(--ink2);
+  font-size:11px;
+}
+
+.sv-day-flag{
+  flex:none;
+  padding:0 4px;
+  border-radius:4px;
+
+  background:var(--tint2);
+  color:var(--ink3);
+
+  font-size:9.5px;
+  font-weight:600;
+}
+
+.sv-day-more,
+.sv-day-sum{
+  color:var(--ink3);
+  font-size:10.5px;
+}
+
+.sv-day-sum{
+  display:none;
+  margin-top:auto;
+  font-weight:600;
+}
+
+@media (min-width:900px){
+  .sv-day-body,
+  .sv-day-sum{
+    display:flex;
+  }
+}
+
+.sv-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px 14px;
+
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+
+  color:var(--ink3);
+  font-size:11.5px;
+}
+
+.sv-legend-item{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.sv-legend-mark{
+  width:12px;
+  height:12px;
+  border:1px solid var(--line2);
+  border-radius:4px;
+  background:var(--tint);
+}
+
+.sv-legend-mark.missed{
+  border-color:var(--rust-line);
+  border-style:dashed;
+  background:rgba(190,113,104,.10);
+}
+
+.sv-legend-mark.ahead{
+  border-style:dashed;
+  background:transparent;
+}
+
+/* ===== панель дня ===== */
+
+.sv-panel{
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  background:var(--surf);
+}
+
+/*
+  На desktop панель дня — вторая колонка одной конструкции, а не карточка
+  рядом. Её высоту задаёт календарь: сетка тянет обе колонки до общей
+  высоты, панель раскладывается колонкой, а растягивается и прокручивается
+  внутри только список смен. Поэтому и пустой день, и день с десятком
+  смен оставляют геометрию страницы одинаковой.
+*/
+@media (min-width:900px){
+  .sv-panel{
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+  }
+
+  /*
+    Список занимает столько, сколько нужно смене, и сжимается только
+    когда их больше, чем помещается. Кнопка идёт сразу за ним, а не
+    прижимается к нижнему краю: при одной смене между ними была бы
+    полупанели пустоты.
+  */
+  .sv-panel-list{
+    flex:0 1 auto;
+    min-height:0;
+    max-height:none;
+    margin-bottom:0;
+  }
+
+  .sv-panel-add,
+  .sv-panel-note{
+    flex:none;
+  }
+}
+
+.sv-panel-empty{
+  border-style:dashed;
+  background:transparent;
+}
+
+.sv-panel-head{
+  margin-bottom:10px;
+}
+
+.sv-panel-date{
+  font-size:16px;
+  font-weight:600;
+  letter-spacing:-.2px;
+}
+
+.sv-panel-sub{
+  margin-top:2px;
+  color:var(--ink3);
+  font-size:12px;
+}
+
+.sv-panel-list{
+  display:flex;
+  flex-direction:column;
+
+  margin:0 -6px 12px;
+  max-height:min(52vh,420px);
+  overflow-y:auto;
+}
+
+.sv-panel-hint{
+  color:var(--ink3);
+  font-size:13px;
+  line-height:1.45;
+}
+
+.sv-panel-add{
+  width:100%;
+  margin-top:12px;
+}
+
+.sv-panel-note{
+  margin-top:8px;
+  color:var(--ink3);
+  font-size:11.5px;
+  line-height:1.4;
+}
+
+/* ===== контроль ===== */
+
+.sv-control{
+  padding:12px;
+}
+
+.sv-control-scroll{
+  overflow-x:auto;
+}
+
+/*
+  Колонки заданы жёстко и одинаково: при table-layout:fixed ширину
+  столбца определяет colgroup, а не содержимое, поэтому число дня и
+  плитка под ним всегда стоят в одной колонке. Ширина колонки — доля
+  остатка, так что выравнивание держится и при 28 днях, и при 31, и при
+  любой ширине окна. min-width не даёт колонкам схлопнуться: ниже него
+  таблица уходит в горизонтальную прокрутку.
+*/
+.sv-control table{
+  border-collapse:separate;
+  border-spacing:3px;
+  table-layout:fixed;
+
+  width:100%;
+  min-width:calc(
+    152px + var(--sv-days,31)*24px
+  );
+}
+
+.sv-col-name{
+  width:152px;
+}
+
+.sv-col-day{
+  width:calc(
+    (100% - 152px)/var(--sv-days,31)
+  );
+}
+
+.sv-control th,
+.sv-control td{
+  padding:0;
+  font-weight:400;
+  text-align:center;
+}
+
+.sv-control thead th{
+  color:var(--ink3);
+  font-size:10.5px;
+  font-weight:600;
+  text-align:center;
+}
+
+.sv-control thead th.today{
+  color:var(--gold);
+}
+
+.sv-control-point{
+  position:sticky;
+  left:0;
+  z-index:1;
+
+  padding-right:10px !important;
+
+  background:var(--surf);
+  text-align:left !important;
+}
+
+.sv-control-name{
+  display:block;
+
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  color:var(--ink);
+  font-size:13px;
+  font-weight:550;
+}
+
+.sv-control-sub{
+  display:block;
+  color:var(--ink3);
+  font-size:11px;
+}
+
+.sv-cell button{
+  display:block;
+  width:100%;
+  max-width:22px;
+  height:26px;
+  margin:0 auto;
+
+  border:1px solid var(--line);
+  border-radius:6px;
+
+  background:var(--tint-soft);
+  color:var(--ink3);
+
+  font-size:10.5px;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.sv-cell.has button{
+  border-color:var(--gold-line);
+  background:var(--gold-soft);
+  color:var(--gold);
+}
+
+.sv-cell.missed button{
+  border-color:var(--rust-line);
+  border-style:dashed;
+  background:rgba(190,113,104,.10);
+}
+
+.sv-cell.ahead button{
+  border-style:dashed;
+  opacity:.5;
+}
+
+.sv-cell.today button{
+  box-shadow:0 0 0 1px var(--gold-line);
+}
+
+.sv-control-sub b{
+  font-weight:600;
+}
+
+.sv-control-sub b.warn{
+  color:var(--rust);
+}

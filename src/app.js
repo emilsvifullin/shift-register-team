@@ -139,6 +139,15 @@ import {
   toggleFilterSelection
 } from "./workflow.js?shell=7";
 
+import {
+  SHIFT_VIEW_MODES,
+  afterShiftViewRender,
+  calendarViewHTML,
+  controlViewHTML,
+  installShiftViewChips,
+  shiftViewSwitcherHTML
+} from "./shift-views.js";
+
 const UI_KEY="shift-register-team-ui-v3";
 const LOGIN_ENTRY_KEY="shift-register-login-entry-v1";
 
@@ -1159,6 +1168,9 @@ const app = document.getElementById("app");
 
 initManageSwipe({app});
 
+/* Прокрутка ленты ПВЗ в календаре: колесо, стрелки, жест. */
+installShiftViewChips(app);
+
 function render(){
   saveUIState();
 
@@ -1270,9 +1282,16 @@ function render(){
         : -1;
   });
 
+  /*
+    shifts-layout — нерастущая раскладка реестра: список подгоняется под
+    остаток высоты, и страница не прокручивается. Календарю и контролю
+    она не подходит — у них высота своя, и страница должна прокручиваться
+    как везде.
+  */
   app.classList.toggle(
     "shifts-layout",
-    tab==="shifts"
+    tab==="shifts" &&
+    shiftViewMode==="registry"
   );
 
   setHTML(
@@ -1288,6 +1307,14 @@ function render(){
 
   requestAnimationFrame(
     fitShiftWindow
+  );
+
+  /*
+    Состояние ленты ПВЗ считается по готовой разметке: помещается ли она,
+    видны ли стрелки, не уехал ли выбранный пункт за край.
+  */
+  requestAnimationFrame(()=>
+    afterShiftViewRender(app)
   );
 }
 
@@ -1700,6 +1727,83 @@ function updateShiftList(){
   );
 }
 
+/*
+  Состояние представлений «Смен»: выбранный режим, ПВЗ в календаре и
+  открытый день.
+
+  Это настройки экрана, а не место, где человек остановился: они
+  переживают перерисовку и переход в другой раздел — по тому же правилу,
+  что месяц, поиск и фильтры (см. resetSectionOnLeave). В sessionStorage
+  они намеренно не попадают: раздел открывается реестром, а реестр —
+  ответ на вопрос «что записано», с которого и начинают.
+*/
+let shiftViewMode="registry";
+let shiftViewPointId="";
+let shiftViewDay="";
+
+/*
+  Пункты для календаря и контроля: действующие плюс те, по которым в
+  этом месяце есть смены. Архивный ПВЗ со сменами прятать нельзя —
+  именно по нему и проверяют, всё ли закрыто.
+*/
+function shiftViewPoints(monthShifts){
+  const used=new Set(
+    monthShifts.map(shift=>
+      shift.dbPointId || shift.pointId
+    )
+  );
+
+  return (teamData.points || []).filter(
+    point=>
+      point.active!==false ||
+      used.has(point.id)
+  );
+}
+
+function shiftViewFormat(){
+  return {
+    esc,
+    money,
+    calc,
+    dateLabel,
+    shortDateLabel
+  };
+}
+
+/* Открыть форму новой смены из конкретного дня календаря. */
+function openShiftForCalendarDay(date){
+  openSheet(null);
+
+  if(!draft){
+    return;
+  }
+
+  /*
+    Дату человек выбрал сам, поэтому datesTouched=true: следующий тап по
+    календарю в форме добавит день, а не заменит подставленный. Иначе
+    мультивыбор из календаря был бы недоступен.
+  */
+  draft.date=date;
+  draft.dates=[date];
+  draft.datesTouched=true;
+
+  const point=(teamData.points || []).find(
+    item=>item.id===shiftViewPointId
+  );
+
+  /* Контекст ПВЗ из календаря переносится в форму. */
+  if(point){
+    draft.dbPointId=point.id;
+    draft.pointId=point.code || point.id;
+    draft.point=point.name;
+  }
+
+  shiftDateCursor=date.slice(0,7);
+
+  drawSheet(false);
+  saveUIState();
+}
+
 function viewShifts(){
   const state=serverStateCard();
   if(state) return state;
@@ -1712,8 +1816,38 @@ function viewShifts(){
     </button>
   ` : "";
 
+  /* Реестр собирается ниже, общим путём. */
+  if(shiftViewMode!=="registry"){
+    const monthShifts=inMonth(cursor);
+    const points=shiftViewPoints(monthShifts);
+
+    return `
+      ${adminControls}
+      ${shiftViewSwitcherHTML(shiftViewMode)}
+      ${shiftViewMode==="control"
+        ? controlViewHTML({
+            cursor,
+            shifts:monthShifts,
+            points,
+            today:localYMD(),
+            format:shiftViewFormat()
+          })
+        : calendarViewHTML({
+            cursor,
+            shifts:monthShifts,
+            points,
+            pointId:shiftViewPointId,
+            selectedDay:shiftViewDay,
+            today:localYMD(),
+            isAdmin,
+            format:shiftViewFormat()
+          })}
+    `;
+  }
+
   return `
     ${adminControls}
+    ${shiftViewSwitcherHTML(shiftViewMode)}
     <div class="ml">Поиск и фильтр</div>
     <div class="card employee-editor">
       <label class="row">
@@ -14578,6 +14712,68 @@ app.addEventListener("click",async event=>{
 
   const button=event.target.closest("button");
   if(!button) return;
+
+  /* Представления «Смен»: режим, выбор ПВЗ, день, добавление. */
+  if(button.dataset.shiftView){
+    if(SHIFT_VIEW_MODES.includes(button.dataset.shiftView)){
+      shiftViewMode=button.dataset.shiftView;
+      render();
+    }
+
+    return;
+  }
+
+  if(button.hasAttribute("data-calendar-point")){
+    shiftViewPointId=button.dataset.calendarPoint;
+    shiftViewDay="";
+    render();
+    return;
+  }
+
+  if(button.dataset.calendarDay){
+    shiftViewDay=
+      shiftViewDay===button.dataset.calendarDay
+        ? ""
+        : button.dataset.calendarDay;
+
+    render();
+
+    /* На узком экране панель дня лежит под календарём. */
+    if(
+      shiftViewDay &&
+      window.innerWidth<900
+    ){
+      requestAnimationFrame(()=>
+        document
+          .querySelector(".sv-panel")
+          ?.scrollIntoView({
+            behavior:"smooth",
+            block:"nearest"
+          })
+      );
+    }
+
+    return;
+  }
+
+  if(button.dataset.calendarAdd){
+    openShiftForCalendarDay(
+      button.dataset.calendarAdd
+    );
+
+    return;
+  }
+
+  if(button.dataset.controlCell){
+    const [pointId,date]=
+      button.dataset.controlCell.split("|");
+
+    shiftViewMode="calendar";
+    shiftViewPointId=pointId;
+    shiftViewDay=date;
+    render();
+    return;
+  }
 
   if(button.id==="statsEmployeeOpen"){
     statsEmployeeOpen=!statsEmployeeOpen;

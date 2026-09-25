@@ -5370,7 +5370,7 @@ function pointDeletionDetail(point){
 
   const parts=[
     `Тарифов: ${summary.tariffs}`,
-    `Назначено сотрудников: ${summary.links}`
+    `Сотрудников: ${summary.links}`
   ];
 
   if(summary.shifts){
@@ -5380,15 +5380,11 @@ function pointDeletionDetail(point){
   }
 
   /*
-    «Навсегда» уже сказано и в заголовке, и на кнопке, и подтверждается
-    набором названия. Здесь остаётся то, чего больше нигде нет: что
-    именно будет стёрто.
+    Название ПВЗ стоит в заголовке, в поле подтверждения и на его
+    подсказке; «навсегда» — в заголовке и на кнопке. Здесь остаётся
+    только опись: что именно будет стёрто.
   */
-  return (
-    `Будет стёрта вся история «${point.name}». `+
-    parts.join(". ")+
-    "."
-  );
+  return parts.join(" · ");
 }
 
 async function deleteManagedPoint(){

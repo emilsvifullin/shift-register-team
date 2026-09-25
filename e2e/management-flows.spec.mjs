@@ -668,8 +668,10 @@ test(
     /* Человек видит, что именно потеряет, и что это навсегда. */
     const detail=page.locator("#appConfirmDetail");
 
+    /* Опись того, что будет стёрто, — и ничего сверх неё. */
     await expect(detail).toContainText("Смен: 1");
-    await expect(detail).toContainText("вся история");
+    await expect(detail).toContainText("Тарифов:");
+    await expect(detail).toContainText("Сотрудников:");
 
     await expect(
       page.locator("#appConfirmTitle")

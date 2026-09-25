@@ -776,3 +776,53 @@ body[data-active-tab="manage"] main:has(#pointManageList) > :not(#pointManageLis
     transition-duration:.001ms !important;
   }
 }
+
+/*
+  Кнопка — интерактивный элемент, и курсор обязан это показывать.
+
+  Браузер сам ставит на <button> обычную стрелку, поэтому каждая кнопка
+  приложения указывала на это отдельной строкой — и там, где строку
+  забывали, курсор молча отличался от соседней такой же кнопки. Правило
+  одно на все: кроме отключённых, где стрелка как раз и говорит, что
+  нажимать нечего.
+*/
+button:not(:disabled){
+  cursor:pointer;
+}
+
+button:disabled{
+  cursor:default;
+}
+
+/*
+  Крестик очистки поиска — свой, а не браузерный.
+
+  Системный выглядел чужим: серый кружок другого размера, со своим
+  отступом и без курсора-указателя. Здесь он собран из тех же величин,
+  что и остальные значки приложения, и подсвечивается по наведению.
+  Firefox своего крестика не рисует вовсе — поле там просто чистят
+  клавишами, и это одинаково во всех полях.
+*/
+input[type="search"]::-webkit-search-cancel-button{
+  -webkit-appearance:none;
+  appearance:none;
+
+  width:16px;
+  height:16px;
+  margin-left:8px;
+
+  background-color:var(--ink3);
+
+  -webkit-mask:var(--ui-clear-icon) center / 10px 10px no-repeat;
+  mask:var(--ui-clear-icon) center / 10px 10px no-repeat;
+
+  cursor:pointer;
+
+  transition:background-color var(--ui-base) ease;
+}
+
+@media (hover:hover) and (pointer:fine){
+  input[type="search"]::-webkit-search-cancel-button:hover{
+    background-color:var(--ink);
+  }
+}

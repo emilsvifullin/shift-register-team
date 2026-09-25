@@ -146,10 +146,6 @@
   letter-spacing:-.2px;
 }
 
-.inline-search input::-webkit-search-cancel-button{
-  -webkit-appearance:none;
-}
-
 /*
   Длинный список не тянет форму вниз: дальше он прокручивается внутри
   себя. Предел задан и в долях экрана, и в пикселях — на низком окне

@@ -531,7 +531,7 @@ function dayPanelHTML({
     return `
       <div class="sv-panel sv-panel-empty">
         <div class="sv-panel-hint">
-          Выберите день в календаре — здесь появятся его смены.
+          Выберите день — здесь появятся его смены.
         </div>
       </div>
     `;
@@ -605,10 +605,7 @@ function dayPanelHTML({
                shortDateLabel(selectedDay)
              )}
            </button>
-           <div class="sv-panel-note">
-             Дата подставится в форму, остальные дни можно отметить
-             там же${pointName ? ", ПВЗ тоже перенесётся" : ""}.
-           </div>`
+           `
         : ""}
     </div>
   `;
@@ -869,7 +866,7 @@ export function controlViewHTML({
           день прошёл без смен
         </span>
         <span class="sv-legend-item">
-          нажатие на клетку открывает этот день в календаре
+          клетка открывает день в календаре
         </span>
       </div>
     </div>

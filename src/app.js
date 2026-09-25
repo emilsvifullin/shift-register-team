@@ -1595,7 +1595,7 @@ function serverStateCard(){
             Сотрудник находится в архиве
           </div>
           <div class="manage-placeholder-detail">
-            Доступ к рабочим данным закрыт. Обратитесь к администратору, если сотрудника нужно восстановить.
+            Обратитесь к администратору, чтобы восстановить доступ.
           </div>
         </div>
       </div>
@@ -2729,9 +2729,7 @@ function viewData(){
   const detail=serverDataError ||
     (
       serverConnected
-        ? realtimeStatus==="connected"
-          ? "Данные обновляются автоматически."
-          : "Приложение автоматически проверяет изменения; ручное обновление не требуется."
+        ? "Данные обновляются автоматически."
         : "Проверьте подключение и повторите загрузку."
     );
 
@@ -4575,8 +4573,7 @@ function drawManageEditor(){
 
             ${current ? `
               <div class="tariff-editor-help">
-                Изменение текущего тарифа не создаёт новую запись.
-                Новый тариф сохраняет предыдущий в истории.
+                Новый тариф сохраняет прежний в истории.
               </div>
             ` : ""}
 
@@ -5297,7 +5294,7 @@ async function removeHistoricalTariff(id){
     !await appConfirm(
       "Удалить тариф из истории?",
       {
-        detail:"Удаление возможно только если тариф не используется сменами и у ПВЗ останется другая версия тарифа.",
+        detail:"Тариф, по которому есть смены, и последний тариф ПВЗ удалить нельзя.",
         okText:"Удалить",
         danger:true
       }
@@ -5382,10 +5379,15 @@ function pointDeletionDetail(point){
     );
   }
 
+  /*
+    «Навсегда» уже сказано и в заголовке, и на кнопке, и подтверждается
+    набором названия. Здесь остаётся то, чего больше нигде нет: что
+    именно будет стёрто.
+  */
   return (
     `Будет стёрта вся история «${point.name}». `+
     parts.join(". ")+
-    ". Действие необратимо."
+    "."
   );
 }
 
@@ -5691,8 +5693,7 @@ function employeeRateEditorHTML(point){
     <div class="employee-rate-editor">
       ${employeeRateEditor.readOnlyTiers ? `
         <div class="employee-rate-note">
-          Эта ставка задана ступенями по ШК. Менять ступени можно только
-          в тарифе ПВЗ — здесь её получится убрать.
+          Ставка по ШК меняется в тарифе ПВЗ. Здесь её можно убрать.
         </div>
       ` : `
         <label class="row">
@@ -5747,7 +5748,7 @@ function employeeRateEditorHTML(point){
 
       ${pending ? `
         <div class="employee-rate-note">
-          Ставка будет создана вместе с карточкой сотрудника.
+          Сохранится вместе с карточкой.
         </div>
       ` : ""}
 
@@ -6006,7 +6007,7 @@ async function removeEmployeeRate(id){
   const agreed=await appConfirm(
     "Убрать индивидуальную ставку?",
     {
-      detail:`Смены с этой даты будут считаться по тарифу ПВЗ. Уже сохранённые смены не изменятся: их стоимость заморожена.`,
+      detail:"Новые смены будут считаться по тарифу ПВЗ. Сохранённые не изменятся.",
       okText:"Убрать",
       danger:true
     }
@@ -6115,7 +6116,7 @@ function drawEmployeeSheet(){
         </div>
 
         <div class="employee-help">
-          Карточка защищена от изменения и удаления. Используйте её только для внесения смен подменных сотрудников в реестр.
+          Карточка защищена от изменений. Нужна для смен подменных сотрудников.
         </div>
 
         <div
@@ -6609,10 +6610,10 @@ function drawEmployeeSheet(){
 
     <div class="employee-help">
       ${employeeDraft.userId
-        ? "Почту можно изменить. Пустой пароль сохранит текущий."
+        ? "Пустой пароль сохранит текущий."
         : employeeDraft.accountEnabled
-          ? "Почта и пароль создадут подтверждённый аккаунт с правами сотрудника. Публичной регистрации нет."
-          : "Карточка будет доступна для смен и расчётов без входа сотрудника."}
+          ? "Сотрудник сможет войти с этой почтой и паролем."
+          : "Смены и расчёты работают и без входа сотрудника."}
     </div>
 
     <div class="ml">
@@ -6624,9 +6625,7 @@ function drawEmployeeSheet(){
     </div>
 
     <div class="note employee-rate-hint">
-      Ставка задаётся у самого ПВЗ. Пусто — значит по тарифу пункта. Своя
-      ставка действует с выбранной даты и не меняет уже сохранённые
-      смены: их стоимость заморожена в момент сохранения.
+      Новая ставка не меняет уже сохранённые смены.
     </div>
 
     ${!isCreate && employeeDraft.id && !employeeDraft.isSystem ? `
@@ -7743,7 +7742,7 @@ async function deleteEmployeeDraft(){
         okText:"Удалить",
         danger:true,
         detail:
-          "Если у сотрудника нет истории смен, карточка и привязанный аккаунт входа будут удалены полностью."
+          "Карточка и аккаунт входа будут удалены. Сотрудника со сменами удалить нельзя."
       }
     );
 
@@ -9736,7 +9735,7 @@ function calcHTML(){
   if(!result.available){
     return `
       <div class="calc-error">
-        ${esc(result.error)}${draft.dbPointId ? ". Добавьте исторический тариф в карточке ПВЗ." : ""}
+        ${esc(result.error)}${draft.dbPointId ? ". Задайте тариф в карточке ПВЗ." : ""}
       </div>
     `;
   }
@@ -9846,7 +9845,7 @@ function selectedDatesHTML(){
           ? `Выбрано ${datesWord(dates.length)} — будет создано столько же смен`
           : draft.datesTouched
             ? "Отметьте ещё дни, чтобы создать несколько смен сразу"
-            : "Выберите день. Можно отметить сразу несколько."}
+            : "Можно отметить сразу несколько дней."}
       </div>
 
       <div class="date-chosen-list">
@@ -9989,14 +9988,12 @@ function tariffDivergenceHTML(value){
 
   return `
     <div class="note shift-tariff-note">
-      Смена посчитана по тарифу, который действовал на момент её
-      сохранения. Сейчас на ${esc(dateLabel(value.date))} действует
-      ${esc(rate)} с ${esc(shortDateLabel(current.effective_from))}.
+      Смена посчитана по прежнему тарифу. На
+      ${esc(dateLabel(value.date))} сейчас действует ${esc(rate)}
+      с ${esc(shortDateLabel(current.effective_from))}.
       ${value?.baseOverrideReason
-        ? "Сумма этой смены задана вручную, поэтому тариф её не меняет."
-        : isAdmin
-          ? "Пересчитать можно кнопкой ниже."
-          : ""}
+        ? "Сумма задана вручную — тариф её не меняет."
+        : ""}
     </div>
   `;
 }
@@ -14910,7 +14907,7 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
       !await appConfirm(
         "Пересчитать смену?",
         {
-          detail:`Смена за ${dateLabel(draft.date)} будет посчитана по тарифу с ${shortDateLabel(current.effective_from)}. Прежняя сумма ${money(previewCalc(draft).base)} изменится.`,
+          detail:`Сейчас ${money(previewCalc(draft).base)}. Будет посчитана по тарифу с ${shortDateLabel(current.effective_from)}.`,
           okText:"Пересчитать"
         }
       )
@@ -15822,7 +15819,7 @@ app.addEventListener("click",async event=>{
     const confirmed=await appConfirm(
       "Удалить запись выплаты?",
       {
-        detail:"Расчётная сумма не изменится, но отметка о фактической выплате будет удалена.",
+        detail:"Начисления не изменятся — удалится только отметка о выплате.",
         okText:"Удалить",
         danger:true
       }

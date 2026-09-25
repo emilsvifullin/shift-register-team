@@ -120,9 +120,18 @@ test("editing a tariff from history updates that record in place",()=>{
   assert.equal(tariffIntentUpdatesRecord("edit-current"),true);
   assert.equal(tariffIntentUpdatesRecord("create"),false);
 
+  /*
+    Подсказка говорит о последствии для истории, а не о том, что человек
+    только что выбрал сам.
+  */
   assert.match(
     tariffIntentHelp("edit-version"),
-    /из истории/i
+    /не создаётся/i
+  );
+
+  assert.match(
+    tariffIntentHelp("create"),
+    /истории/i
   );
 
   const tariffs=[

@@ -747,7 +747,7 @@ test(
     const card=page.locator("#sheetBody");
 
     await expect(card).toContainText("3 500 ₽ · тариф ПВЗ с");
-    await expect(card).toContainText("Сейчас на");
+    await expect(card).toContainText("сейчас действует");
     await expect(card).toContainText("5 000 ₽");
 
     /* Сама смена не пересчиталась. */

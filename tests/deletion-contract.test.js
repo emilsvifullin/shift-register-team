@@ -119,9 +119,19 @@ test("deleting a point removes its history and is hard to trigger by accident",a
     /appConfirm\([\s\S]*?confirm:point\.name/
   );
 
+  /*
+    Необратимость названа там, где её нельзя пропустить: в заголовке и на
+    самой кнопке. Отдельной строкой в пояснении она повторяла то же
+    третий раз.
+  */
   assert.match(
     app,
-    /Действие необратимо/
+    /навсегда\?`/
+  );
+
+  assert.match(
+    app,
+    /okText:"Удалить навсегда"/
   );
 
   assert.match(

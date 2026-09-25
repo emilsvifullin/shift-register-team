@@ -669,7 +669,15 @@ test(
     const detail=page.locator("#appConfirmDetail");
 
     await expect(detail).toContainText("Смен: 1");
-    await expect(detail).toContainText("Действие необратимо");
+    await expect(detail).toContainText("вся история");
+
+    await expect(
+      page.locator("#appConfirmTitle")
+    ).toContainText("навсегда");
+
+    await expect(
+      page.locator("#appConfirmOk")
+    ).toContainText("навсегда");
 
     const ok=page.locator("#appConfirmOk");
     const input=page.locator("#appConfirmInput");

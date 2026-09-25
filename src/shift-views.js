@@ -726,15 +726,17 @@ export function calendarViewHTML({
         </div>
       </div>
 
-      ${dayPanelHTML({
-        selectedDay,
-        list:selectedDay
-          ? map.get(selectedDay) || []
-          : [],
-        pointName:point?.name || "",
-        isAdmin,
-        format
-      })}
+      <div class="sv-panel-slot">
+        ${dayPanelHTML({
+          selectedDay,
+          list:selectedDay
+            ? map.get(selectedDay) || []
+            : [],
+          pointName:point?.name || "",
+          isAdmin,
+          format
+        })}
+      </div>
     </div>
 
     <div class="sheet-spacer" aria-hidden="true"></div>

@@ -302,6 +302,14 @@ test.describe("desktop",()=>{
           ".sv-panel-list"
         );
 
+        const add=document.querySelector(
+          ".sv-panel-add"
+        );
+
+        const style=getComputedStyle(
+          document.querySelector(".sv-panel")
+        );
+
         return {
           top:Math.round(calendar.top-panel.top),
           bottom:Math.round(
@@ -311,7 +319,19 @@ test.describe("desktop",()=>{
           listInside:list
             ? list.getBoundingClientRect().bottom<=
               panel.bottom+1
-            : true
+            : true,
+          /*
+            Кнопка стоит у нижнего края панели: между ней и краем
+            только собственный отступ панели.
+          */
+          buttonAtBottom:add
+            ? Math.round(
+                panel.bottom-
+                add.getBoundingClientRect().bottom-
+                parseFloat(style.paddingBottom)-
+                parseFloat(style.borderBottomWidth)
+              )
+            : null
         };
       });
 
@@ -323,7 +343,8 @@ test.describe("desktop",()=>{
       expect(await geometry()).toEqual({
         top:0,
         bottom:0,
-        listInside:true
+        listInside:true,
+        buttonAtBottom:0
       });
 
       /* День со сменами всех семи ПВЗ. */
@@ -338,17 +359,51 @@ test.describe("desktop",()=>{
       expect(await geometry()).toEqual({
         top:0,
         bottom:0,
-        listInside:true
+        listInside:true,
+        buttonAtBottom:0
       });
 
-      /*
-        И когда смен заведомо больше, чем помещается: панель остаётся той
-        же высоты, а прокручивается список внутри неё.
-      */
-      await page.setViewportSize({
-        width:1440,
-        height:620
-      });
+    }
+  );
+
+  /*
+    Смен в дне больше, чем помещается рядом с календарём: панель остаётся
+    ростом с календарь, а прокручивается список внутри неё. Календарь для
+    этого нарочно низкий — три ПВЗ и по одной смене в остальных днях.
+  */
+  test(
+    "a long day list scrolls inside the panel",
+    async({page})=>{
+      const source=seed({points:3});
+
+      source.shifts=source.shifts.filter(
+        shift=>shift.shift_date!==day(1)
+      );
+
+      for(let index=0;index<14;index++){
+        const point=source.points[
+          index%source.points.length
+        ];
+
+        source.shifts.push({
+          ...source.shifts[0],
+          id:`crowded-${index}`,
+          shift_date:day(1),
+          point_id:point.id,
+          point:{...point}
+        });
+      }
+
+      await openApp(page,{seed:source});
+      await openCalendar(page);
+
+      await page
+        .locator(`[data-calendar-day="${day(1)}"]`)
+        .click();
+
+      await expect(
+        page.locator(".sv-panel-list .sh")
+      ).toHaveCount(14);
 
       const tight=await page.evaluate(()=>{
         const calendar=document
@@ -376,6 +431,44 @@ test.describe("desktop",()=>{
       expect(tight.top).toBe(0);
       expect(tight.bottom).toBe(0);
       expect(tight.scrolls).toBe(true);
+
+      /*
+        Домотав список до конца, последнюю смену видно целиком: её не
+        срезает ни край прокрутки, ни кнопка под ним.
+      */
+      const tail=await page.evaluate(()=>{
+        const list=document.querySelector(
+          ".sv-panel-list"
+        );
+
+        list.scrollTop=list.scrollHeight;
+
+        const last=[
+          ...list.querySelectorAll(".sh")
+        ]
+          .at(-1)
+          .getBoundingClientRect();
+
+        const add=document
+          .querySelector(".sv-panel-add")
+          .getBoundingClientRect();
+
+        return {
+          insideScroller:Math.round(
+            list.getBoundingClientRect().bottom-
+            last.bottom
+          ),
+          aboveButton:Math.round(
+            add.top-last.bottom
+          )
+        };
+      });
+
+      expect(tail.insideScroller)
+        .toBeGreaterThanOrEqual(0);
+
+      expect(tail.aboveButton)
+        .toBeGreaterThan(0);
     }
   );
 

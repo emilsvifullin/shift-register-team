@@ -48,8 +48,9 @@ function missingFunction(error){
   );
 
   return (
-    message.includes(
-      "admin_save_shift_v3"
+    (
+      message.includes("admin_save_shift_v4") ||
+      message.includes("admin_save_shift_v3")
     ) &&
     /does not exist|could not find|schema cache/i
       .test(message)
@@ -102,15 +103,25 @@ function shiftPayload(value){
   };
 }
 
+/*
+  Все изменения смен идут через версию с проверкой периода: закрытый
+  период не должен меняться без согласия, и решать это должен сервер, а
+  не желание вызывающего.
+*/
 export async function saveAdminShift(
-  value
+  value,
+  {force=false,reason=null}={}
 ){
-  const payload=shiftPayload(value);
+  const payload={
+    ...shiftPayload(value),
+    p_force:force,
+    p_reason:reason
+  };
 
   const result=
     await supabaseClient
       .rpc(
-        "admin_save_shift_v3",
+        "admin_save_shift_v4",
         payload
       );
 
@@ -149,25 +160,35 @@ export async function saveAdminShift(
   Обычное сохранение ничего не переоценивает — это отдельное решение
   администратора.
 */
-export async function repriceAdminShift(id){
+export async function repriceAdminShift(
+  id,
+  {force=false,reason=null}={}
+){
   return resultData(
     await supabaseClient.rpc(
-      "admin_reprice_shift",
-      {p_shift_id:id}
+      "admin_reprice_shift_v2",
+      {
+        p_shift_id:id,
+        p_force:force,
+        p_reason:reason
+      }
     ),
     "Не удалось пересчитать смену"
   );
 }
 
 export async function deleteAdminShift(
-  id
+  id,
+  {force=false,reason=null}={}
 ){
   const result=
     await supabaseClient
       .rpc(
-        "admin_delete_shift",
+        "admin_delete_shift_v2",
         {
-          p_shift_id:id
+          p_shift_id:id,
+          p_force:force,
+          p_reason:reason
         }
       );
 

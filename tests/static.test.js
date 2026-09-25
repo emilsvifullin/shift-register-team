@@ -1434,14 +1434,18 @@ test(
       /await loadTeamData\(/
     );
 
+    /*
+      Финансовые действия идут через обёртку, которая спрашивает про
+      закрытый период и повторяет с согласием.
+    */
     assert.match(
       app,
-      /await saveAdminShift\(/
+      /withClosedPeriodConfirm\([\s\S]*?saveAdminShift\(/
     );
 
     assert.match(
       app,
-      /await deleteAdminShift\(/
+      /withClosedPeriodConfirm\([\s\S]*?deleteAdminShift\(/
     );
 
     assert.doesNotMatch(
@@ -1780,7 +1784,7 @@ test(
 
     assert.match(
       team,
-      /p_base_amount_override[\s\S]*p_base_amount_reason[\s\S]*\.rpc\(\s*"admin_save_shift_v3"/
+      /p_base_amount_override[\s\S]*p_base_amount_reason[\s\S]*\.rpc\(\s*"admin_save_shift_v4"/
     );
 
     /* Старая база остаётся рабочей, пока миграция не применена. */
@@ -1841,7 +1845,7 @@ test(
     /* Каждая дата пачки уходит на сервер своей записью. */
     assert.match(
       app,
-      /for\(const date of dates\)\{[\s\S]*?saveAdminShift\([\s\S]*?date,/
+      /for\(const date of dates\)\{[\s\S]*?date,[\s\S]*?saveAdminShift\(/
     );
 
     /*

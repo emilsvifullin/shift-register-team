@@ -2447,6 +2447,79 @@ function payrollPeriodsHTML(){
   человек соглашается. Проверка и снятие проверки — обычные пометки, их
   подтверждать незачем.
 */
+/*
+  Отказ сервера «период закрыт» — не ошибка, а вопрос.
+
+  Сервер отвечает кодом с месяцем, половиной и состоянием периода;
+  здесь из него собирается понятное объяснение, что именно будет
+  затронуто, и действие повторяется уже с согласием. Согласие уходит на
+  сервер доводом и попадает в историю — в этом и смысл: исправить можно,
+  но незаметно нельзя.
+*/
+function closedPeriodInfo(error){
+  const message=
+    error instanceof Error
+      ? error.message
+      : String(error || "");
+
+  const match=message.match(
+    /payroll_period_closed:(\d{4}-\d{2}-\d{2}):(first_half|second_half):(\w+)/
+  );
+
+  if(!match){
+    return null;
+  }
+
+  const [,month,kind,status]=match;
+
+  return {
+    month,
+    kind,
+    status,
+    label:kind==="first_half"
+      ? "1–15"
+      : "16–конец месяца",
+    monthLabel:ymLabel(month.slice(0,7))
+      .toLowerCase()
+  };
+}
+
+/*
+  Выполнить финансовое действие, а если период закрыт — спросить и
+  повторить. Одна обёртка на все такие действия: смена, пересчёт,
+  выплата. Иначе каждое место спрашивало бы по-своему.
+*/
+async function withClosedPeriodConfirm(what,run){
+  try{
+    return await run(false);
+  }catch(error){
+    const info=closedPeriodInfo(error);
+
+    if(!info){
+      throw error;
+    }
+
+    const agreed=await appConfirm(
+      `${what} в закрытом периоде?`,
+      {
+        detail:`Период ${info.label} за ${info.monthLabel} ${
+          info.status==="paid"
+            ? "уже выплачен"
+            : "закрыт"
+        }. Изменение попадёт в историю периода и повлияет на его расчёт.`,
+        okText:"Изменить",
+        danger:info.status==="paid"
+      }
+    );
+
+    if(!agreed){
+      return null;
+    }
+
+    return run(true);
+  }
+}
+
 async function runPayrollPeriodAction(button){
   if(payrollPeriodSaving){
     return;
@@ -2641,14 +2714,24 @@ async function persistPayout(){
   payoutSaving=true;
   render();
   try{
-    await saveAdminPayout({
-      employeeId:context.employee.id,
-      periodMonth:`${cursor}-01`,
-      payoutKind:payoutEditor.kind,
-      amount,
-      paidOn:payoutEditor.paidOn,
-      comment:payoutEditor.comment
-    });
+    const stored=await withClosedPeriodConfirm(
+      "Записать выплату",
+      force=>saveAdminPayout({
+        employeeId:context.employee.id,
+        periodMonth:`${cursor}-01`,
+        payoutKind:payoutEditor.kind,
+        amount,
+        paidOn:payoutEditor.paidOn,
+        comment:payoutEditor.comment,
+        force
+      })
+    );
+
+    if(stored===null){
+      payoutSaving=false;
+      render();
+      return;
+    }
     payoutEditor=null;
     await refreshTeamData({renderAfter:false});
     render();
@@ -14917,6 +15000,7 @@ document.getElementById("sheetSave").onclick=async()=>{
   button.disabled=true;
 
   let created=0;
+  let declined=false;
 
   try{
     for(const date of dates){
@@ -14925,23 +15009,41 @@ document.getElementById("sheetSave").onclick=async()=>{
         со штрафами: общий идентификатор на две записи сервер принял бы
         за одну и ту же.
       */
-      await saveAdminShift(
-        normalizedDraft({
-          ...draft,
-          id:created ? createTeamId() : draft.id,
-          date,
-          bonuses:draft.bonuses.map(item=>({
-            ...item,
-            id:createTeamId()
-          })),
-          penalties:draft.penalties.map(item=>({
-            ...item,
-            id:createTeamId()
-          }))
-        })
+      const payload=normalizedDraft({
+        ...draft,
+        id:created ? createTeamId() : draft.id,
+        date,
+        bonuses:draft.bonuses.map(item=>({
+          ...item,
+          id:createTeamId()
+        })),
+        penalties:draft.penalties.map(item=>({
+          ...item,
+          id:createTeamId()
+        }))
+      });
+
+      const saved=await withClosedPeriodConfirm(
+        "Сохранить смену",
+        force=>saveAdminShift(payload,{force})
       );
 
+      if(saved===null){
+        declined=true;
+        break;
+      }
+
       created+=1;
+    }
+
+    /*
+      Человек отказался менять закрытый период: лист остаётся открытым с
+      набранным, кнопка снова доступна. Уже сохранённое из пачки при
+      этом никуда не девается.
+    */
+    if(declined && !created){
+      button.disabled=false;
+      return;
     }
 
     await refreshTeamData({
@@ -15389,7 +15491,14 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     }
 
     try{
-      await repriceAdminShift(draft.id);
+      const repriced=await withClosedPeriodConfirm(
+        "Пересчитать смену",
+        force=>repriceAdminShift(draft.id,{force})
+      );
+
+      if(repriced===null){
+        return;
+      }
       await refreshTeamData({renderAfter:false});
       closeSheet();
       render();
@@ -15589,9 +15698,14 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     if(!confirmed) return;
 
     try{
-      await deleteAdminShift(
-        draft.id
+      const removed=await withClosedPeriodConfirm(
+        "Удалить смену",
+        force=>deleteAdminShift(draft.id,{force})
       );
+
+      if(removed===null){
+        return;
+      }
 
       await refreshTeamData({
         renderAfter:false
@@ -16347,7 +16461,17 @@ app.addEventListener("click",async event=>{
     );
     if(confirmed){
       try{
-        await deleteAdminPayout(button.dataset.payoutDelete);
+        const dropped=await withClosedPeriodConfirm(
+          "Удалить выплату",
+          force=>deleteAdminPayout(
+            button.dataset.payoutDelete,
+            {force}
+          )
+        );
+
+        if(dropped===null){
+          return;
+        }
         await refreshTeamData({renderAfter:false});
         render();
         toast("Запись выплаты удалена");

@@ -291,6 +291,29 @@ export function stubScript(seed){
     };
   }
 
+  function assertPeriodOpen(db,date,force){
+    const month=date.slice(0,7)+"-01";
+
+    const kind=Number(date.slice(8,10))<=15
+      ? "first_half"
+      : "second_half";
+
+    const period=(db.payroll_periods || []).find(item=>
+      item.period_month===month &&
+      item.payout_kind===kind
+    );
+
+    if(!period || ["open","checked"].includes(period.status)){
+      return;
+    }
+
+    if(!force){
+      throw new Error(
+        "payroll_period_closed:"+month+":"+kind+":"+period.status
+      );
+    }
+  }
+
   function findPeriod(db,args){
     return (db.payroll_periods || []).find(item=>
       item.period_month===args.p_period_month &&
@@ -482,6 +505,84 @@ export function stubScript(seed){
       return id;
     },
     /* Расчётные периоды: те же переходы, что и на сервере. */
+    admin_save_shift_v4(args){
+      const existing=(db.shifts || []).find(item=>
+        item.id===args.p_shift_id
+      );
+
+      if(existing && existing.shift_date!==args.p_shift_date){
+        assertPeriodOpen(db,existing.shift_date,args.p_force);
+      }
+
+      assertPeriodOpen(db,args.p_shift_date,args.p_force);
+
+      return rpc.admin_save_shift_v3(args);
+    },
+    admin_delete_shift_v2(args){
+      const shift=(db.shifts || []).find(item=>
+        item.id===args.p_shift_id
+      );
+
+      if(!shift){
+        throw new Error("shift_not_found");
+      }
+
+      assertPeriodOpen(db,shift.shift_date,args.p_force);
+
+      return rpc.admin_delete_shift(args);
+    },
+    admin_reprice_shift_v2(args){
+      const shift=(db.shifts || []).find(item=>
+        item.id===args.p_shift_id
+      );
+
+      if(!shift){
+        throw new Error("shift_not_found");
+      }
+
+      assertPeriodOpen(db,shift.shift_date,args.p_force);
+
+      return rpc.admin_reprice_shift(args);
+    },
+    admin_save_employee_payout_v2(args){
+      const period=findPeriod(db,args);
+
+      if(period && period.status==="paid" && !args.p_force){
+        throw new Error(
+          "payroll_period_closed:"+args.p_period_month+
+          ":"+args.p_payout_kind+":paid"
+        );
+      }
+
+      return rpc.admin_save_employee_payout(args);
+    },
+    admin_delete_employee_payout_v2(args){
+      const payout=(db.employee_payouts || []).find(item=>
+        item.id===args.p_payout_id
+      );
+
+      if(!payout){
+        throw new Error("employee_payout_not_found");
+      }
+
+      const period=findPeriod(db,{
+        p_period_month:payout.period_month,
+        p_payout_kind:payout.payout_kind
+      });
+
+      if(
+        period &&
+        ["closed","paid"].includes(period.status) &&
+        !args.p_force
+      ){
+        throw new Error(
+          "payroll_period_closed:"+payout.period_month+
+          ":"+payout.payout_kind+":"+period.status
+        );
+      }
+
+      return rpc.admin_delete_employee_payout(args);
+    },
     admin_check_payroll_period(args){
       const period=ensurePeriod(db,args);
 

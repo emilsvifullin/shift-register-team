@@ -370,3 +370,64 @@ test(
     ).toHaveCount(0);
   }
 );
+
+/*
+  Закрытый период исправить можно, но не молча: сервер отказывает, пока
+  человек не согласится, а согласие оставляет след.
+*/
+test(
+  "a closed period refuses a silent change and asks first",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    const first=periodRow(page,0);
+
+    await first
+      .locator("[data-period-check]")
+      .click();
+
+    await first
+      .locator("[data-period-close]")
+      .click();
+
+    await page.locator("#appConfirmOk").click();
+
+    await expect(first).toContainText("Закрыто");
+
+    /* Правка смены из закрытого периода спрашивает. */
+    await page.locator("#tab-shifts").click();
+    await page.locator(".sh").first().click();
+    await page.locator("#sheetSave").click();
+
+    await page.locator("#f-note").fill("Правка после закрытия");
+    await page.locator("#sheetSave").click();
+
+    await expect(
+      page.locator("#appConfirmTitle")
+    ).toContainText("в закрытом периоде");
+
+    await expect(
+      page.locator("#appConfirmDetail")
+    ).toContainText("1–15");
+
+    /* Отказ ничего не меняет. */
+    await page.locator("#appConfirmCancel").click();
+
+    expect(
+      await page.evaluate(()=>
+        window.__stubDb.shifts.map(item=>item.note)
+      )
+    ).not.toContain("Правка после закрытия");
+
+    /* Согласие — меняет. */
+    await page.locator("#sheetSave").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect
+      .poll(()=>page.evaluate(()=>
+        window.__stubDb.shifts.map(item=>item.note)
+      ))
+      .toContain("Правка после закрытия");
+  }
+);

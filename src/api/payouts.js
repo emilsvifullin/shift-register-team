@@ -13,11 +13,13 @@ export async function saveAdminPayout({
   payoutKind,
   amount,
   paidOn,
-  comment=null
+  comment=null,
+  force=false,
+  reason=null
 }){
   const result=
     await supabaseClient.rpc(
-      "admin_save_employee_payout",
+      "admin_save_employee_payout_v2",
       {
         p_payout_id:id,
         p_employee_id:employeeId,
@@ -25,7 +27,9 @@ export async function saveAdminPayout({
         p_payout_kind:payoutKind,
         p_amount:Number(amount),
         p_paid_on:paidOn,
-        p_comment:comment || null
+        p_comment:comment || null,
+        p_force:force,
+        p_reason:reason
       }
     );
 
@@ -36,13 +40,16 @@ export async function saveAdminPayout({
 }
 
 export async function deleteAdminPayout(
-  id
+  id,
+  {force=false,reason=null}={}
 ){
   const result=
     await supabaseClient.rpc(
-      "admin_delete_employee_payout",
+      "admin_delete_employee_payout_v2",
       {
-        p_payout_id:id
+        p_payout_id:id,
+        p_force:force,
+        p_reason:reason
       }
     );
 

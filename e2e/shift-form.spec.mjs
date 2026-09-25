@@ -188,7 +188,7 @@ test(
     expect(
       await page.evaluate(()=>
         globalThis.__stubCalls
-          .filter(call=>call.name==="admin_delete_shift")
+          .filter(call=>call.name==="admin_delete_shift_v2")
           .length
       )
     ).toBe(1);

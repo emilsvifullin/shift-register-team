@@ -273,6 +273,29 @@ A day is never described as "should have had a shift" and a rate is never
 silently applied backwards: both would be the application inventing facts
 it does not have.
 
+## What a payroll month is
+
+A month is paid in two payments, and that pair is the unit everything
+financial hangs on:
+
+* **25th of the month** — `first_half`, the advance;
+* **10th of the next month** — `second_half`, the final settlement.
+
+`payouts()` in `src/domain.js` is the only place that decides how a
+month's shifts split between them: points with an advance cap the first
+payment at `ADVANCE_CAP` and carry the rest forward, bonuses and penalties
+land in one payment or the other, and an explicitly targeted penalty
+overrides the default. `paymentProgress()` in `src/workflow.js` compares
+that figure with the rows in `employee_payouts` and reports what is paid,
+what is left and what was overpaid.
+
+Both halves are named `first_half` / `second_half` everywhere — in
+`employee_payouts`, in `shift_penalties`, and in the client. They used to
+disagree (`final` in one table, `second_half` in the other) and the client
+translated between them; nothing joined the two tables, so it never broke,
+but every new query had to pick a language. One name now, so a query
+cannot be written in the wrong one.
+
 ## Who may read a table
 
 The application reaches Postgres through the Data API, so a table is

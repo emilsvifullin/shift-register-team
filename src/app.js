@@ -1956,9 +1956,7 @@ function resolvedPenaltyPayoutKind(
     "";
 
   if(explicit){
-    return explicit==="second_half"
-      ? "final"
-      : explicit;
+    return explicit;
   }
 
   const day=Number(
@@ -1974,7 +1972,7 @@ function resolvedPenaltyPayoutKind(
       : false;
 
   return advanceEnabled || day>15
-    ? "final"
+    ? "second_half"
     : "first_half";
 }
 
@@ -2029,7 +2027,7 @@ function payoutSourceRows(shiftsList,kind){
       <div class="payout-source-row">
         <div class="payout-source-main">
           <strong>${esc(dateLabel(shift.date))} · ${esc(shift.point)}</strong>
-          <span>${shift.type==="extra" ? "Дополнительная" : "Основная"}${shift.partial ? ` · ${hoursWord(result.hours)}` : ""}${kind==="final" && Number(shift.date.slice(8,10))<=15 ? " · первая половина" : ""}</span>
+          <span>${shift.type==="extra" ? "Дополнительная" : "Основная"}${shift.partial ? ` · ${hoursWord(result.hours)}` : ""}${kind==="second_half" && Number(shift.date.slice(8,10))<=15 ? " · первая половина" : ""}</span>
           ${adjustments.map(text=>`<small>${esc(text)}</small>`).join("")}
         </div>
         <b>${money(result.total)}</b>
@@ -2618,7 +2616,7 @@ function viewStats(){
         content:payment25Content
       })}
       ${payoutSummaryRowHTML({
-        kind:"final",
+        kind:"second_half",
         label:`10 ${esc(monthGen(payout.nextYm))}`,
         due:payout.payment10,
         employee:selectedEmployee,

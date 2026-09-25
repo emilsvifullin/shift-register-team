@@ -251,7 +251,7 @@ test(
     await openStats(page);
 
     await expect(
-      page.locator('[data-payout-toggle="final"] .payout-status')
+      page.locator('[data-payout-toggle="second_half"] .payout-status')
     ).toHaveText("Не выплачено");
 
     await page.locator("#prevM").click();

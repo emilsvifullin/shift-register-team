@@ -93,6 +93,8 @@ export const ADMIN_SEED={
     }
   ],
   employee_point_rates:[],
+  payroll_periods:[],
+  payroll_period_entries:[],
   employee_points:[
     {
       employee_id:"employee-1",
@@ -289,6 +291,36 @@ export function stubScript(seed){
     };
   }
 
+  function findPeriod(db,args){
+    return (db.payroll_periods || []).find(item=>
+      item.period_month===args.p_period_month &&
+      item.payout_kind===args.p_payout_kind
+    ) || null;
+  }
+
+  function ensurePeriod(db,args){
+    const existing=findPeriod(db,args);
+
+    if(existing){
+      return existing;
+    }
+
+    const period={
+      id:"period-"+((db.payroll_periods || []).length+1),
+      period_month:args.p_period_month,
+      payout_kind:args.p_payout_kind,
+      status:"open",
+      checked_fingerprint:null,
+      checked_at:null,
+      closed_at:null,
+      paid_at:null
+    };
+
+    db.payroll_periods.push(period);
+
+    return period;
+  }
+
   const rpc={
     admin_account_options_v2(){
       return db.accounts;
@@ -448,6 +480,111 @@ export function stubScript(seed){
       }
 
       return id;
+    },
+    /* Расчётные периоды: те же переходы, что и на сервере. */
+    admin_check_payroll_period(args){
+      const period=ensurePeriod(db,args);
+
+      if(!["open","checked"].includes(period.status)){
+        throw new Error("payroll_period_not_open");
+      }
+
+      period.status="checked";
+      period.checked_fingerprint=args.p_fingerprint;
+      period.checked_at=new Date().toISOString();
+
+      return period.id;
+    },
+    admin_uncheck_payroll_period(args){
+      const period=findPeriod(db,args);
+
+      if(!period){
+        throw new Error("payroll_period_not_found");
+      }
+
+      if(period.status!=="checked"){
+        throw new Error("payroll_period_not_checked");
+      }
+
+      period.status="open";
+      period.checked_fingerprint=null;
+      period.checked_at=null;
+
+      return period.id;
+    },
+    admin_close_payroll_period(args){
+      const period=ensurePeriod(db,args);
+
+      if(["closed","paid"].includes(period.status)){
+        throw new Error("payroll_period_already_closed");
+      }
+
+      db.payroll_period_entries=(db.payroll_period_entries || [])
+        .filter(item=>item.period_id!==period.id);
+
+      for(const entry of args.p_entries || []){
+        db.payroll_period_entries.push({
+          id:"entry-"+(db.payroll_period_entries.length+1),
+          period_id:period.id,
+          employee_id:entry.employeeId,
+          shifts:entry.shifts,
+          base:entry.base,
+          bonus:entry.bonus,
+          fine:entry.fine,
+          due:entry.due,
+          paid:entry.paid,
+          detail:entry.detail
+        });
+      }
+
+      period.status="closed";
+      period.closed_at=new Date().toISOString();
+
+      return period.id;
+    },
+    admin_mark_payroll_period_paid(args){
+      const period=findPeriod(db,args);
+
+      if(!period || period.status!=="closed"){
+        throw new Error("payroll_period_not_closed");
+      }
+
+      const due=(db.payroll_period_entries || [])
+        .filter(item=>item.period_id===period.id)
+        .reduce((sum,item)=>sum+Number(item.due || 0),0);
+
+      const paid=(db.employee_payouts || [])
+        .filter(item=>
+          item.period_month===args.p_period_month &&
+          item.payout_kind===args.p_payout_kind
+        )
+        .reduce((sum,item)=>sum+Number(item.amount || 0),0);
+
+      if(due>0 && paid<=0){
+        throw new Error("payroll_period_has_no_payouts");
+      }
+
+      period.status="paid";
+      period.paid_at=new Date().toISOString();
+
+      return period.id;
+    },
+    admin_reopen_payroll_period(args){
+      const period=findPeriod(db,args);
+
+      if(!period){
+        throw new Error("payroll_period_not_found");
+      }
+
+      if(!["closed","paid"].includes(period.status)){
+        throw new Error("payroll_period_not_closed");
+      }
+
+      period.status="open";
+      period.checked_fingerprint=null;
+      period.checked_at=null;
+
+      return period.id;
     },
     admin_add_employee_rate(args){
       const assigned=(db.employee_points || []).some(link=>

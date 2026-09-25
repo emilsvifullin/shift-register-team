@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="e583bb0460ab171fce6eb48d8d2d8784d284dad8557b544a878f791c5e1fa9c3";
+const SHELL_FINGERPRINT="276e997287208b8d16874c1dbdc2795af52d6328ef61d42ce08d4566763195d9";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -83,6 +83,7 @@ const SCRIPTS=[
   "./src/modal-motion.js",
   "./src/network-routes.js",
   "./src/month-picker-swipe.js",
+  "./src/payroll-period.js",
   "./src/phone.js",
   "./src/picker-position.js",
   "./src/platform-shell.js",

@@ -296,6 +296,46 @@ translated between them; nothing joined the two tables, so it never broke,
 but every new query had to pick a language. One name now, so a query
 cannot be written in the wrong one.
 
+## Closing a payroll period
+
+A period is **half a month** — days 1–15, paid on the 25th, and day 16 to
+the end, settled on the 10th of the next month. It is the same pair the
+payouts already use, so a period has a key of `(period_month, payout_kind)`
+and nothing new had to be invented to name it.
+
+`payroll_periods` carries the state, and each state means a fact:
+
+* **open** — the period is still being worked on;
+* **checked** — an admin verified it, and the fingerprint of the figures
+  at that moment is stored beside the status;
+* **closed** — the calculation is frozen in `payroll_period_entries`, one
+  row per employee with the totals and the breakdown;
+* **paid** — payouts for the period are recorded. The transition refuses
+  to run when the period owes money and nothing is recorded, so the state
+  cannot become a label that says something untrue.
+
+"Checked" stops being true by itself. The fingerprint covers the figures a
+person actually verified — per employee, shifts, base, bonus, fine, due,
+paid — and nothing else, so an edit that changes no money does not
+invalidate it. When the recomputed fingerprint differs, the period reads
+"Данные изменились" and offers to check it again.
+
+**Who computes the snapshot.** All the rules — the advance cap, the carry
+to the final settlement, how bonuses and penalties fall between the two
+payments — live in `payouts()` in `src/domain.js`. Writing them a second
+time in SQL would create exactly the parallel financial model this
+codebase must not have, so the client builds the snapshot with the same
+function that draws «Итоги» and the server stores it verbatim, stamped
+with who and when. The application is admin-only and the server already
+trusts an admin with amounts (a manually set shift price); two
+implementations of one rule would not add trust, only drift.
+
+Shifts belong to a period by date. Money does not always follow: at a
+point with an advance, part of what was earned in the first half is paid
+in the final settlement. That is a rule of the payment, not a reason to
+move the working day into another period, and the payout card already
+marks such shifts «первая половина».
+
 ## Who may read a table
 
 The application reaches Postgres through the Data API, so a table is

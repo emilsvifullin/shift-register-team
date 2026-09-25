@@ -43,6 +43,8 @@ import {
 
 import {
   addAdminEmployeeRate,
+  checkPayrollPeriod,
+  closePayrollPeriod,
   addAdminTariff,
   deleteAdminEmployee,
   deleteAdminEmployeeRate,
@@ -52,6 +54,8 @@ import {
   deleteAdminShift,
   importAdminLegacyShifts,
   loadTeamData,
+  markPayrollPeriodPaid,
+  reopenPayrollPeriod,
   rollbackAdminEmployeeCreation,
   saveAdminEmployee,
   saveAdminEmployeeAuth,
@@ -60,6 +64,7 @@ import {
   repriceAdminShift,
   saveAdminShift,
   subscribeTeamChanges,
+  uncheckPayrollPeriod,
   updateAdminEmployeeRate,
   updateAdminTariff
 } from "./team.js?shell=7";
@@ -142,6 +147,18 @@ import {
   paymentProgress,
   toggleFilterSelection
 } from "./workflow.js?shell=7";
+
+import {
+  PERIOD_KINDS,
+  findPeriod,
+  periodKindForDate,
+  periodEntry,
+  periodFingerprint,
+  periodMonthKey,
+  periodStatus,
+  periodStatusLabel,
+  periodTotals
+} from "./payroll-period.js";
 
 import {
   SHIFT_VIEW_MODES,
@@ -250,6 +267,7 @@ let teamData={
   employeeRates:[],
   shifts:[],
   payouts:[],
+  periods:[],
   employee:null,
   linked:true,
   archived:false
@@ -299,6 +317,7 @@ let shiftFilter={
 let shiftFilterDraft=null;
 let shiftFilterSheetPreviousFocus=null;
 let expandedPayoutKind="";
+let payrollPeriodSaving="";
 let payoutEditor=null;
 let payoutSaving=false;
 let legacyMigrationEmployeeId="";
@@ -2096,6 +2115,363 @@ function payoutExpandedHTML({kind,due,employee,statsShifts}){
   `;
 }
 
+/*
+  Снимок периода по всей команде — той же функцией, что считает «Итоги».
+
+  Строится по всем сотрудникам, у которых в этом месяце есть смены или
+  записанные выплаты: остальным в периоде делать нечего, и пустые строки
+  в снимке только мешали бы его читать.
+*/
+function payrollPeriodEntries(kind){
+  const month=periodMonthKey(cursor);
+
+  /*
+    Смены периода — по дате: 1–15 или 16 и дальше. Деньги при этом
+    считает payouts(), и у ПВЗ с авансом часть заработанного в первой
+    половине уходит в окончательный расчёт — это правило расчёта, а не
+    повод переносить сам рабочий день в другой период.
+  */
+  const periodShifts=employeeId=>
+    inMonth(cursor,shifts).filter(shift=>
+      shift.employeeId===employeeId &&
+      periodKindForDate(shift.date)===kind
+    );
+
+  const people=statsEmployeeOptions().filter(employee=>{
+    const hasPayouts=(teamData.payouts || []).some(item=>
+      item.employee_id===employee.id &&
+      item.period_month===month &&
+      item.payout_kind===kind
+    );
+
+    return (
+      periodShifts(employee.id).length>0 ||
+      hasPayouts
+    );
+  });
+
+  return people.map(employee=>{
+    const own=shifts.filter(shift=>
+      shift.employeeId===employee.id
+    );
+
+    const payout=payouts(cursor,own);
+
+    const paid=payoutRecords(employee.id,kind)
+      .reduce(
+        (sum,item)=>
+          sum+(Number(item.amount) || 0),
+        0
+      );
+
+    return periodEntry({
+      employeeId:employee.id,
+      employeeName:employee.full_name,
+      kind,
+      payout,
+      shifts:periodShifts(employee.id),
+      paid
+    });
+  });
+}
+
+/*
+  Состояние периода на экране.
+
+  «Проверено» не должно оставаться проверенным, если после проверки
+  данные изменились: отпечаток считается по тем же цифрам, что видит
+  человек, и расхождение с записанным при проверке — это факт, а не
+  предположение.
+*/
+function payrollPeriodState(kind){
+  const period=findPeriod(
+    teamData.periods,
+    cursor,
+    kind
+  );
+
+  const status=period?.status || "open";
+
+  const entries=payrollPeriodEntries(kind);
+  const totals=periodTotals(entries);
+
+  const stale=
+    status==="checked" &&
+    period?.checked_fingerprint!==
+      periodFingerprint(entries);
+
+  return {
+    period,
+    status,
+    stale,
+    entries,
+    totals
+  };
+}
+
+function payrollPeriodRowHTML(kind){
+  const state=payrollPeriodState(kind);
+  const busy=payrollPeriodSaving===kind;
+
+  const actions=[];
+
+  if(state.status==="open" || state.stale){
+    actions.push(`
+      <button
+        type="button"
+        class="btn payroll-action"
+        data-period-check="${kind}"
+        ${busy ? "disabled" : ""}
+      >
+        Проверено
+      </button>
+    `);
+  }
+
+  if(state.status==="checked" && !state.stale){
+    actions.push(`
+      <button
+        type="button"
+        class="btn payroll-action"
+        data-period-uncheck="${kind}"
+        ${busy ? "disabled" : ""}
+      >
+        Вернуть в работу
+      </button>
+    `);
+
+    actions.push(`
+      <button
+        type="button"
+        class="btn gold payroll-action"
+        data-period-close="${kind}"
+        ${busy ? "disabled" : ""}
+      >
+        Закрыть период
+      </button>
+    `);
+  }
+
+  if(state.status==="closed"){
+    actions.push(`
+      <button
+        type="button"
+        class="btn payroll-action"
+        data-period-reopen="${kind}"
+        ${busy ? "disabled" : ""}
+      >
+        Вернуть в работу
+      </button>
+    `);
+
+    actions.push(`
+      <button
+        type="button"
+        class="btn gold payroll-action"
+        data-period-paid="${kind}"
+        ${busy ? "disabled" : ""}
+      >
+        Отметить выплаченным
+      </button>
+    `);
+  }
+
+  if(state.status==="paid"){
+    actions.push(`
+      <button
+        type="button"
+        class="btn warn payroll-action"
+        data-period-reopen="${kind}"
+        ${busy ? "disabled" : ""}
+      >
+        Вернуть в работу
+      </button>
+    `);
+  }
+
+  return `
+    <div class="payroll-period payroll-period-${state.status}">
+      <div class="payroll-period-head">
+        <div class="payroll-period-title">
+          ${kind==="first_half" ? "1–15" : "16–конец месяца"}
+        </div>
+
+        <div class="payroll-period-status ${
+          state.stale ? "stale" : state.status
+        }">
+          ${
+            state.stale
+              ? "Данные изменились"
+              : esc(periodStatusLabel(state.status))
+          }
+        </div>
+      </div>
+
+      <div class="payroll-period-figures">
+        <span>Сотрудников <b>${state.totals.employees}</b></span>
+        <span>Смен <b>${state.totals.shifts}</b></span>
+        <span>К выплате <b>${money(state.totals.due)}</b></span>
+        <span>Выплачено <b>${money(state.totals.paid)}</b></span>
+      </div>
+
+      ${actions.length ? `
+        <div class="payroll-period-actions">
+          ${actions.join("")}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function payrollPeriodsHTML(){
+  if(!isAdmin){
+    return "";
+  }
+
+  return `
+    <div class="ml">Расчётные периоды</div>
+    <div class="card payroll-periods">
+      ${PERIOD_KINDS.map(kind=>
+        payrollPeriodRowHTML(kind)
+      ).join("")}
+    </div>
+  `;
+}
+
+/*
+  Переходы состояния периода.
+
+  Закрытие и возврат в работу меняют то, как дальше читается вся
+  зарплата, поэтому оба подтверждаются и показывают, с чем именно
+  человек соглашается. Проверка и снятие проверки — обычные пометки, их
+  подтверждать незачем.
+*/
+async function runPayrollPeriodAction(button){
+  if(payrollPeriodSaving){
+    return;
+  }
+
+  const kind=
+    button.dataset.periodCheck ||
+    button.dataset.periodUncheck ||
+    button.dataset.periodClose ||
+    button.dataset.periodPaid ||
+    button.dataset.periodReopen;
+
+  const state=payrollPeriodState(kind);
+  const periodMonth=periodMonthKey(cursor);
+  const title=kind==="first_half" ? "1–15" : "16–конец месяца";
+
+  try{
+    if(button.dataset.periodClose){
+      const agreed=await appConfirm(
+        `Закрыть период ${title}?`,
+        {
+          detail:`Расчёт будет зафиксирован: ${state.totals.employees} сотр., смен ${state.totals.shifts}, к выплате ${money(state.totals.due)}. Позже его можно будет показать таким, каким он закрыт.`,
+          okText:"Закрыть период"
+        }
+      );
+
+      if(!agreed){
+        return;
+      }
+    }
+
+    if(button.dataset.periodReopen){
+      const agreed=await appConfirm(
+        `Вернуть период ${title} в работу?`,
+        {
+          detail:
+            state.status==="paid"
+              ? "Период уже выплачен. Записи о выплатах останутся, но расчёт снова станет изменяемым."
+              : "Снимок закрытия останется, а расчёт снова станет изменяемым.",
+          okText:"Вернуть в работу",
+          danger:state.status==="paid"
+        }
+      );
+
+      if(!agreed){
+        return;
+      }
+    }
+
+    payrollPeriodSaving=kind;
+    render();
+
+    if(button.dataset.periodCheck){
+      await checkPayrollPeriod({
+        periodMonth,
+        payoutKind:kind,
+        fingerprint:periodFingerprint(state.entries)
+      });
+    }else if(button.dataset.periodUncheck){
+      await uncheckPayrollPeriod({
+        periodMonth,
+        payoutKind:kind
+      });
+    }else if(button.dataset.periodClose){
+      await closePayrollPeriod({
+        periodMonth,
+        payoutKind:kind,
+        entries:state.entries
+      });
+    }else if(button.dataset.periodPaid){
+      await markPayrollPeriodPaid({
+        periodMonth,
+        payoutKind:kind
+      });
+    }else{
+      await reopenPayrollPeriod({
+        periodMonth,
+        payoutKind:kind
+      });
+    }
+
+    await refreshTeamData({renderAfter:false});
+
+    toast(
+      button.dataset.periodCheck
+        ? "Период отмечен проверенным"
+        : button.dataset.periodUncheck
+          ? "Период вернулся в работу"
+          : button.dataset.periodClose
+            ? "Период закрыт"
+            : button.dataset.periodPaid
+              ? "Период отмечен выплаченным"
+              : "Период вернулся в работу"
+    );
+  }catch(error){
+    toast(
+      payrollPeriodError(error),
+      4400
+    );
+  }finally{
+    payrollPeriodSaving="";
+    render();
+  }
+}
+
+function payrollPeriodError(error){
+  const message=
+    error instanceof Error
+      ? error.message
+      : String(error || "");
+
+  if(message.includes("payroll_period_has_no_payouts")){
+    return "Сначала запишите выплаты за период";
+  }
+
+  if(message.includes("payroll_period_already_closed")){
+    return "Период уже закрыт";
+  }
+
+  if(message.includes("payroll_period_not_closed")){
+    return "Период ещё не закрыт";
+  }
+
+  return message || "Не удалось изменить состояние периода";
+}
+
 function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
   const progress=paymentProgress(due,payoutRecords(employee?.id,kind));
   const open=expandedPayoutKind===kind;
@@ -2601,6 +2977,8 @@ function viewStats(){
       </div>
     </div>
 
+
+    ${payrollPeriodsHTML()}
 
     <div class="ml">
       Выплаты
@@ -15768,6 +16146,17 @@ app.addEventListener("click",async event=>{
     statsEmployeeQuery="";
     saveUIState();
     render();
+    return;
+  }
+
+  if(
+    button.dataset.periodCheck ||
+    button.dataset.periodUncheck ||
+    button.dataset.periodClose ||
+    button.dataset.periodPaid ||
+    button.dataset.periodReopen
+  ){
+    void runPayrollPeriodAction(button);
     return;
   }
 

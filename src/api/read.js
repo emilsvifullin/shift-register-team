@@ -101,7 +101,8 @@ export async function loadAdminTeamData(){
     tariffsResult,
     employeeRatesResult,
     shiftsResult,
-    payoutsResult
+    payoutsResult,
+    periodsResult
   ]=
     await Promise.all([
       supabaseClient
@@ -179,6 +180,16 @@ export async function loadAdminTeamData(){
         .order(
           "paid_on",
           {ascending:false}
+        ),
+
+      supabaseClient
+        .from("payroll_periods")
+        .select(
+          "id, period_month, payout_kind, status, checked_fingerprint, checked_at, closed_at, paid_at"
+        )
+        .order(
+          "period_month",
+          {ascending:false}
         )
     ]);
 
@@ -233,6 +244,11 @@ export async function loadAdminTeamData(){
       resultData(
         payoutsResult,
         "Не удалось загрузить выплаты"
+      ) || [],
+    periods:
+      resultData(
+        periodsResult,
+        "Не удалось загрузить расчётные периоды"
       ) || []
   };
 }
@@ -270,7 +286,8 @@ export async function loadEmployeeTeamData(
       tariffs:[],
       employeeRates:[],
       shifts:[],
-      payouts:[]
+      payouts:[],
+      periods:[]
     };
   }
 
@@ -286,7 +303,8 @@ export async function loadEmployeeTeamData(
       tariffs:[],
       employeeRates:[],
       shifts:[],
-      payouts:[]
+      payouts:[],
+      periods:[]
     };
   }
 
@@ -324,6 +342,8 @@ export async function loadEmployeeTeamData(
       заморожена снимком, а чужие ставки он видеть не должен.
     */
     employeeRates:[],
+    /* Состояние периодов — инструмент администратора. */
+    periods:[],
     shifts:
       mapShifts(
         resultData(

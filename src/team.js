@@ -38,8 +38,13 @@ export {
 } from "./api/points.js";
 
 export {
+  checkPayrollPeriod,
+  closePayrollPeriod,
   deleteAdminPayout,
-  saveAdminPayout
+  markPayrollPeriodPaid,
+  reopenPayrollPeriod,
+  saveAdminPayout,
+  uncheckPayrollPeriod
 } from "./api/payouts.js";
 
 /*

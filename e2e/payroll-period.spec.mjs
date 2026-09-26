@@ -626,3 +626,71 @@ test(
     await report.close();
   }
 );
+
+/*
+  Смены ушли из закрытого периода, а выплата осталась.
+
+  Деньги терять нельзя: человек попадает в расчёт по самой выплате, и
+  период честно называет это переплатой — начислено уже ничего, а
+  6 000 ₽ выплачены. Отчёт говорит то же самое и добавляет, на какую
+  сумму период закрывали.
+*/
+test(
+  "a payout outlives the shifts it was calculated from",
+  async({page,context})=>{
+    await openApp(page,{seed:seed()});
+    await openStats(page);
+
+    const first=periodRow(page,0);
+
+    await first.locator("[data-period-check]").click();
+    await first.locator("[data-period-close]").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(first).toContainText("Закрыто");
+
+    await page.evaluate(month=>{
+      window.__stubDb.employee_payouts.push({
+        id:"payout-outlives",
+        employee_id:"employee-1",
+        period_month:month,
+        payout_kind:"first_half",
+        amount:6000,
+        paid_on:month,
+        comment:null
+      });
+    },`${YEAR}-${MONTH}-01`);
+
+    await page.evaluate(()=>{
+      window.__stubDb.shifts=window.__stubDb.shifts.filter(shift=>
+        Number(shift.shift_date.slice(8,10))>15
+      );
+    });
+
+    await page.evaluate(()=>
+      window.dispatchEvent(new Event("online"))
+    );
+
+    await expect(
+      first.locator(".payroll-gap.overpaid")
+    ).toContainText("6 000");
+
+    const [report]=await Promise.all([
+      context.waitForEvent("page"),
+      first
+        .locator('[data-period-report]:not([data-report-detailed])')
+        .click()
+    ]);
+
+    await report.waitForLoadState("domcontentloaded");
+
+    const text=(await report.locator("body").innerText())
+      .replace(/\s+/g," ");
+
+    expect(text).toContain("Марина Абрамова");
+    expect(text).toContain("Период закрыт на 6 000 ₽");
+    expect(text).toMatch(/Марина Абрамова 0 0 ₽/);
+
+    await report.close();
+  }
+);

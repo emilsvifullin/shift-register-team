@@ -43,7 +43,6 @@ test(
   ()=>{
     const result=periodDifferences({
       entries:[entry()],
-      snapshot:[],
       closed:true
     });
 
@@ -62,7 +61,6 @@ test(
   ()=>{
     const result=periodDifferences({
       entries:[entry({paid:0})],
-      snapshot:[],
       closed:false
     });
 
@@ -76,7 +74,6 @@ test(
   ()=>{
     const result=periodDifferences({
       entries:[entry({paid:0})],
-      snapshot:[entry({paid:0})],
       closed:true
     });
 
@@ -95,7 +92,6 @@ test(
   ()=>{
     const result=periodDifferences({
       entries:[entry({due:7500,paid:6500})],
-      snapshot:[entry({due:6500,paid:6500})],
       closed:true
     });
 
@@ -111,58 +107,11 @@ test(
   ()=>{
     const result=periodDifferences({
       entries:[entry({due:5000,paid:6500})],
-      snapshot:[entry({due:6500,paid:6500})],
       closed:true
     });
 
     assert.equal(result.overpaid,1500);
     assert.equal(result.underpaid,0);
-  }
-);
-
-/*
-  Сотрудник был в снимке, а из текущего счёта выпал: смены перенесли в
-  другой период или удалили. Выплата ему при этом осталась, и молчать о
-  ней нельзя — иначе деньги пропадут с экрана.
-*/
-test(
-  "выплата сотруднику, выпавшему из расчёта, остаётся видна",
-  ()=>{
-    const result=periodDifferences({
-      entries:[],
-      snapshot:[
-        {
-          employeeId:"e-2",
-          employeeName:"Пётр Волков",
-          due:0,
-          paid:4000
-        }
-      ],
-      closed:true
-    });
-
-    assert.equal(result.overpaid,4000);
-    assert.equal(result.rows[0].employeeName,"Пётр Волков");
-  }
-);
-
-test(
-  "снимок открытого периода в расчёт разницы не входит",
-  ()=>{
-    const result=periodDifferences({
-      entries:[entry({due:6000,paid:6000})],
-      snapshot:[
-        {
-          employeeId:"e-2",
-          employeeName:"Пётр Волков",
-          due:0,
-          paid:4000
-        }
-      ],
-      closed:false
-    });
-
-    assert.deepEqual(result.rows,[]);
   }
 );
 
@@ -200,5 +149,24 @@ test(
     assert.equal(totals.shifts,3);
     assert.equal(totals.due,9000);
     assert.equal(totals.paid,7000);
+  }
+);
+
+/*
+  Снимок разнице больше не нужен: сотрудник, у которого в периоде есть
+  выплата, попадает в счёт по ней самой — даже если смены оттуда ушли.
+  Доставать его из снимка не приходится, и замороженная сумма рядом с
+  текущим нулём в строке не появляется.
+*/
+test(
+  "разница считается без снимка",
+  ()=>{
+    const result=periodDifferences({
+      entries:[entry({due:0,paid:6000})],
+      closed:true
+    });
+
+    assert.equal(result.overpaid,6000);
+    assert.equal(result.rows[0].due,0);
   }
 );

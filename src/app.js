@@ -2225,9 +2225,10 @@ function payrollPeriodState(kind){
       periodFingerprint(entries);
 
   /*
-    Снимок закрытия — утверждённый расчёт периода. Пока он есть, разница
-    считается от него, а не от текущего счёта: иначе «недоплата» менялась
-    бы от любой правки, и закрывать период было бы незачем.
+    Снимок закрытия — запись о том, каким период закрыли. Разницу от
+    него больше не считают (см. periodDifferences); он остаётся ради
+    одного ответа, который больше взять негде: на какую сумму период
+    закрывали, если расчёт с тех пор изменили.
   */
   const snapshot=period
     ? (teamData.periodEntries || [])
@@ -2266,7 +2267,6 @@ function payrollPeriodState(kind){
     totals,
     differences:periodDifferences({
       entries,
-      snapshot,
       closed
     }),
     review:payrollPeriodReview(kind,entries)
@@ -2440,53 +2440,28 @@ function eventMoment(value){
   нет: смены перенесли, а выплата осталась.
 */
 function payrollReportRows(kind,state){
-  const seen=new Set(
-    state.entries.map(entry=>entry.employeeId)
-  );
-
-  const orphans=state.closed
-    ? state.snapshot
-        .filter(row=>!seen.has(row.employeeId))
-        .map(row=>({
-          employeeId:row.employeeId,
-          employeeName:row.employeeName,
-          shifts:0,
-          base:0,
-          bonus:0,
-          fine:0,
-          due:row.due,
-          paid:row.paid,
-          detail:null
-        }))
-    : [];
-
-  return [...state.entries,...orphans].map(row=>({
-    ...row,
+  return state.entries.map(entry=>({
+    ...entry,
+    /* Сколько за этого человека было заморожено закрытием. */
+    snapshotDue:state.closed
+      ? snapshotDueFor(state,entry.employeeId)
+      : null,
     detail:reportDetail(
-      row.employeeId,
+      entry.employeeId,
       kind,
-      row.detail?.shifts || []
+      entry.detail?.shifts || []
     ),
-    corrections:correctionsFor(row.employeeId,kind)
+    corrections:correctionsFor(entry.employeeId,kind)
   }));
 }
 
-/* Сумма, на которую период закрыли, если расчёт с тех пор изменился. */
-function closedAtDue(state){
-  if(!state.closed || !state.snapshot.length){
-    return null;
-  }
-
-  const frozen=Math.round(
-    state.snapshot.reduce(
-      (sum,row)=>sum+(Number(row.due) || 0),
-      0
-    )
+/* Замороженная закрытием сумма по одному сотруднику, если она есть. */
+function snapshotDueFor(state,employeeId){
+  const row=state.snapshot.find(item=>
+    item.employeeId===employeeId
   );
 
-  return frozen===Math.round(state.totals.due)
-    ? null
-    : frozen;
+  return row ? Number(row.due) || 0 : null;
 }
 
 /* Ручные корректировки смен периода — тем же признаком, что и везде. */
@@ -2604,7 +2579,6 @@ function openPayrollReport({kind,detailed,employeeId}){
       ? "проверено, данные изменились"
       : periodStatusLabel(state.status).toLowerCase(),
     rows:payrollReportRows(kind,state),
-    closedAtDue:closedAtDue(state),
     generatedAt:new Date().toLocaleString("ru-RU",{
       day:"numeric",
       month:"long",

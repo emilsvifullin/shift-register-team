@@ -31,14 +31,30 @@ export function buildPayrollReport({
   statusLabel,
   rows,
   generatedAt,
-  employeeId=null,
-  closedAtDue=null
+  employeeId=null
 }){
   const scoped=employeeId
     ? rows.filter(row=>
         row.employeeId===employeeId
       )
     : rows;
+
+  /*
+    На какую сумму период закрывали.
+
+    Считается по тем же строкам, которые попали в документ: и отбор по
+    сотруднику, и выпавшие сотрудники учитываются сами собой. Отдельное
+    число на весь период сюда передавать нельзя — в отчёте по одному
+    человеку оно говорило бы про всю команду, а сравнение шло бы между
+    разными наборами сотрудников и расходилось бы на пустом месте.
+  */
+  const frozen=scoped.reduce(
+    (sum,row)=>
+      row.snapshotDue===null || row.snapshotDue===undefined
+        ? sum
+        : sum+Number(row.snapshotDue),
+    null
+  );
 
   const lines=scoped.map(row=>{
     const accrued=round(row.due);
@@ -66,19 +82,7 @@ export function buildPayrollReport({
     };
   });
 
-  return {
-    periodLabel,
-    monthLabel,
-    statusLabel,
-    generatedAt,
-    employeeId,
-    /*
-      Сумма, на которую период закрыли, если расчёт с тех пор изменили.
-      Отдельный факт рядом с итогом, а не подмена итога.
-    */
-    closedAtDue,
-    lines,
-    totals:lines.reduce(
+  const totals=lines.reduce(
       (total,line)=>({
         employees:total.employees+1,
         shifts:total.shifts+line.shifts,
@@ -107,7 +111,25 @@ export function buildPayrollReport({
         unpaid:0,
         overpaid:0
       }
-    )
+  );
+
+  return {
+    periodLabel,
+    monthLabel,
+    statusLabel,
+    generatedAt,
+    employeeId,
+    /*
+      Сумма, на которую период закрыли, если расчёт с тех пор изменили.
+      Отдельный факт рядом с итогом, а не подмена итога. Совпал —
+      говорить не о чем.
+    */
+    closedAtDue:
+      frozen===null || round(frozen)===totals.accrued
+        ? null
+        : round(frozen),
+    lines,
+    totals
   };
 }
 

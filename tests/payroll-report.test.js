@@ -263,6 +263,9 @@ test(
   Период закрыли на одну сумму, а потом расчёт изменили — через
   подтверждение и с записью в историю. Документ обязан сказать об этом
   сам: иначе читатель сверяет его с экраном выплат и не сходится.
+
+  Замороженная сумма приходит построчно: так её видно ровно по тем
+  людям, которые попали в документ.
 */
 test(
   "документ сообщает, на какую сумму период был закрыт",
@@ -272,7 +275,6 @@ test(
       monthLabel:"декабрь 2026",
       statusLabel:"закрыто",
       generatedAt:"26 сентября 2026, 10:40",
-      closedAtDue:8500,
       rows:[
         row({
           shifts:2,
@@ -281,7 +283,8 @@ test(
           fine:0,
           corrections:0,
           due:9500,
-          paid:6500
+          paid:6500,
+          snapshotDue:8500
         })
       ]
     });
@@ -301,11 +304,88 @@ test(
 test(
   "без расхождения со снимком документ ничего не добавляет",
   ()=>{
-    const html=payrollReportDocument(
-      report([row()]),
-      {detailed:false}
-    );
+    const built=buildPayrollReport({
+      periodLabel:"1–15",
+      monthLabel:"сентябрь 2026",
+      statusLabel:"закрыто",
+      generatedAt:"сейчас",
+      rows:[row({due:6300,paid:6300,snapshotDue:6300})]
+    });
 
-    assert.doesNotMatch(html,/Период закрыт на/);
+    assert.equal(built.closedAtDue,null);
+
+    assert.doesNotMatch(
+      payrollReportDocument(built,{detailed:false}),
+      /Период закрыт на/
+    );
   }
 );
+
+/*
+  Отчёт по одному сотруднику говорит про него, а не про всю команду.
+
+  Замороженная сумма считалась на весь период одним числом и попадала в
+  персональный отчёт как есть: документ про одного человека сообщал,
+  на сколько закрыли всю команду, и срабатывал даже тогда, когда у него
+  самого ничего не менялось.
+*/
+test(
+  "в отчёте по сотруднику замороженная сумма считается по нему",
+  ()=>{
+    const rows=[
+      row({
+        employeeId:"e-1",
+        employeeName:"Марина Абрамова",
+        due:6300,
+        paid:6300,
+        snapshotDue:6300
+      }),
+      row({
+        employeeId:"e-2",
+        employeeName:"Пётр Волков",
+        due:9500,
+        paid:6500,
+        snapshotDue:8500
+      })
+    ];
+
+    const whole=buildPayrollReport({
+      periodLabel:"1–15",
+      monthLabel:"декабрь 2026",
+      statusLabel:"закрыто",
+      generatedAt:"сейчас",
+      rows
+    });
+
+    assert.equal(whole.closedAtDue,14800);
+
+    const mine=buildPayrollReport({
+      periodLabel:"1–15",
+      monthLabel:"декабрь 2026",
+      statusLabel:"закрыто",
+      generatedAt:"сейчас",
+      rows,
+      employeeId:"e-1"
+    });
+
+    /* У этого человека расчёт не менялся — и говорить не о чем. */
+    assert.equal(mine.closedAtDue,null);
+
+    assert.doesNotMatch(
+      payrollReportDocument(mine,{detailed:false}),
+      /Период закрыт на/
+    );
+
+    const his=buildPayrollReport({
+      periodLabel:"1–15",
+      monthLabel:"декабрь 2026",
+      statusLabel:"закрыто",
+      generatedAt:"сейчас",
+      rows,
+      employeeId:"e-2"
+    });
+
+    assert.equal(his.closedAtDue,8500);
+  }
+);
+

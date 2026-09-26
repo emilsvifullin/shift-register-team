@@ -223,26 +223,17 @@ export function periodTotals(entries){
   этом никакой разницы, потому что снимок всё ещё помнил 6 500.
 
   Снимок остаётся тем, чем он и был: записью, какой период закрыли. Ею
-  живут отчёт и история. Здесь он нужен ради одного случая — сотрудника,
-  который в снимке есть, а в текущем счёте его больше нет: смены
-  перенесли или удалили, а выплата осталась, и она обязана быть видна.
+  живут отчёт и история, а разнице он не нужен вовсе: сотрудник, у
+  которого в периоде есть выплата, попадает в счёт по ней самой, даже
+  если смены оттуда ушли. Доставать его из снимка не приходится — и
+  незачем: замороженная сумма рядом с текущим нулём противоречила бы
+  всему остальному в этой строке.
 */
 export function periodDifferences({
   entries,
-  snapshot,
   closed
 }){
-  const seen=new Set(
-    entries.map(row=>row.employeeId)
-  );
-
-  const orphans=closed
-    ? (snapshot || []).filter(row=>
-        !seen.has(row.employeeId || row.employee_id)
-      )
-    : [];
-
-  const rows=[...entries,...orphans]
+  const rows=entries
     .map(row=>{
       const due=round2(row.due);
       const paid=round2(row.paid);

@@ -27,7 +27,13 @@ export function reviewPeriod({
   entries,
   shifts,
   payoutsFor,
-  today
+  today,
+  /*
+    Половина месяца, к которой относится проверка. Нужна находкам про
+    деньги: по ней экран открывает именно ту выплату, о которой идёт
+    речь, а не оставляет человека искать её самому.
+  */
+  payoutKind=null
 }){
   const findings=[];
 
@@ -38,6 +44,7 @@ export function reviewPeriod({
 
     findings.push(
       ...reviewEmployee({
+        payoutKind,
         entry,
         shifts:own,
         payouts:payoutsFor(entry.employeeId),
@@ -62,7 +69,8 @@ function reviewEmployee({
   entry,
   shifts,
   payouts,
-  today
+  today,
+  payoutKind=null
 }){
   const found=[];
 
@@ -151,7 +159,11 @@ function reviewEmployee({
       severity:"warning",
       title:"Выплачено больше, чем начислено",
       detail:`Переплата ${format(entry.paid-entry.due)}`,
-      target:{type:"employee",id:entry.employeeId}
+      target:{
+        type:"employee",
+        id:entry.employeeId,
+        payoutKind
+      }
     });
   }
 
@@ -169,7 +181,11 @@ function reviewEmployee({
       severity:"info",
       title:"Выплачено не полностью",
       detail:`Осталось ${format(entry.due-entry.paid)}`,
-      target:{type:"employee",id:entry.employeeId}
+      target:{
+        type:"employee",
+        id:entry.employeeId,
+        payoutKind
+      }
     });
   }
 

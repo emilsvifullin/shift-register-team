@@ -659,11 +659,24 @@ test(
       /<span>Корректировка<\/span>/
     );
 
+    /*
+      «Отработано» вместо «Часы»: по одному числу нельзя было отличить
+      полную смену от неполной на те же часы.
+    */
+    assert.match(
+      app,
+      /class="s">Отработано<\/div><div class="t">\$\{esc\(shiftLengthLabel/
+    );
+
+    assert.match(
+      app,
+      /result\.partial \? "Неполная смена" : "Полная смена"/
+    );
+
     for(const label of [
       "Дата",
       "ПВЗ",
       "Тип",
-      "Часы",
       "Объём"
     ]){
       assert.match(

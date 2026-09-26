@@ -203,7 +203,7 @@ export async function loadAdminTeamData(){
       supabaseClient
         .from("payroll_events")
         .select(
-          "id, period_month, payout_kind, employee_id, kind, summary, reason, effect, period_status, occurred_at"
+          "id, period_month, payout_kind, employee_id, kind, summary, reason, effect, period_status, details, occurred_at"
         )
         .order(
           "occurred_at",

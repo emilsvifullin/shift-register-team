@@ -123,7 +123,8 @@ import {
   formatAmount,
   formatMoney,
   formatNumber,
-  plural
+  plural,
+  pluralForm
 } from "./format.js";
 
 import {
@@ -329,6 +330,25 @@ let pointAdvanceFilter="all";
 let employeeFilterDraft=null;
 let employeeFilterSheetPreviousFocus=null;
 let shiftSearchQuery="";
+
+/*
+  Массовый выбор смен.
+
+  Заводится ради одной настоящей задачи: убрать разом ошибочно
+  созданные смены одного сотрудника за месяц. Поэтому это не режим
+  редактирования, а именно выбор: список тот же, что на экране, — со
+  всеми фильтрами, — и единственное массовое действие над ним удаление.
+
+  Выбор живёт только в памяти экрана: он привязан к тому, что человек
+  сейчас отфильтровал, и переживать перезагрузку ему незачем.
+*/
+let shiftSelectMode=false;
+let shiftSelection=new Set();
+
+function resetShiftSelection(){
+  shiftSelectMode=false;
+  shiftSelection.clear();
+}
 let shiftFilter={
   pointIds:null,
   employeeIds:null,
@@ -787,11 +807,37 @@ function hoursWord(hours){
   return Number(hours)+" ч";
 }
 
+const hoursNoun=n=>pluralForm(n,["час","часа","часов"]);
+
+/*
+  Смена в карточке: полная она или неполная и сколько часов отработано.
+
+  Раньше здесь стояло одно «12 ч», и по карточке нельзя было понять, чем
+  эта смена отличается от неполной на те же 12 часов. Слово отвечает на
+  главный вопрос, число — на второй, и оба помещаются в одну строку.
+*/
+function shiftLengthLabel(result){
+  const hours=Number(result.hours) || 0;
+
+  return (
+    (result.partial ? "Неполная смена" : "Полная смена")+
+    ` · ${nf(hours)} ${hoursNoun(hours)}`
+  );
+}
+
 const nf=formatNumber;
 const nfMoney=formatAmount;
 const money=formatMoney;
 
 const shiftsWord=n=>plural(n,["смена","смены","смен"]);
+/*
+  plural() печатает число вместе со словом, pluralForm() — только слово.
+  Там, где число уже стоит в строке, нужна вторая форма: иначе выходит
+  «Удалено 6 6 смен».
+*/
+const employeesNoun=n=>pluralForm(n,["сотрудник","сотрудника","сотрудников"]);
+const shiftsNoun=n=>pluralForm(n,["смена","смены","смен"]);
+const shiftsAccNoun=n=>pluralForm(n,["смену","смены","смен"]);
 const datesWord=n=>plural(n,["дата","даты","дат"]);
 const shiftsAccWord=n=>plural(n,["смену","смены","смен"]);
 const partialShortWord=n=>plural(n,["неполная","неполные","неполных"]);
@@ -1711,8 +1757,45 @@ function shiftListAreaHTML(){
     `;
   }
 
+  const selectable=isAdmin;
+
+  const chosen=list.filter(shift=>
+    shiftSelection.has(shift.id)
+  ).length;
+
   let html=`
-    <div class="ml">${label}</div>
+    <div class="ml ml-action-row">
+      <span>${label}</span>
+      ${selectable ? `
+        <button type="button" class="ml-action" id="shiftSelectToggle">
+          ${shiftSelectMode ? "Готово" : "Выбрать"}
+        </button>
+      ` : ""}
+    </div>
+
+    ${shiftSelectMode ? `
+      <div class="shift-select-bar">
+        <span class="shift-select-count">
+          ${chosen
+            ? `${chosen} ${shiftsNoun(chosen)}`
+            : "Ничего не выбрано"}
+        </span>
+
+        <button type="button" class="lnk" data-select-all="1">
+          ${chosen===list.length ? "Снять всё" : "Выбрать все"}
+        </button>
+
+        <button
+          type="button"
+          class="btn warn shift-select-delete"
+          id="shiftSelectDelete"
+          ${chosen ? "" : "disabled"}
+        >
+          Удалить
+        </button>
+      </div>
+    ` : ""}
+
     <div class="card shift-window"><div class="shift-scroll" aria-label="Список смен">
   `;
 
@@ -1753,11 +1836,25 @@ function shiftListAreaHTML(){
     html+=`
       <button
         type="button"
-        class="sh"
+        class="sh${
+          shiftSelectMode && shiftSelection.has(shift.id)
+            ? " chosen"
+            : ""
+        }"
         data-key="shift-${esc(shift.id)}"
-        data-edit="${esc(shift.id)}"
+        ${shiftSelectMode
+          ? `data-select="${esc(shift.id)}" aria-pressed="${
+              shiftSelection.has(shift.id) ? "true" : "false"
+            }"`
+          : `data-edit="${esc(shift.id)}"`}
         aria-label="${esc(dateLabel(shift.date))}, ${esc(shift.point)}, ${money(result.total)}"
       >
+        ${shiftSelectMode ? `
+          <span class="sh-check" aria-hidden="true">
+            ${shiftSelection.has(shift.id) ? "✓" : ""}
+          </span>
+        ` : ""}
+
         <span class="day">
           <span class="d">${Number(parts[2])}</span>
           <span class="w">${WD[new Date(shift.date+"T12:00:00").getDay()]}</span>
@@ -1778,6 +1875,142 @@ function shiftListAreaHTML(){
   }
 
   return html+`</div></div>`;
+}
+
+/*
+  Удалить выбранные смены.
+
+  Массовость не даёт никаких поблажек: каждая смена уходит тем же
+  вызовом, что и поштучно, со всеми серверными проверками. Разница
+  ровно одна — про закрытый период спрашивают один раз на всю пачку, а
+  не по разу на смену: двадцать одинаковых окон подряд человек
+  перестаёт читать после третьего, и защита превращается в помеху.
+
+  Подтверждение показывает, что именно исчезнет: сколько смен, за какие
+  даты и на какую сумму. От пяти смен его приходится ещё и набрать
+  числом — случайно попасть в такое действие уже нельзя.
+*/
+async function deleteChosenShifts(){
+  const list=filteredMonthShifts()
+    .filter(shift=>shiftSelection.has(shift.id));
+
+  if(!list.length){
+    return;
+  }
+
+  const total=list.reduce(
+    (sum,shift)=>sum+calc(shift).total,
+    0
+  );
+
+  const dates=[...new Set(
+    list.map(shift=>Number(shift.date.slice(8,10)))
+  )].sort((first,second)=>first-second);
+
+  const people=[...new Set(
+    list.map(shift=>shift.employeeName).filter(Boolean)
+  )];
+
+  const detail=[
+    dates.length===1
+      ? `${dates[0]} ${monthGen(cursor)}`
+      : `${dates[0]}–${dates[dates.length-1]} ${monthGen(cursor)}`,
+    people.length===1
+      ? people[0]
+      : `${people.length} ${employeesNoun(people.length)}`,
+    money(total)
+  ].join(" · ");
+
+  const many=list.length>=5;
+
+  const agreed=await appConfirm(
+    `Удалить ${list.length} ${shiftsAccNoun(list.length)}?`,
+    {
+      detail:`${detail}. Отменить это нельзя.`,
+      okText:"Удалить",
+      danger:true,
+      confirm:many ? String(list.length) : null,
+      confirmLabel:"Наберите число смен"
+    }
+  );
+
+  if(!agreed){
+    return;
+  }
+
+  let force=false;
+  let removed=0;
+  let skipped=0;
+
+  for(const shift of list){
+    try{
+      await deleteAdminShift(shift.id,{
+        force,
+        reason:"Массовое удаление смен"
+      });
+
+      removed+=1;
+    }catch(error){
+      const info=closedPeriodInfo(error);
+
+      if(!info){
+        toast(
+          error instanceof Error
+            ? error.message
+            : "Не удалось удалить смены",
+          4200
+        );
+
+        break;
+      }
+
+      if(force){
+        skipped+=1;
+        continue;
+      }
+
+      const allowed=await appConfirm(
+        "Удалить смены в закрытом периоде?",
+        {
+          detail:`Период ${info.label} за ${info.monthLabel} ${
+            info.status==="paid" ? "уже выплачен" : "закрыт"
+          }. Удаление попадёт в историю периода и повлияет на его расчёт.`,
+          okText:"Удалить",
+          danger:true
+        }
+      );
+
+      if(!allowed){
+        skipped+=1;
+        break;
+      }
+
+      force=true;
+
+      try{
+        await deleteAdminShift(shift.id,{
+          force:true,
+          reason:"Массовое удаление смен"
+        });
+
+        removed+=1;
+      }catch{
+        skipped+=1;
+      }
+    }
+  }
+
+  await refreshTeamData({renderAfter:false});
+
+  resetShiftSelection();
+  render();
+
+  toast(
+    skipped
+      ? `Удалено ${removed} из ${list.length}: остальные в закрытом периоде`
+      : `Удалено ${removed} ${shiftsNoun(removed)}`,
+    skipped ? 4200 : 2600
+  );
 }
 
 function updateShiftList(){
@@ -2308,7 +2541,28 @@ function payrollPeriodReview(kind,entries){
     shifts:payrollReviewShifts(kind),
     payoutsFor:employeeId=>
       payoutRecords(employeeId,kind),
-    today:localYMD()
+    today:localYMD(),
+    payoutKind:kind
+  });
+}
+
+/*
+  Показать выплату, к которой ведёт находка.
+
+  Раскрытие — это переход плитки, поэтому подъехать к ней можно только
+  после того, как разметка обновилась: до этого блока нужной высоты на
+  экране ещё нет.
+*/
+function revealPayout(kind){
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      document
+        .querySelector(`[data-payout-toggle="${kind}"]`)
+        ?.scrollIntoView({
+          behavior:"smooth",
+          block:"center"
+        });
+    });
   });
 }
 
@@ -2323,6 +2577,9 @@ function payrollFindingHTML(finding){
       data-review-id="${esc(finding.target.id)}"
       ${finding.target.date
         ? `data-review-date="${esc(finding.target.date)}"`
+        : ""}
+      ${finding.target.payoutKind
+        ? `data-review-payout="${esc(finding.target.payoutKind)}"`
         : ""}
     >
       <span class="payroll-finding-main">
@@ -2344,8 +2601,38 @@ const PAYROLL_EVENT_LABELS={
   shift_repriced:"Смена пересчитана",
   payout_added:"Выплата записана",
   payout_changed:"Выплата изменена",
-  payout_deleted:"Выплата удалена"
+  payout_deleted:"Выплата удалена",
+  rate_added:"Своя ставка назначена",
+  rate_changed:"Своя ставка изменена",
+  rate_removed:"Своя ставка снята"
 };
+
+/* Первая буква строки события — заглавная, как в любой ленте. */
+function sentence(value){
+  const text=String(value || "").trim();
+
+  return text
+    ? text[0].toUpperCase()+text.slice(1)
+    : "";
+}
+
+/*
+  Подробность события: то, чего нет в заголовке и в сумме.
+
+  Дата всегда приходит отдельным полем и пишется здесь — теми же
+  словами, что и везде на экране. Иначе лента показывала три написания
+  подряд: «От 25.09.2026» у выплаты, «3 сентября» у правки закрытого
+  периода и «03.09.2026» у пересчёта.
+*/
+function eventDetail(event){
+  const summary=sentence(event.summary);
+  const date=event.details?.date;
+
+  return [
+    date ? shortDateLabel(date) : "",
+    summary
+  ].filter(Boolean).join(" · ");
+}
 
 function payrollPeriodEvents(kind){
   const month=periodMonthKey(cursor);
@@ -2362,6 +2649,12 @@ function payrollEventHTML(event){
   );
 
   const effect=Number(event.effect);
+  const reason=String(event.reason || "").trim();
+
+  const meta=[
+    eventMoment(event.occurred_at),
+    employee?.full_name
+  ].filter(Boolean);
 
   return `
     <div class="payroll-event">
@@ -2381,15 +2674,21 @@ function payrollEventHTML(event){
       </div>
 
       <div class="payroll-event-body">
-        ${esc(event.summary)}
+        ${esc(eventDetail(event))}
       </div>
 
+      ${reason ? `
+        <div class="payroll-event-reason">
+          ${esc(sentence(reason))}
+        </div>
+      ` : ""}
+
       <div class="payroll-event-meta">
-        ${esc(eventMoment(event.occurred_at))}
-        ${employee ? ` · ${esc(employee.full_name)}` : ""}
+        <span>${esc(meta.join(" · "))}</span>
+
         ${
           ["closed","paid"].includes(event.period_status)
-            ? " · после закрытия"
+            ? `<span class="payroll-event-after">после закрытия</span>`
             : ""
         }
       </div>
@@ -2397,6 +2696,14 @@ function payrollEventHTML(event){
   `;
 }
 
+/*
+  Когда это было.
+
+  Свежие записи датируются словом, а не числом: в ленте, которую
+  открывают сразу после действия, «сегодня, 10:19» читается быстрее,
+  чем «26 сентября, 10:19», и сразу отделяет только что сделанное от
+  давнего.
+*/
 function eventMoment(value){
   const date=new Date(value);
 
@@ -2404,17 +2711,28 @@ function eventMoment(value){
     return "";
   }
 
-  return `${
-    date.toLocaleDateString("ru-RU",{
-      day:"numeric",
-      month:"long"
-    })
-  }, ${
-    date.toLocaleTimeString("ru-RU",{
-      hour:"2-digit",
-      minute:"2-digit"
-    })
-  }`;
+  const time=date.toLocaleTimeString("ru-RU",{
+    hour:"2-digit",
+    minute:"2-digit"
+  });
+
+  const days=Math.round(
+    (
+      new Date(localYMD()).getTime()-
+      new Date(localYMD(date)).getTime()
+    )/86400000
+  );
+
+  const day=days===0
+    ? "сегодня"
+    : days===1
+      ? "вчера"
+      : date.toLocaleDateString("ru-RU",{
+          day:"numeric",
+          month:"long"
+        });
+
+  return `${day}, ${time}`;
 }
 
 /*
@@ -2633,6 +2951,23 @@ function payrollPeriodRowHTML(kind){
   const events=payrollPeriodEvents(kind);
   const closed=state.closed;
 
+  /*
+    Период отметили выплаченным, а потом расчёт или сами выплаты
+    изменились — и деньги перестали сходиться.
+
+    Отметку не отменяем: она факт, и в истории останется. Но подпись
+    «Выплачено» рядом со строкой «Недоплата 3 000 ₽» утверждала, что
+    обязательства закрыты, когда это уже не так. Состояние выводится из
+    тех же цифр, что и сама разница, поэтому переживает перезагрузку и
+    одинаково выглядит у любого администратора.
+  */
+  const mismatched=
+    state.status==="paid" &&
+    Boolean(
+      state.differences.underpaid ||
+      state.differences.overpaid
+    );
+
   const actions=[];
 
   if(state.status==="open" || state.stale){
@@ -2717,12 +3052,18 @@ function payrollPeriodRowHTML(kind){
         </div>
 
         <div class="payroll-period-status ${
-          state.stale ? "stale" : state.status
+          state.stale
+            ? "stale"
+            : mismatched
+              ? "mismatched"
+              : state.status
         }">
           ${
             state.stale
               ? "Данные изменились"
-              : esc(periodStatusLabel(state.status))
+              : mismatched
+                ? "Есть расхождение"
+                : esc(periodStatusLabel(state.status))
           }
         </div>
       </div>
@@ -2849,8 +3190,17 @@ function payrollPeriodsHTML(){
     return "";
   }
 
+  /*
+    Блок считает всю команду, а вокруг него — экран одного сотрудника:
+    «Начислено» сверху и «Выплаты» снизу относятся к выбранному
+    человеку. Без подписи легко решить, что и закрытие периода
+    касается только его. Подпись стоит всегда: при выбранном сотруднике
+    она снимает двусмысленность, без него — объясняет, почему блок
+    остался на экране один.
+  */
   return `
     <div class="ml">Расчётные периоды</div>
+    <div class="payroll-periods-scope">По всей команде</div>
     <div class="card payroll-periods">
       ${PERIOD_KINDS.map(kind=>
         payrollPeriodRowHTML(kind)
@@ -2977,10 +3327,28 @@ async function runPayrollPeriodAction(button){
 
   try{
     if(button.dataset.periodClose){
+      /*
+        Подтверждение закрытия отвечает на три вопроса и молчит об
+        остальном: какой период, на какие цифры и что расчёт
+        фиксируется. Прежний текст добавлял ещё и обещание показать
+        период позже таким, каким он закрыт, — правдивое, но в момент
+        решения бесполезное: выбор от него не зависит, а читать
+        приходится.
+      */
       const agreed=await appConfirm(
         `Закрыть период ${title}?`,
         {
-          detail:`Расчёт будет зафиксирован: ${state.totals.employees} сотр., смен ${state.totals.shifts}, к выплате ${money(state.totals.due)}. Позже его можно будет показать таким, каким он закрыт.`,
+          detail:state.totals.employees
+            ? `${
+                state.totals.employees
+              } ${
+                employeesNoun(state.totals.employees)
+              }, ${
+                state.totals.shifts
+              } ${
+                shiftsNoun(state.totals.shifts)
+              }, ${money(state.totals.due)}. Расчёт будет зафиксирован.`
+            : "В периоде нет ни одной смены. Расчёт будет зафиксирован пустым.",
           okText:"Закрыть период"
         }
       );
@@ -10992,6 +11360,8 @@ function previewCalc(value){
     pricing,
     fixed:pricing.fixed,
     rate:pricing.rate,
+    /* Полная смена или неполная — вопрос к самой смене, а не к тарифу. */
+    partial:Boolean(value.partial),
     hours,
     perHour,
     calculatedBase,
@@ -11452,7 +11822,7 @@ function drawSheet(isEdit){
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">ПВЗ</div><div class="t">${esc(draft.point)}</div></div></div>
         ${isAdmin ? `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Сотрудник</div><div class="t">${esc(employee?.full_name || draft.employeeName || "Не указан")}</div></div></div>` : ""}
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Тип</div><div class="t">${draft.type==="extra" ? "Дополнительная" : "Основная"}</div></div></div>
-        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Часы</div><div class="t">${hoursWord(result.hours)}</div></div></div>
+        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Отработано</div><div class="t">${esc(shiftLengthLabel(result))}</div></div></div>
         ${fixed ? "" : `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Объём</div><div class="t">${nf(Number(draft.shk)||0)} ШК</div></div></div>`}
         ${draft.baseOverrideReason ? `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Причина корректировки</div><div class="t">${esc(draft.baseOverrideReason)}</div></div></div>` : ""}
       </div>
@@ -17196,6 +17566,26 @@ app.addEventListener(
 );
 
 app.addEventListener("click",async event=>{
+  /*
+    В режиме выбора строка не открывается, а помечается. Это единственный
+    способ не превратить список в мину: одно и то же нажатие не может
+    означать то «посмотреть», то «выбрать».
+  */
+  const picked=event.target.closest("[data-select]");
+
+  if(picked){
+    const id=picked.dataset.select;
+
+    if(shiftSelection.has(id)){
+      shiftSelection.delete(id);
+    }else{
+      shiftSelection.add(id);
+    }
+
+    updateShiftList();
+    return;
+  }
+
   const row=event.target.closest("[data-edit]");
   if(row){
     openSheet(row.dataset.edit);
@@ -17204,6 +17594,42 @@ app.addEventListener("click",async event=>{
 
   const button=event.target.closest("button");
   if(!button) return;
+
+  if(button.id==="shiftSelectToggle"){
+    if(shiftSelectMode){
+      resetShiftSelection();
+    }else{
+      shiftSelectMode=true;
+      shiftSelection.clear();
+    }
+
+    updateShiftList();
+    return;
+  }
+
+  if(button.dataset.selectAll){
+    const list=filteredMonthShifts();
+
+    const allChosen=list.every(shift=>
+      shiftSelection.has(shift.id)
+    );
+
+    shiftSelection.clear();
+
+    if(!allChosen){
+      for(const shift of list){
+        shiftSelection.add(shift.id);
+      }
+    }
+
+    updateShiftList();
+    return;
+  }
+
+  if(button.id==="shiftSelectDelete"){
+    void deleteChosenShifts();
+    return;
+  }
 
   /* Представления «Смен»: режим, выбор ПВЗ, день, добавление. */
   if(button.dataset.shiftView){
@@ -17341,10 +17767,31 @@ app.addEventListener("click",async event=>{
       return;
     }
 
+    /*
+      Находка про деньги ведёт к самой выплате, а не просто выбирает
+      сотрудника. Раньше нажатие только ставило его в фильтр — и если он
+      уже был выбран, на экране не происходило ничего: блок выплат
+      оставался свёрнутым где-то ниже, и человек оставался наедине с
+      вопросом «а дальше что». Теперь нужная выплата раскрывается и
+      сама подъезжает к глазам.
+    */
+    const payoutKind=button.dataset.reviewPayout || "";
+
     statsEmployeeId=id;
     statsEmployeeOpen=false;
+
+    if(payoutKind){
+      expandedPayoutKind=payoutKind;
+      payoutEditor=null;
+    }
+
     saveUIState();
     render();
+
+    if(payoutKind){
+      revealPayout(payoutKind);
+    }
+
     return;
   }
 

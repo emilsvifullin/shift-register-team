@@ -835,9 +835,22 @@
   color:var(--green);
 }
 
-.payroll-period-status.stale{
+.payroll-period-status.stale,
+.payroll-period-status.mismatched{
   border-color:var(--rust-line);
   color:var(--rust);
+}
+
+/*
+  Охват блока расчётных периодов. Экран вокруг показывает одного
+  сотрудника, блок — всю команду; подпись стоит под заголовком и
+  читается как его продолжение, а не как ещё одна строка данных.
+*/
+.payroll-periods-scope{
+  margin:-6px 0 8px;
+  padding:0 4px;
+  color:var(--ink3);
+  font-size:12px;
 }
 
 .payroll-period-figures{
@@ -1189,10 +1202,46 @@
   font-size:12.5px;
 }
 
+/*
+  Причина правки закрытого периода: человек вводил её отдельно, и до
+  сих пор она нигде не показывалась. Отбита слева волоском — это
+  цитата, а не ещё одна строка данных.
+*/
+.payroll-event-reason{
+  margin-top:4px;
+  padding-left:9px;
+  border-left:2px solid var(--gold-line);
+
+  color:var(--ink2);
+  font-size:12.5px;
+  line-height:1.4;
+}
+
 .payroll-event-meta{
-  margin-top:2px;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+
+  margin-top:4px;
   color:var(--ink3);
   font-size:11.5px;
+}
+
+/*
+  «После закрытия» — самый весомый признак записи: он отделяет обычное
+  действие от правки утверждённого расчёта. Подписью в общем ряду он
+  терялся, поэтому стоит отдельной меткой.
+*/
+.payroll-event-after{
+  padding:1px 7px;
+  border:1px solid var(--rust-line);
+  border-radius:999px;
+
+  color:var(--rust);
+  font-size:10.5px;
+  font-weight:600;
+  white-space:nowrap;
 }
 
 /*
@@ -1220,4 +1269,91 @@
   font-size:12.5px;
   text-decoration:underline;
   text-underline-offset:3px;
+}
+
+
+/*
+  Массовый выбор смен.
+
+  Список остаётся тем же: меняется только то, что нажатие помечает
+  строку, а не открывает её. Галочка стоит слева, на месте, которое
+  иначе занимает пустое поле, — строка не съезжает и не меняет высоту.
+*/
+.ml-action-row{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.ml-action{
+  padding:0;
+  border:0;
+  background:transparent;
+
+  color:var(--gold);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.19em;
+  text-transform:uppercase;
+}
+
+.shift-select-bar{
+  display:flex;
+  align-items:center;
+  gap:12px;
+
+  margin:0 4px 9px;
+}
+
+.shift-select-count{
+  flex:1;
+  min-width:0;
+
+  color:var(--ink2);
+  font-size:12.5px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.shift-select-bar .lnk{
+  flex:none;
+  font-size:12.5px;
+}
+
+.shift-select-delete{
+  flex:none;
+  width:auto;
+  min-height:34px;
+  padding:0 14px;
+  font-size:12.5px;
+}
+
+.sh .sh-check{
+  flex:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  width:20px;
+  height:20px;
+  margin-right:-2px;
+
+  border:1.5px solid var(--line2);
+  border-radius:6px;
+
+  color:var(--bg);
+  font-size:12px;
+  font-weight:700;
+  line-height:1;
+}
+
+.sh.chosen .sh-check{
+  border-color:var(--gold);
+  background:var(--gold);
+}
+
+.sh.chosen{
+  background:var(--gold-soft);
 }

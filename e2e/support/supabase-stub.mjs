@@ -309,6 +309,44 @@ export function stubScript(seed){
     });
   }
 
+  function pointName(db,id){
+    const point=(db.points || []).find(item=>item.id===id);
+    return point ? point.name : "ПВЗ";
+  }
+
+  function rateText(type,fixed){
+    return type==="fixed"
+      ? String(Math.round(Number(fixed) || 0))+" ₽"
+      : "ставки по объёму";
+  }
+
+  /* Событие о ставке ложится в период, с которого она действует. */
+  function rateEvent(db,item){
+    const month=item.effective_from.slice(0,7)+"-01";
+
+    const kind=Number(item.effective_from.slice(8,10))<=15
+      ? "first_half"
+      : "second_half";
+
+    const period=(db.payroll_periods || []).find(row=>
+      row.period_month===month &&
+      row.payout_kind===kind
+    );
+
+    return {
+      period_month:month,
+      payout_kind:kind,
+      employee_id:item.employee_id,
+      kind:item.kind,
+      summary:item.summary,
+      period_status:period ? period.status : null,
+      details:{
+        pointId:item.point_id,
+        date:item.effective_from
+      }
+    };
+  }
+
   function assertPeriodOpen(db,date,force){
     const month=date.slice(0,7)+"-01";
 
@@ -597,8 +635,9 @@ export function stubScript(seed){
         payout_kind:args.p_payout_kind,
         employee_id:args.p_employee_id,
         kind:args.p_payout_id ? "payout_changed" : "payout_added",
-        summary:"выплата "+args.p_amount+" ₽",
-        effect:args.p_amount
+        summary:String(args.p_comment || "").trim(),
+        effect:args.p_amount,
+        details:{date:args.p_paid_on}
       });
 
       return id;
@@ -637,8 +676,9 @@ export function stubScript(seed){
         payout_kind:payout.payout_kind,
         employee_id:payout.employee_id,
         kind:"payout_deleted",
-        summary:"выплата "+payout.amount+" ₽ удалена",
-        effect:-payout.amount
+        summary:String(payout.comment || "").trim(),
+        effect:-payout.amount,
+        details:{date:payout.paid_on}
       });
 
       /* Та же история: в базе returns void. */
@@ -774,6 +814,15 @@ export function stubScript(seed){
         created_at:new Date().toISOString()
       });
 
+      recordEvent(db,rateEvent(db,{
+        employee_id:args.p_employee_id,
+        point_id:args.p_point_id,
+        effective_from:args.p_effective_from,
+        kind:"rate_added",
+        summary:pointName(db,args.p_point_id)+" · "+
+          rateText(args.p_pricing_type,args.p_fixed_rate)
+      }));
+
       return id;
     },
     admin_update_employee_rate(args){
@@ -785,23 +834,54 @@ export function stubScript(seed){
         throw new Error("employee_rate_not_found");
       }
 
+      const было=rateText(rate.pricing_type,rate.fixed_rate);
+
       rate.effective_from=args.p_effective_from;
       rate.pricing_type=args.p_pricing_type;
       rate.fixed_rate=args.p_fixed_rate;
       rate.shk_tiers=args.p_shk_tiers;
 
+      recordEvent(db,rateEvent(db,{
+        employee_id:rate.employee_id,
+        point_id:rate.point_id,
+        effective_from:args.p_effective_from,
+        kind:"rate_changed",
+        summary:pointName(db,rate.point_id)+" · "+
+          было+" → "+
+          rateText(args.p_pricing_type,args.p_fixed_rate)
+      }));
+
       return rate.id;
     },
     admin_delete_employee_rate(args){
-      const before=(db.employee_point_rates || []).length;
+      const rate=(db.employee_point_rates || []).find(item=>
+        item.id===args.p_rate_id
+      );
+
+      if(!rate){
+        throw new Error("employee_rate_not_found");
+      }
 
       db.employee_point_rates=(db.employee_point_rates || []).filter(item=>
         item.id!==args.p_rate_id
       );
 
-      if(db.employee_point_rates.length===before){
-        throw new Error("employee_rate_not_found");
-      }
+      const left=db.employee_point_rates.filter(item=>
+        item.employee_id===rate.employee_id &&
+        item.point_id===rate.point_id
+      ).length;
+
+      recordEvent(db,rateEvent(db,{
+        employee_id:rate.employee_id,
+        point_id:rate.point_id,
+        effective_from:rate.effective_from,
+        kind:"rate_removed",
+        summary:pointName(db,rate.point_id)+" · "+
+          rateText(rate.pricing_type,rate.fixed_rate)+
+          (left===0
+            ? " · дальше по тарифу ПВЗ"
+            : " · остальные свои ставки действуют")
+      }));
 
       return null;
     },

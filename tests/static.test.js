@@ -629,13 +629,42 @@ test(
       /\.adjustment-readonly-row \.t\{[\s\S]*white-space:normal;[\s\S]*overflow-wrap:anywhere;/
     );
 
+    /*
+      Деньги остались только в «Итого»: строка «Смена» повторяла «За
+      смену», а «Ставка» — первые две строки итога слово в слово.
+    */
+    assert.doesNotMatch(
+      app,
+      /class="s">Смена<\/div><div class="t">\$\{money/
+    );
+
+    assert.doesNotMatch(
+      app,
+      /appliedTariffRowHTML/
+    );
+
+    /* Корректировка показывается разницей, а не второй записью итога. */
+    assert.doesNotMatch(
+      app,
+      /<span>Оплата за смену<\/span><b>\$\{money\(result\.base\)/
+    );
+
+    assert.match(
+      app,
+      /const correction=result\.baseOverridden[\s\S]*result\.base-result\.calculatedBase/
+    );
+
+    assert.match(
+      app,
+      /<span>Корректировка<\/span>/
+    );
+
     for(const label of [
       "Дата",
       "ПВЗ",
       "Тип",
       "Часы",
-      "Объём",
-      "Смена"
+      "Объём"
     ]){
       assert.match(
         app,
@@ -1787,10 +1816,13 @@ test(
       /p_base_amount_override[\s\S]*p_base_amount_reason[\s\S]*\.rpc\(\s*"admin_save_shift_v4"/
     );
 
-    /* Старая база остаётся рабочей, пока миграция не применена. */
-    assert.match(
+    /*
+      Запасного пути на версию без проверки периода нет: прежняя функция
+      записала бы смену в закрытый период без подтверждения и без истории.
+    */
+    assert.doesNotMatch(
       team,
-      /missingFunction\(result\.error\)[\s\S]*"admin_save_shift_v2"/
+      /"admin_save_shift_v2"/
     );
 
     assert.match(

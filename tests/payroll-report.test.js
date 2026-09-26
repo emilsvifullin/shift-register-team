@@ -178,3 +178,83 @@ test("подробный документ объясняет сумму по с�
   /* Пустого блока штрафов быть не должно. */
   assert.ok(!/<h4>Штрафы<\/h4>/.test(html));
 });
+
+/*
+  Строка свода должна сходиться на глаз.
+
+  Колонка «Корректировки» показывала деньги, уже включённые в «За смены»:
+  26 400 и рядом 2 400, а в «Начислено» снова 26 400. Читатель
+  зарплатного документа складывает то, что стоит в ряд, и первое, что он
+  обнаруживал, — что документ не сходится.
+*/
+test(
+  "свод с корректировками раскладывается на слагаемые",
+  ()=>{
+    const built=report([
+      row({
+        employeeName:"Галина",
+        shifts:8,
+        base:26400,
+        bonus:0,
+        fine:0,
+        corrections:2400,
+        due:26400,
+        paid:0
+      })
+    ]);
+
+    const line=built.lines[0];
+
+    assert.equal(line.tariffBase,24000);
+    assert.equal(line.corrections,2400);
+
+    assert.equal(
+      line.tariffBase+
+        line.corrections+
+        line.bonus-
+        line.fine,
+      line.accrued
+    );
+
+    assert.equal(built.totals.tariffBase,24000);
+
+    const html=payrollReportDocument(built,{detailed:false});
+
+    assert.match(html,/По тарифу/);
+    assert.match(html,/Корректировки/);
+    assert.doesNotMatch(html,/<th>За смены<\/th>/);
+
+    /* Без корректировок делить сумму надвое незачем. */
+    const plain=payrollReportDocument(
+      report([row({corrections:0})]),
+      {detailed:false}
+    );
+
+    assert.match(plain,/За смены/);
+    assert.doesNotMatch(plain,/По тарифу/);
+    assert.doesNotMatch(plain,/Корректировки/);
+  }
+);
+
+/* Корректировка в минус остаётся вычитанием и по знаку, и по арифметике. */
+test(
+  "отрицательная корректировка показывается со знаком минус",
+  ()=>{
+    const built=report([
+      row({
+        base:5400,
+        bonus:0,
+        fine:0,
+        corrections:-600,
+        due:5400,
+        paid:0
+      })
+    ]);
+
+    assert.equal(built.lines[0].tariffBase,6000);
+
+    const html=payrollReportDocument(built,{detailed:false});
+
+    assert.match(html,/− 600/);
+  }
+);

@@ -96,6 +96,11 @@
   gap:4px;
 }
 
+/* «3 250 из 6 250 ₽» не должно ломаться посередине. */
+.payout-summary-right .v{
+  white-space:nowrap;
+}
+
 .payout-status{
   color:var(--ink3);
   font-size:9.5px;
@@ -416,6 +421,18 @@
   padding:14px 12px;
   color:var(--ink3);
   font-size:11.5px;
+  text-align:center;
+}
+
+/*
+  Итоги без выбранного сотрудника. Строка объясняет пустоту, поэтому
+  читается как обычный текст, а не как приглушённая сноска.
+*/
+.stats-empty{
+  padding:20px 16px;
+  color:var(--ink2);
+  font-size:13px;
+  line-height:1.45;
   text-align:center;
 }
 
@@ -1178,16 +1195,25 @@
   font-size:11.5px;
 }
 
-/* Отчёты периода — второстепенные действия, ссылками, а не кнопками. */
+/*
+  Отчёты периода — второстепенные действия, ссылками, а не кнопками.
+
+  Выглядят они ссылками, но нажимать их всё равно пальцем: без внутренних
+  отступов цель была высотой в одну строку, 15 px, — вдвое ниже минимума
+  для указателя. Отступы поднимают цель почти до 40 px, а отрицательные
+  поля по краям и уменьшенный отступ сверху оставляют рисунок прежним.
+*/
 .payroll-report-actions{
   display:flex;
   flex-wrap:wrap;
-  gap:14px;
-  margin-top:10px;
+  gap:6px;
+  margin-top:0;
 }
 
 .payroll-report-link{
-  padding:0;
+  min-height:38px;
+  padding:11px 6px;
+  margin:0 -6px;
   border:0;
   background:transparent;
   color:var(--ink2);

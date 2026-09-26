@@ -373,9 +373,13 @@ test(
       page.locator("#sheet")
     ).toHaveClass(/\bon\b/);
 
+    /*
+      Откуда ставка, говорит блок «Итого» — единственное место, где
+      карточка показывает деньги.
+    */
     await expect(
       page.locator("#sheetBody")
-    ).toContainText("своя ставка");
+    ).toContainText("Индивидуальная ставка сотрудника");
 
     await expect(
       page.locator("#sheetBody")

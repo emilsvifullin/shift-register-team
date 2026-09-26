@@ -7,10 +7,17 @@
   второй ответ на вопрос «сколько начислено», а он должен быть один.
 
   Колонки выбраны так, чтобы не повторять одно и то же разными словами.
-  «За смены», «Премии» и «Штрафы» складываются в «Начислено», а
-  «Начислено» за период — это и есть сумма к выплате: отдельной колонки
-  «К выплате» рядом с ней быть не может, она была бы той же цифрой под
-  другим именем.
+  «По тарифу», «Корректировки», «Премии» и «Штрафы» складываются в
+  «Начислено», а «Начислено» за период — это и есть сумма к выплате:
+  отдельной колонки «К выплате» рядом с ней быть не может, она была бы
+  той же цифрой под другим именем.
+
+  Сумма за смены разложена на тариф и корректировки не для красоты.
+  Раньше колонка «За смены» показывала уже исправленную сумму, а рядом
+  стояли «Корректировки» — те же деньги второй раз. Строка выглядела
+  слагаемыми, но не сходилась: 26 400 + 2 400 никак не давало 26 400.
+  В зарплатном документе это худший вид ошибки — тот, который заставляет
+  пересчитывать всё остальное вручную.
 */
 
 export const REPORT_FORMATS=Object.freeze([
@@ -37,14 +44,19 @@ export function buildPayrollReport({
     const paid=round(row.paid);
     const gap=round(accrued-paid);
 
+    const corrections=round(row.corrections || 0);
+    const base=round(row.base);
+
     return {
       employeeId:row.employeeId,
       employeeName:row.employeeName,
       shifts:row.shifts,
-      base:round(row.base),
+      base,
+      /* Сколько дал тариф сам по себе, без правок руками. */
+      tariffBase:round(base-corrections),
       bonus:round(row.bonus),
       fine:round(row.fine),
-      corrections:round(row.corrections || 0),
+      corrections,
       accrued,
       paid,
       unpaid:gap>0 ? gap : 0,
@@ -65,6 +77,7 @@ export function buildPayrollReport({
         employees:total.employees+1,
         shifts:total.shifts+line.shifts,
         base:round(total.base+line.base),
+        tariffBase:round(total.tariffBase+line.tariffBase),
         bonus:round(total.bonus+line.bonus),
         fine:round(total.fine+line.fine),
         corrections:round(
@@ -79,6 +92,7 @@ export function buildPayrollReport({
         employees:0,
         shifts:0,
         base:0,
+        tariffBase:0,
         bonus:0,
         fine:0,
         corrections:0,

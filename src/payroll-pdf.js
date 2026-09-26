@@ -71,7 +71,8 @@ const STYLES=`
 
   .summary{
     display:grid;
-    grid-template-columns:repeat(4,1fr);
+    /* Плиток бывает четыре, пять или шесть — ряд заполняется целиком. */
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
     gap:10px;
     margin-top:14px;
   }
@@ -194,6 +195,12 @@ const money=value=>
     .toLocaleString("ru-RU")
     .replace(/ /g," ")} ₽`;
 
+/* Корректировка бывает и в минус — знак у неё часть смысла. */
+const signed=value=>
+  (Number(value) || 0)<0
+    ? `− ${money(Math.abs(value))}`
+    : `+ ${money(value)}`;
+
 const esc=value=>
   String(value ?? "").replace(
     /[&<>"]/g,
@@ -237,7 +244,8 @@ function summaryHTML(report){
 
 /*
   Колонка корректировок появляется, только если они были: пустой столбец
-  ради шаблона занимает место и заставляет искать в нём смысл.
+  ради шаблона занимает место и заставляет искать в нём смысл. Пока её
+  нет, сумма за смены и есть тариф, и делить её надвое незачем.
 */
 function tableHTML(report){
   const withCorrections=report.lines.some(
@@ -247,10 +255,10 @@ function tableHTML(report){
   const head=[
     "Сотрудник",
     "Смены",
-    "За смены",
+    withCorrections ? "По тарифу" : "За смены",
+    ...(withCorrections ? ["Корректировки"] : []),
     "Премии",
     "Штрафы",
-    ...(withCorrections ? ["Корректировки"] : []),
     "Начислено",
     "Выплачено",
     "Остаток"
@@ -267,12 +275,12 @@ function tableHTML(report){
       <tr>
         <td>${esc(line.employeeName)}</td>
         <td>${line.shifts}</td>
-        <td>${money(line.base)}</td>
+        <td>${money(withCorrections ? line.tariffBase : line.base)}</td>
+        ${withCorrections
+          ? `<td>${line.corrections ? signed(line.corrections) : "—"}</td>`
+          : ""}
         <td>${line.bonus ? money(line.bonus) : "—"}</td>
         <td>${line.fine ? money(line.fine) : "—"}</td>
-        ${withCorrections
-          ? `<td>${line.corrections ? money(line.corrections) : "—"}</td>`
-          : ""}
         <td><b>${money(line.accrued)}</b></td>
         <td>${money(line.paid)}</td>
         <td>${rest}</td>
@@ -294,12 +302,12 @@ function tableHTML(report){
         <tr>
           <td>Итого</td>
           <td>${totals.shifts}</td>
-          <td>${money(totals.base)}</td>
+          <td>${money(withCorrections ? totals.tariffBase : totals.base)}</td>
+          ${withCorrections
+            ? `<td>${totals.corrections ? signed(totals.corrections) : "—"}</td>`
+            : ""}
           <td>${totals.bonus ? money(totals.bonus) : "—"}</td>
           <td>${totals.fine ? money(totals.fine) : "—"}</td>
-          ${withCorrections
-            ? `<td>${totals.corrections ? money(totals.corrections) : "—"}</td>`
-            : ""}
           <td>${money(totals.accrued)}</td>
           <td>${money(totals.paid)}</td>
           <td>${
@@ -380,8 +388,13 @@ function personHTML(line){
               <th>Дата</th>
               <th>ПВЗ</th>
               <th>Тип</th>
+              <!--
+                Колонка «Ставка» держала слово «тариф ПВЗ», а сама ставка
+                стояла под «Размером». Человек, который ищет в документе
+                ставку, находил в ней не число.
+              -->
+              <th>Основание</th>
               <th>Ставка</th>
-              <th>Размер</th>
               <th>Сумма</th>
             </tr>
           </thead>

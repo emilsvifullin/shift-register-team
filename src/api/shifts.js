@@ -29,34 +29,6 @@ function adjustmentPayload(
     }));
 }
 
-/*
-  Причину корректировки оклада хранит своё поле, и требует её v3.
-
-  База обновляется отдельно от статики, поэтому клиент может застать базу
-  без v3. Пока причина не введена, терять нечего: смена уходит через v2
-  ровно как раньше. Если причина введена, молча сохранить её некуда —
-  тогда честнее сказать, что база ещё не обновлена, чем принять текст и
-  выбросить его.
-*/
-function missingFunction(error){
-  if(error?.code==="PGRST202"){
-    return true;
-  }
-
-  const message=String(
-    error?.message || ""
-  );
-
-  return (
-    (
-      message.includes("admin_save_shift_v4") ||
-      message.includes("admin_save_shift_v3")
-    ) &&
-    /does not exist|could not find|schema cache/i
-      .test(message)
-  );
-}
-
 function shiftPayload(value){
   return {
     p_shift_id:value.id,
@@ -107,54 +79,30 @@ function shiftPayload(value){
   Все изменения смен идут через версию с проверкой периода: закрытый
   период не должен меняться без согласия, и решать это должен сервер, а
   не желание вызывающего.
+
+  Запасного пути на прежнюю версию здесь нет намеренно. Она не знает ни
+  про причину корректировки, ни про закрытый период, поэтому «сохранить
+  хоть как-нибудь» означало бы записать смену в закрытый период без
+  подтверждения и без следа в истории. Если базы с v4 не окажется,
+  правильный ответ — отказ, а не тихий обход проверки.
 */
 export async function saveAdminShift(
   value,
   {force=false,reason=null}={}
 ){
-  const payload={
-    ...shiftPayload(value),
-    p_force:force,
-    p_reason:reason
-  };
-
-  const result=
-    await supabaseClient
-      .rpc(
-        "admin_save_shift_v4",
-        payload
-      );
-
-  if(
-    !result.error ||
-    !missingFunction(result.error)
-  ){
-    return resultData(
-      result,
-      "Не удалось сохранить смену"
-    );
-  }
-
-  if(payload.p_base_amount_reason){
-    throw new Error(
-      "Причину корректировки пока негде сохранить: база не обновлена"
-    );
-  }
-
-  const {
-    p_base_amount_reason,
-    ...legacy
-  }=payload;
-
   return resultData(
-    await supabaseClient
-      .rpc(
-        "admin_save_shift_v2",
-        legacy
-      ),
+    await supabaseClient.rpc(
+      "admin_save_shift_v4",
+      {
+        ...shiftPayload(value),
+        p_force:force,
+        p_reason:reason
+      }
+    ),
     "Не удалось сохранить смену"
   );
 }
+
 /*
   Явный пересчёт смены по тарифу, действующему на её дату сейчас.
   Обычное сохранение ничего не переоценивает — это отдельное решение

@@ -746,7 +746,9 @@ test(
     /* Видно, по какому тарифу посчитано, и что сейчас тариф другой. */
     const card=page.locator("#sheetBody");
 
-    await expect(card).toContainText("3 500 ₽ · тариф ПВЗ с");
+    await expect(card).toContainText("Оклад смены");
+    await expect(card).toContainText("3 500");
+    await expect(card).toContainText("Тариф ПВЗ");
     await expect(card).toContainText("сейчас действует");
     await expect(card).toContainText("5 000 ₽");
 

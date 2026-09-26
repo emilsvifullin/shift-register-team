@@ -3441,6 +3441,25 @@ async function applyRecalc(){
   }
 }
 
+/*
+  Сумма рядом со статусом выплаты.
+
+  Раньше здесь всегда стояло начисленное, и под словом «Частично
+  выплачено» оказывалась цифра 6 250 ₽, тогда как выплачено было 3 250 ₽.
+  Слово и число читаются вместе, поэтому число обязано отвечать слову: у
+  частичной выплаты — сколько из скольких, у переплаты — сколько ушло на
+  самом деле.
+*/
+function payoutSummaryAmount(progress,due){
+  if(progress.paid>0 && !progress.complete){
+    return progress.due>0
+      ? `${nf(progress.paid)} из ${money(progress.due)}`
+      : money(progress.paid);
+  }
+
+  return money(due);
+}
+
 function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
   const progress=paymentProgress(due,payoutRecords(employee?.id,kind));
   const open=expandedPayoutKind===kind;
@@ -3450,7 +3469,7 @@ function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
         <div class="l"><div class="t">${label}</div>${content}</div>
         <div class="payout-summary-right">
           <span class="payout-status ${progress.complete ? "paid" : progress.paid ? "partial" : ""}">${payoutStateLabel(progress)}</span>
-          <span class="v ${due<0 ? "neg" : ""}">${money(due)}</span>
+          <span class="v ${due<0 ? "neg" : ""}">${payoutSummaryAmount(progress,due)}</span>
         </div>
       </button>
       ${fieldRevealHTML({
@@ -3925,6 +3944,38 @@ function viewStats(){
         </div>
       `
       : "";
+
+  /*
+    Пока сотрудник не выбран, расчёта по нему нет — и показывать вместо
+    него нули нельзя.
+
+    Экран смешивает два масштаба: расчётные периоды считают всю команду,
+    а «Начислено», «Выплаты» и «За месяц» — одного человека. Без
+    выбранного человека вторые показывали не пустоту, а ложь: крупное
+    «0 ₽» под заголовком «Начислено», «Итого за сентябрь 0 ₽» и внутри
+    выплаты фразу «В этой части месяца смен нет» — всё это прямо под
+    строкой периода «Смен 133, К выплате 422 900 ₽» за тот же месяц.
+    Экран одновременно утверждал и то, и другое.
+
+    Периоды остаются: они не зависят от выбора. Остальное ждёт человека.
+  */
+  if(isAdmin && !selectedEmployee){
+    return `
+      ${statsFilters}
+
+      ${payrollPeriodsHTML()}
+
+      <div class="card">
+        <div class="stats-empty">
+          ${
+            availableStatsEmployees.length
+              ? "Выберите сотрудника, чтобы увидеть его расчёт за месяц."
+              : "Сотрудники не добавлены — расчёт показывать не по кому."
+          }
+        </div>
+      </div>
+    `;
+  }
 
   return `
     ${statsFilters}
@@ -11118,6 +11169,20 @@ function calcHTML(){
   const fromEmployeeRate=
     result.pricing?.rateSource==="employee";
 
+  /*
+    Корректировка показывается разницей, а не второй записью итога.
+    Раньше здесь стояла «Оплата за смену» с той же суммой, что и «За
+    смену» строкой ниже: при смене без премий и штрафов это была одна
+    цифра дважды подряд, и из неё не следовало ни что сумму назначили
+    вручную, ни насколько она разошлась с тарифом. Разница отвечает на
+    оба вопроса и складывается на глаз: 3 000 + 300 = 3 300.
+  */
+  const correction=result.baseOverridden
+    ? Math.round(
+        result.base-result.calculatedBase
+      )
+    : 0;
+
   return `
     <div class="ln">
       <span>${result.fixed ? "Оклад смены" : "Ставка по объёму"}</span>
@@ -11134,7 +11199,7 @@ function calcHTML(){
       )}</b>
     </div>
     ${draft.partial?`<div class="ln"><span>${nf(result.perHour)} ₽/час × ${hoursWord(result.hours)}</span><b>${money(result.calculatedBase)}</b></div>`:""}
-    ${result.baseOverridden?`<div class="ln"><span>Оплата за смену</span><b>${money(result.base)}</b></div>`:""}
+    ${correction?`<div class="ln"><span>Корректировка</span><b class="${correction<0 ? "neg" : "pos"}">${correction<0 ? "−" : "+"} ${money(Math.abs(correction))}</b></div>`:""}
     ${result.bonus?`<div class="ln"><span>Премии</span><b class="pos">+ ${money(result.bonus)}</b></div>`:""}
     ${result.fine?`<div class="ln"><span>Штрафы</span><b class="neg">− ${money(result.fine)}</b></div>`:""}
     <div class="tot"><span>За смену</span><span>${money(result.total)}</span></div>`;
@@ -11236,44 +11301,6 @@ function selectedDatesHTML(){
   `;
 }
 
-/*
-  По какому тарифу посчитана смена.
-
-  Стоимость смены фиксируется снимком тарифа в момент сохранения и потом
-  сама не меняется. Пока этот снимок нигде не показывался, отличие цены
-  от текущего тарифа выглядело ошибкой расчёта: человек видел 3 000 ₽ на
-  дате, где тариф уже 3 500 ₽, и не мог узнать, что смена просто заведена
-  раньше этого тарифа.
-*/
-function appliedTariffRowHTML(value){
-  const pricing=value?.pricing;
-
-  if(!pricing?.rate){
-    return "";
-  }
-
-  /*
-    У снимков до появления индивидуальных ставок поля нет, и других
-    ставок тогда не существовало — значит тариф ПВЗ.
-  */
-  const source=
-    pricing.rateSource==="employee"
-      ? "своя ставка"
-      : "тариф ПВЗ";
-
-  const from=pricing.effectiveFrom
-    ? `${source} с ${shortDateLabel(pricing.effectiveFrom)}`
-    : source;
-
-  return `
-    <div class="row shift-detail-readonly-row">
-      <div class="l">
-        <div class="s">Ставка</div>
-        <div class="t">${money(pricing.rate)} · ${esc(from)}</div>
-      </div>
-    </div>
-  `;
-}
 
 /*
   Тариф, действующий на дату смены сейчас. Если он разошёлся со снимком,
@@ -11387,6 +11414,13 @@ function drawSheet(isEdit){
     setHTML(
       document.getElementById("sheetBody"),
       `
+      <!--
+        Деньги живут в «Итого» и только там. Раньше карточка повторяла их
+        сама: строка «Смена» дублировала «За смену», а строка «Ставка» —
+        первые две строки «Итого» слово в слово. Одна и та же сумма
+        встречалась на экране трижды, и ни одно из повторений не
+        добавляло ничего нового.
+      -->
       <div class="ml">Смена</div>
       <div class="card">
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Дата</div><div class="t">${esc(dateLabel(draft.date))}</div></div></div>
@@ -11395,11 +11429,8 @@ function drawSheet(isEdit){
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Тип</div><div class="t">${draft.type==="extra" ? "Дополнительная" : "Основная"}</div></div></div>
         <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Часы</div><div class="t">${hoursWord(result.hours)}</div></div></div>
         ${fixed ? "" : `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Объём</div><div class="t">${nf(Number(draft.shk)||0)} ШК</div></div></div>`}
-        <div class="row shift-detail-readonly-row"><div class="l"><div class="s">Смена</div><div class="t">${money(result.base)}</div></div></div>
         ${draft.baseOverrideReason ? `<div class="row shift-detail-readonly-row"><div class="l"><div class="s">Причина корректировки</div><div class="t">${esc(draft.baseOverrideReason)}</div></div></div>` : ""}
-        ${appliedTariffRowHTML(draft)}
       </div>
-      ${tariffDivergenceHTML(draft)}
       ${adjustmentReadOnlyHTML("Премии",draft.bonuses)}
       ${adjustmentReadOnlyHTML("Штрафы",draft.penalties,true)}
       ${draft.note ? `
@@ -11408,6 +11439,12 @@ function drawSheet(isEdit){
       ` : ""}
       <div class="ml">Итого</div>
       <div class="calc">${calcHTML()}</div>
+      <!--
+        Предупреждение о разошедшемся тарифе стоит сразу под расчётом, а
+        не над ним: «посчитана по прежнему тарифу» имеет смысл только
+        после того, как видно, по какому именно.
+      -->
+      ${tariffDivergenceHTML(draft)}
       <div class="sheet-spacer" aria-hidden="true"></div>
     `
     );

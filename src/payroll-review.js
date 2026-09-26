@@ -15,6 +15,11 @@
   расчёта, что рисует «Итоги» и снимок периода.
 */
 
+import {
+  formatMoney
+} from "./format.js";
+
+
 /* Насколько ручная сумма должна разойтись с тарифной, чтобы спросить. */
 const MANUAL_GAP_SHARE=0.2;
 
@@ -182,6 +187,11 @@ function reviewEmployee({
   return found;
 }
 
+/*
+  Деньги в находках пишутся тем же форматом, что и везде: рядом с
+  «Недоплата 4 500 ₽» строка проверки показывала «Осталось 4500 ₽» —
+  те же деньги другим почерком.
+*/
 function format(value){
-  return `${Math.round(Number(value) || 0)} ₽`;
+  return formatMoney(Math.round(Number(value) || 0));
 }

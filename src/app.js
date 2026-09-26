@@ -3076,6 +3076,10 @@ function payrollPeriodError(error){
     return "Период уже закрыт";
   }
 
+  if(message.includes("payroll_period_already_paid")){
+    return "Период уже отмечен выплаченным";
+  }
+
   if(message.includes("payroll_period_not_closed")){
     return "Период ещё не закрыт";
   }

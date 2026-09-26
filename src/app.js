@@ -2422,44 +2422,71 @@ function eventMoment(value){
   счёт для открытого. Отчёт только добавляет к ним подробности, которые
   нужны человеку для объяснения суммы, и ничего не пересчитывает.
 */
-function payrollReportRows(kind,state){
-  const source=state.closed && state.snapshot.length
-    ? state.snapshot.map(row=>{
-        const stored=(teamData.periodEntries || []).find(
-          item=>
-            item.period_id===state.period.id &&
-            item.employee_id===row.employeeId
-        );
+/*
+  Строки отчёта — те же, которыми живёт экран периода.
 
-        return {
+  Отчёт брал свод из снимка закрытия, а подробности — из текущих смен, и
+  после правки закрытого периода расходился сам с собой: в своде 8 500 ₽
+  по снимку, в таблице смен под ним — уже другие суммы, а внизу
+  документа обещание, что цифры совпадают с разделом выплат. Не
+  совпадали: раздел показывал 9 500 ₽.
+
+  Теперь отчёт показывает текущий счёт — тот же, что и период. А то,
+  каким период закрыли, документ говорит отдельной строкой, если расчёт
+  с тех пор изменился: обещание «показать период таким, каким он закрыт»
+  никуда не делось, просто это отдельный факт, а не подмена итога.
+
+  Из снимка берётся только сотрудник, которого в текущем счёте больше
+  нет: смены перенесли, а выплата осталась.
+*/
+function payrollReportRows(kind,state){
+  const seen=new Set(
+    state.entries.map(entry=>entry.employeeId)
+  );
+
+  const orphans=state.closed
+    ? state.snapshot
+        .filter(row=>!seen.has(row.employeeId))
+        .map(row=>({
           employeeId:row.employeeId,
           employeeName:row.employeeName,
-          shifts:Number(stored?.shifts) || 0,
-          base:Number(stored?.base) || 0,
-          bonus:Number(stored?.bonus) || 0,
-          fine:Number(stored?.fine) || 0,
+          shifts:0,
+          base:0,
+          bonus:0,
+          fine:0,
           due:row.due,
           paid:row.paid,
-          detail:reportDetail(
-            row.employeeId,
-            kind,
-            stored?.detail?.shifts || []
-          )
-        };
-      })
-    : state.entries.map(entry=>({
-        ...entry,
-        detail:reportDetail(
-          entry.employeeId,
-          kind,
-          entry.detail?.shifts || []
-        )
-      }));
+          detail:null
+        }))
+    : [];
 
-  return source.map(row=>({
+  return [...state.entries,...orphans].map(row=>({
     ...row,
+    detail:reportDetail(
+      row.employeeId,
+      kind,
+      row.detail?.shifts || []
+    ),
     corrections:correctionsFor(row.employeeId,kind)
   }));
+}
+
+/* Сумма, на которую период закрыли, если расчёт с тех пор изменился. */
+function closedAtDue(state){
+  if(!state.closed || !state.snapshot.length){
+    return null;
+  }
+
+  const frozen=Math.round(
+    state.snapshot.reduce(
+      (sum,row)=>sum+(Number(row.due) || 0),
+      0
+    )
+  );
+
+  return frozen===Math.round(state.totals.due)
+    ? null
+    : frozen;
 }
 
 /* Ручные корректировки смен периода — тем же признаком, что и везде. */
@@ -2577,6 +2604,7 @@ function openPayrollReport({kind,detailed,employeeId}){
       ? "проверено, данные изменились"
       : periodStatusLabel(state.status).toLowerCase(),
     rows:payrollReportRows(kind,state),
+    closedAtDue:closedAtDue(state),
     generatedAt:new Date().toLocaleString("ru-RU",{
       day:"numeric",
       month:"long",

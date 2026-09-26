@@ -258,3 +258,54 @@ test(
     assert.match(html,/− 600/);
   }
 );
+
+/*
+  Период закрыли на одну сумму, а потом расчёт изменили — через
+  подтверждение и с записью в историю. Документ обязан сказать об этом
+  сам: иначе читатель сверяет его с экраном выплат и не сходится.
+*/
+test(
+  "документ сообщает, на какую сумму период был закрыт",
+  ()=>{
+    const built=buildPayrollReport({
+      periodLabel:"1–15",
+      monthLabel:"декабрь 2026",
+      statusLabel:"закрыто",
+      generatedAt:"26 сентября 2026, 10:40",
+      closedAtDue:8500,
+      rows:[
+        row({
+          shifts:2,
+          base:8000,
+          bonus:1500,
+          fine:0,
+          corrections:0,
+          due:9500,
+          paid:6500
+        })
+      ]
+    });
+
+    assert.equal(built.closedAtDue,8500);
+    assert.equal(built.totals.accrued,9500);
+    assert.equal(built.totals.unpaid,3000);
+
+    const html=payrollReportDocument(built,{detailed:false});
+
+    assert.match(html,/Период закрыт на 8\s500\s₽/);
+    assert.match(html,/расчёт изменили/);
+  }
+);
+
+/* Пока расчёт не менялся, лишней строки в документе нет. */
+test(
+  "без расхождения со снимком документ ничего не добавляет",
+  ()=>{
+    const html=payrollReportDocument(
+      report([row()]),
+      {detailed:false}
+    );
+
+    assert.doesNotMatch(html,/Период закрыт на/);
+  }
+);

@@ -169,6 +169,19 @@ const STYLES=`
     color:#5F6166;
   }
 
+  /*
+    Расчёт после закрытия меняли. Документ говорит об этом сразу под
+    шапкой: иначе читатель сверяет его с экраном и не сходится.
+  */
+  .changed{
+    margin:14px 0 0;
+    padding:8px 12px;
+    border-left:2px solid #D6B278;
+    color:#5F6166;
+    font-size:11.5px;
+    line-height:1.45;
+  }
+
   .neg{color:#A8443A;}
   .own{color:#8C7245;}
 
@@ -434,6 +447,15 @@ export function payrollReportDocument(report,{detailed=false}={}){
         : ""}
     </div>
   </header>
+
+  ${report.closedAtDue===null || report.closedAtDue===undefined
+    ? ""
+    : `
+      <p class="changed">
+        Период закрыт на ${money(report.closedAtDue)}. После закрытия
+        расчёт изменили — здесь он показан таким, какой он сейчас.
+      </p>
+    `}
 
   ${summaryHTML(report)}
 

@@ -31,7 +31,8 @@ export function buildPayrollReport({
   statusLabel,
   rows,
   generatedAt,
-  employeeId=null
+  employeeId=null,
+  closedAtDue=null
 }){
   const scoped=employeeId
     ? rows.filter(row=>
@@ -71,6 +72,11 @@ export function buildPayrollReport({
     statusLabel,
     generatedAt,
     employeeId,
+    /*
+      Сумма, на которую период закрыли, если расчёт с тех пор изменили.
+      Отдельный факт рядом с итогом, а не подмена итога.
+    */
+    closedAtDue,
     lines,
     totals:lines.reduce(
       (total,line)=>({

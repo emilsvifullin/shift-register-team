@@ -380,3 +380,36 @@ test(
       .toHaveText("10 сентября 2026");
   }
 );
+
+/*
+  Удаление записи выплаты должно закончиться само.
+
+  Обёртка подтверждения для закрытого периода обозначала отказ человека
+  значением null — тем же, что возвращают функции без результата. Обе
+  функции удаления объявлены в базе returns void, и успешное удаление
+  выглядело для приложения отказом: вызывающий код выходил раньше
+  времени и не делал ни обновления данных, ни сообщения. Экран всё же
+  менялся, но только потому, что подписка приносила изменения сама.
+*/
+test(
+  "deleting a payout record finishes with its own refresh and message",
+  async({page})=>{
+    await openStats(page,[{amount:5000}]);
+    await expandPayout(page);
+
+    await page
+      .locator("[data-payout-delete]")
+      .first()
+      .click();
+
+    await page.locator("#appConfirmOk").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Запись выплаты удалена");
+
+    await expect(
+      page.locator("[data-payout-delete]")
+    ).toHaveCount(0);
+  }
+);

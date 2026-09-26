@@ -805,3 +805,35 @@ test.describe("mobile",()=>{
     }
   );
 });
+
+/*
+  Удаление смены должно закрыть её форму.
+
+  Обёртка подтверждения для закрытого периода обозначала отказ человека
+  значением null — тем же, что возвращает admin_delete_shift_v2, которая
+  в базе объявлена returns void. Успешное удаление выглядело отказом:
+  обработчик выходил до closeSheet(), и форма несуществующей смены
+  оставалась на экране вместе с кнопками «Готово» и «Удалить смену».
+  Список при этом обновлялся — но чужими руками, подпиской на изменения.
+*/
+test(
+  "deleting a shift closes its sheet",
+  async({page})=>{
+    await openApp(page,{seed:seed()});
+
+    await page.locator(".sh").first().click();
+    await expect(page.locator("#sheet")).toHaveClass(/\bon\b/);
+
+    await page.locator("#sheetSave").click();
+    await page.locator("#f-del").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("Смена удалена");
+
+    await expect(
+      page.locator("#sheet")
+    ).not.toHaveClass(/\bon\b/);
+  }
+);

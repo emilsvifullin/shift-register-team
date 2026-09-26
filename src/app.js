@@ -2903,6 +2903,25 @@ function closedPeriodInfo(error){
 }
 
 /*
+  Отказ от изменения закрытого периода.
+
+  Раньше отказ обозначался значением null — и совпал с тем, что
+  возвращают функции без результата. `admin_delete_shift_v2` и
+  `admin_delete_employee_payout_v2` объявлены `returns void`, PostgREST
+  отдаёт на них null, и успешное удаление выглядело для вызывающего
+  ровно как «человек передумал»: форма удалённой смены оставалась
+  открытой вместе с кнопками «Готово» и «Удалить смену», а после
+  удаления выплаты не было ни обновления данных, ни подтверждения.
+  Экран всё же менялся — но только потому, что подписка на изменения
+  приносила их сама, уже мимо этого кода.
+
+  Отдельное значение ни с чем не совпадает.
+*/
+const PERIOD_CHANGE_DECLINED=Symbol(
+  "отказ от изменения закрытого периода"
+);
+
+/*
   Выполнить финансовое действие, а если период закрыт — спросить и
   повторить. Одна обёртка на все такие действия: смена, пересчёт,
   выплата. Иначе каждое место спрашивало бы по-своему.
@@ -2931,7 +2950,7 @@ async function withClosedPeriodConfirm(what,run){
     );
 
     if(!agreed){
-      return null;
+      return PERIOD_CHANGE_DECLINED;
     }
 
     return run(true);
@@ -3392,7 +3411,7 @@ async function applyRecalc(){
           })
         );
 
-        if(result===null){
+        if(result===PERIOD_CHANGE_DECLINED){
           continue;
         }
       }else{
@@ -3410,7 +3429,7 @@ async function applyRecalc(){
           )
         );
 
-        if(result===null){
+        if(result===PERIOD_CHANGE_DECLINED){
           continue;
         }
       }
@@ -3541,7 +3560,7 @@ async function persistPayout(){
       })
     );
 
-    if(stored===null){
+    if(stored===PERIOD_CHANGE_DECLINED){
       payoutSaving=false;
       render();
       return;
@@ -15930,7 +15949,7 @@ document.getElementById("sheetSave").onclick=async()=>{
         force=>saveAdminShift(payload,{force})
       );
 
-      if(saved===null){
+      if(saved===PERIOD_CHANGE_DECLINED){
         declined=true;
         break;
       }
@@ -16398,7 +16417,7 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
         force=>repriceAdminShift(draft.id,{force})
       );
 
-      if(repriced===null){
+      if(repriced===PERIOD_CHANGE_DECLINED){
         return;
       }
       await refreshTeamData({renderAfter:false});
@@ -16605,7 +16624,7 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
         force=>deleteAdminShift(draft.id,{force})
       );
 
-      if(removed===null){
+      if(removed===PERIOD_CHANGE_DECLINED){
         return;
       }
 
@@ -17391,7 +17410,7 @@ app.addEventListener("click",async event=>{
           )
         );
 
-        if(dropped===null){
+        if(dropped===PERIOD_CHANGE_DECLINED){
           return;
         }
         await refreshTeamData({renderAfter:false});

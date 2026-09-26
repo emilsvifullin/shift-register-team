@@ -556,7 +556,16 @@ export function stubScript(seed){
 
       assertPeriodOpen(db,shift.shift_date,args.p_force);
 
-      return rpc.admin_delete_shift(args);
+      rpc.admin_delete_shift(args);
+
+      /*
+        В базе функция объявлена returns void, и PostgREST отдаёт на
+        неё null. Заглушка раньше возвращала идентификатор смены — и
+        вызывающий код в тестах видел не то, что видит в production.
+        Ровно на этом расхождении и держалась ошибка: удаление смены
+        выглядело для приложения отказом от изменения закрытого периода.
+      */
+      return null;
     },
     admin_reprice_shift_v2(args){
       const shift=(db.shifts || []).find(item=>
@@ -619,7 +628,21 @@ export function stubScript(seed){
         );
       }
 
-      return rpc.admin_delete_employee_payout(args);
+      db.employee_payouts=(db.employee_payouts || []).filter(item=>
+        item.id!==args.p_payout_id
+      );
+
+      recordEvent(db,{
+        period_month:payout.period_month,
+        payout_kind:payout.payout_kind,
+        employee_id:payout.employee_id,
+        kind:"payout_deleted",
+        summary:"выплата "+payout.amount+" ₽ удалена",
+        effect:-payout.amount
+      });
+
+      /* Та же история: в базе returns void. */
+      return null;
     },
     admin_check_payroll_period(args){
       const period=ensurePeriod(db,args);

@@ -12,11 +12,11 @@
     «Контроль»  — все ПВЗ месяца одной таблицей: строка на ПВЗ, столбец
                   на день. Отвечает на вопрос «где вообще пропуски».
 
-  Модуль ничего не импортирует из приложения: данные и форматтеры
-  приходят доводом, наружу уходит разметка. Состояние (режим, выбранный
-  ПВЗ, выбранный день) живёт в app.js рядом с остальным состоянием
-  экрана. Исключение — лента ПВЗ: её прокрутка это поведение самой
-  разметки, и она целиком здесь.
+  Модуль ничего не импортирует из приложения: данные, форматтеры и
+  общие куски разметки (раскрытие строки, поле поиска) приходят доводом,
+  наружу уходит разметка. Состояние (режим, выбранный ПВЗ, открытый
+  день, выбранные дни) живёт в app.js рядом с остальным состоянием
+  экрана, поведения своего у модуля нет.
 
   Про «пропущенный день». Расписание ПВЗ приложению неизвестно, поэтому
   нигде не утверждается, что смена была обязана быть. Показывается
@@ -153,292 +153,116 @@ export function shiftViewSwitcherHTML(mode){
   `;
 }
 
-function pointChipsHTML({
+/*
+  Выбор ПВЗ — строка с раскрывающимся списком и поиском, та же, что
+  выбирает сотрудника в «Итогах».
+
+  Раньше здесь была горизонтальная лента кнопок. На пяти пунктах она
+  удобна, на тридцати до нужного приходилось долистывать, а на сотне
+  найти его можно было только глазами. Список прокручивается по
+  вертикали, где его и читают, и сужается поиском по первым буквам —
+  число пунктов на это больше не влияет.
+
+  Рядом с каждым пунктом — сколько у него смен в этом месяце: ноль тоже
+  ответ, ради него календарь и открывают.
+*/
+function pointPickerHTML({
   points,
   pointId,
   counts,
-  esc
+  total,
+  open,
+  query,
+  format
 }){
-  /*
-    Лента ПВЗ прокручивается по горизонтали, и до дальних пунктов надо
-    доставать всеми способами сразу: пальцем и двумя пальцами по
-    трекпаду — самой прокруткой, колесом мыши — переносом вертикального
-    шага в горизонтальный, а стрелками — для тех, у кого ни того, ни
-    другого. Стрелки показываются только указательным устройствам и
-    только когда лента действительно не помещается; их состояние
-    проставляет syncShiftViewChips.
-  */
-  return `
-    <div class="sv-points" data-points-strip>
-      <button
-        type="button"
-        class="sv-points-nav back"
-        data-points-scroll="-1"
-        aria-label="Показать предыдущие ПВЗ"
-        hidden
-      >
-        <svg viewBox="0 0 12 16" aria-hidden="true">
-          <path d="M9 3L3 8L9 13"></path>
-        </svg>
-      </button>
+  const {esc,reveal,search,filterOptions,shiftsWord}=format;
 
-      <div
-        class="sv-chips"
-        data-points-chips
-        role="group"
-        aria-label="Пункт выдачи"
-        tabindex="0"
-      >
-        <button
-          type="button"
-          class="sv-chip ${pointId ? "" : "on"}"
-          data-calendar-point=""
-        >
-          Все ПВЗ
-        </button>
+  const options=[
+    {
+      value:"",
+      label:"Все ПВЗ",
+      count:total
+    },
+    ...points.map(point=>({
+      value:point.id,
+      label:point.name,
+      searchText:point.code || "",
+      count:counts.get(point.id) || 0
+    }))
+  ];
 
-        ${points.map(point=>`
+  const visible=filterOptions(options,query);
+  const current=options.find(option=>option.value===pointId) || options[0];
+
+  const list=visible.length
+    ? `
+      <div class="inline-options">
+        ${visible.map(option=>`
           <button
             type="button"
-            class="sv-chip ${point.id===pointId ? "on" : ""}"
-            data-calendar-point="${esc(point.id)}"
+            class="point-option ${option.value===current.value ? "on" : ""}"
+            data-calendar-point="${esc(option.value)}"
           >
-            ${esc(point.name)}
-            <span class="sv-chip-count">
-              ${counts.get(point.id) || 0}
+            <span class="point-check">
+              ${option.value===current.value ? "\u2713" : ""}
             </span>
+            <span class="point-name">${esc(option.label)}</span>
+            <span class="sv-option-count">${option.count}</span>
           </button>
         `).join("")}
       </div>
+    `
+    : `<div class="inline-empty">Ничего не найдено</div>`;
 
+  return `
+    <div class="ml">Пункт выдачи</div>
+    <div class="card employee-editor sv-point-card">
       <button
         type="button"
-        class="sv-points-nav ahead"
-        data-points-scroll="1"
-        aria-label="Показать следующие ПВЗ"
-        hidden
+        class="row point-row sv-point-row"
+        id="calendarPointOpen"
+        aria-expanded="${open ? "true" : "false"}"
+        aria-label="Пункт выдачи: ${esc(current.label)}"
       >
-        <svg viewBox="0 0 12 16" aria-hidden="true">
-          <path d="M3 3L9 8L3 13"></path>
-        </svg>
+        <div class="t">${esc(current.label)}</div>
+        <div class="point-value">${shiftsWord(current.count)}</div>
       </button>
+
+      ${reveal({
+        key:"calendarPointReveal",
+        open,
+        body:`
+          <div class="inline-choice">
+            ${search({
+              id:"calendarPointSearch",
+              value:query,
+              label:"Поиск ПВЗ"
+            })}
+            ${list}
+          </div>
+        `
+      })}
     </div>
   `;
 }
 
-/* Погрешность дробной ширины: иначе «конец» не наступает никогда. */
-const SCROLL_EPS=2;
-
 /*
-  Состояние ленты ПВЗ: видны ли стрелки, упёрлась ли она в край и надо
-  ли затенять обрезанный край. Вызывается после каждой перерисовки и на
-  прокрутку с изменением размера окна.
+  Клетка дня.
+
+  Высота клетки не зависит от того, что в ней лежит: её задаёт строка
+  сетки, а не содержимое. Раньше неделя с насыщенными днями вырастала,
+  а последняя строка месяца — будущие дни без смен — оставалась ниже
+  остальных, и сетка месяца выглядела собранной из разных кусков.
+  Поэтому строк с именами помещается ровно столько, сколько влезает в
+  клетку: три, а если смен больше — две и «ещё N».
 */
-function syncShiftViewChips(root=document){
-  const frame=root.querySelector("[data-points-strip]");
-  const strip=frame?.querySelector("[data-points-chips]");
-
-  if(!frame || !strip){
-    return;
-  }
-
-  const overflow=
-    strip.scrollWidth-
-    strip.clientWidth;
-
-  const left=strip.scrollLeft;
-
-  frame.classList.toggle(
-    "has-start",
-    overflow>SCROLL_EPS &&
-    left>SCROLL_EPS
-  );
-
-  frame.classList.toggle(
-    "has-end",
-    overflow>SCROLL_EPS &&
-    left<overflow-SCROLL_EPS
-  );
-
-  for(const button of frame.querySelectorAll(
-    "[data-points-scroll]"
-  )){
-    const ahead=
-      button.dataset.pointsScroll==="1";
-
-    button.hidden=overflow<=SCROLL_EPS;
-
-    button.disabled=ahead
-      ? left>=overflow-SCROLL_EPS
-      : left<=SCROLL_EPS;
-  }
-}
-
-/*
-  Выбранный ПВЗ не должен уезжать за край после переключения: лента
-  подтягивает его к себе, а не заставляет искать заново.
-
-  Подтягивает ровно один раз на выбор. Перерисовка случается и сама по
-  себе — например, когда приходят свежие данные; если возвращать ленту
-  на каждой, она будет отматываться из-под руки у того, кто её листает.
-*/
-let revealedPointId=null;
-
-function revealActiveChip(root){
-  const strip=root.querySelector("[data-points-chips]");
-  const active=strip?.querySelector(".sv-chip.on");
-
-  if(!strip || !active){
-    revealedPointId=null;
-    return;
-  }
-
-  const pointId=active.dataset.calendarPoint ?? "";
-
-  if(pointId===revealedPointId){
-    return;
-  }
-
-  revealedPointId=pointId;
-
-  const stripBox=strip.getBoundingClientRect();
-  const chipBox=active.getBoundingClientRect();
-
-  if(
-    chipBox.left>=stripBox.left-SCROLL_EPS &&
-    chipBox.right<=stripBox.right+SCROLL_EPS
-  ){
-    return;
-  }
-
-  active.scrollIntoView({
-    behavior:"smooth",
-    block:"nearest",
-    inline:"nearest"
-  });
-}
-
-/*
-  Разовая установка обработчиков ленты. Поведение ленты живёт здесь
-  целиком, поэтому в app.js от неё остаётся одна строка.
-*/
-export function installShiftViewChips(root){
-  const sync=()=>syncShiftViewChips(root);
-
-  root.addEventListener(
-    "scroll",
-    event=>{
-      if(
-        event.target instanceof HTMLElement &&
-        event.target.hasAttribute("data-points-chips")
-      ){
-        sync();
-      }
-    },
-    true
-  );
-
-  /*
-    Колесо мыши шлёт только deltaY, и лента для него неподвижна.
-    Горизонтальный жест трекпада приходит со своим deltaX — его отдаём
-    браузеру как есть.
-  */
-  root.addEventListener(
-    "wheel",
-    event=>{
-      const strip=event.target instanceof Element
-        ? event.target.closest("[data-points-chips]")
-        : null;
-
-      if(!strip){
-        return;
-      }
-
-      const overflow=
-        strip.scrollWidth-
-        strip.clientWidth;
-
-      /* Лента помещается целиком — колесу здесь делать нечего. */
-      if(overflow<=SCROLL_EPS){
-        return;
-      }
-
-      /*
-        Пока курсор над лентой, колесо принадлежит ей. Листание месяцев
-        слушает горизонтальный жест на всём документе, и без этого
-        двухпальцевый свайп по ленте заодно перелистывал бы месяц.
-      */
-      event.stopPropagation();
-
-      /* Горизонтальный жест лента прокручивает сама, без нас. */
-      if(
-        Math.abs(event.deltaX)>
-        Math.abs(event.deltaY)
-      ){
-        return;
-      }
-
-      const next=Math.max(
-        0,
-        Math.min(
-          overflow,
-          strip.scrollLeft+event.deltaY
-        )
-      );
-
-      if(next===strip.scrollLeft){
-        return;
-      }
-
-      event.preventDefault();
-      strip.scrollLeft=next;
-      sync();
-    },
-    {passive:false}
-  );
-
-  root.addEventListener("click",event=>{
-    const button=event.target instanceof Element
-      ? event.target.closest("[data-points-scroll]")
-      : null;
-
-    if(!button){
-      return;
-    }
-
-    const strip=button
-      .closest("[data-points-strip]")
-      ?.querySelector("[data-points-chips]");
-
-    if(!strip){
-      return;
-    }
-
-    /* Шаг — почти экран ленты: край остаётся виден для связи. */
-    strip.scrollBy({
-      left:
-        Number(button.dataset.pointsScroll)*
-        Math.max(
-          120,
-          strip.clientWidth*0.8
-        ),
-      behavior:"smooth"
-    });
-  });
-
-  window.addEventListener("resize",sync);
-}
-
-export function afterShiftViewRender(root=document){
-  syncShiftViewChips(root);
-  revealActiveChip(root);
-}
-
 function dayCellHTML({
   date,
   list,
   today,
   selectedDay,
+  picking,
+  picked,
   pointId,
   format
 }){
@@ -452,17 +276,23 @@ function dayCellHTML({
     0
   );
 
+  const chosen=picking
+    ? picked.has(date)
+    : date===selectedDay;
+
   const classes=[
     "sv-day",
     list.length ? "has" : "empty",
     !list.length && past ? "missed" : "",
     !list.length && !past ? "ahead" : "",
     date===today ? "today" : "",
-    date===selectedDay ? "on" : ""
+    chosen ? (picking ? "picked" : "on") : ""
   ].filter(Boolean);
 
+  const shown=list.length>3 ? 2 : 3;
+
   const lines=list
-    .slice(0,3)
+    .slice(0,shown)
     .map(shift=>`
       <span class="sv-day-line">
         <span class="sv-day-line-main">
@@ -482,8 +312,8 @@ function dayCellHTML({
     `)
     .join("");
 
-  const hidden=list.length>3
-    ? `<span class="sv-day-more">ещё ${list.length-3}</span>`
+  const hidden=list.length>shown
+    ? `<span class="sv-day-more">ещё ${list.length-shown}</span>`
     : "";
 
   return `
@@ -491,7 +321,7 @@ function dayCellHTML({
       type="button"
       class="${classes.join(" ")}"
       data-calendar-day="${date}"
-      aria-pressed="${date===selectedDay ? "true" : "false"}"
+      aria-pressed="${chosen ? "true" : "false"}"
       aria-label="${day}, ${
         list.length
           ? `смен: ${list.length}`
@@ -518,14 +348,81 @@ function dayCellHTML({
   `;
 }
 
+/*
+  Строка смены в панели. Одна разметка на панель дня и на выбор дней:
+  отличается только то, что делает нажатие.
+*/
+function panelShiftHTML({
+  shift,
+  pick,
+  format
+}){
+  const {esc,money,calc}=format;
+
+  const attributes=pick
+    ? `
+      data-key="calendar-pick-${esc(shift.id)}"
+      data-calendar-pick-shift="${esc(shift.id)}"
+      aria-pressed="${pick.included ? "true" : "false"}"
+    `
+    : `
+      data-key="calendar-day-shift-${esc(shift.id)}"
+      data-edit="${esc(shift.id)}"
+    `;
+
+  return `
+    <button
+      type="button"
+      class="sh${pick?.included ? " chosen" : ""}"
+      ${attributes}
+    >
+      ${pick
+        ? `<span class="sh-check" aria-hidden="true">${
+            pick.included ? "✓" : ""
+          }</span>`
+        : ""}
+
+      <span class="day">
+        <span class="d">${Number(shift.date.slice(8,10))}</span>
+        <span class="w">${
+          WEEKDAYS[weekdayIndex(shift.date)]
+        }</span>
+      </span>
+
+      <span class="mid">
+        <span class="p">${esc(shift.point)}</span>
+        <span class="meta">
+          <span>${esc(shift.employeeName || "—")}</span>
+          ${shift.type==="extra"
+            ? `<span class="tag g">Доп</span>`
+            : ""}
+          ${shift.partial
+            ? `<span class="tag">часть</span>`
+            : ""}
+        </span>
+      </span>
+
+      <span class="amt">${money(calc(shift).total)}</span>
+    </button>
+  `;
+}
+
+/*
+  Панель дня.
+
+  «Смен нет» говорится один раз. Прежде пустой день сообщал об этом
+  дважды подряд — подписью под датой и отдельной строкой под ней, а
+  рядом то же самое уже показывала клетка календаря.
+*/
 function dayPanelHTML({
   selectedDay,
   list,
-  pointName,
+  scopeName,
+  today,
   isAdmin,
   format
 }){
-  const {esc,money,calc,dateLabel,shortDateLabel}=format;
+  const {esc,money,calc,dateLabel,shortDateLabel,shiftsWord}=format;
 
   if(!selectedDay){
     return `
@@ -537,42 +434,10 @@ function dayPanelHTML({
     `;
   }
 
-  const rows=list
-    .map(shift=>{
-      const result=calc(shift);
-
-      return `
-        <button
-          type="button"
-          class="sh"
-          data-key="calendar-day-shift-${esc(shift.id)}"
-          data-edit="${esc(shift.id)}"
-        >
-          <span class="day">
-            <span class="d">${Number(selectedDay.slice(8,10))}</span>
-            <span class="w">${
-              WEEKDAYS[weekdayIndex(selectedDay)]
-            }</span>
-          </span>
-
-          <span class="mid">
-            <span class="p">${esc(shift.point)}</span>
-            <span class="meta">
-              <span>${esc(shift.employeeName || "—")}</span>
-              ${shift.type==="extra"
-                ? `<span class="tag g">Доп</span>`
-                : ""}
-              ${shift.partial
-                ? `<span class="tag">часть</span>`
-                : ""}
-            </span>
-          </span>
-
-          <span class="amt">${money(result.total)}</span>
-        </button>
-      `;
-    })
-    .join("");
+  const total=list.reduce(
+    (sum,shift)=>sum+calc(shift).total,
+    0
+  );
 
   return `
     <div class="sv-panel">
@@ -581,19 +446,25 @@ function dayPanelHTML({
           ${esc(dateLabel(selectedDay))}
         </div>
         <div class="sv-panel-sub">
-          ${pointName ? esc(pointName)+" · " : ""}${
+          ${esc(scopeName)}${
             list.length
-              ? `смен: ${list.length}`
-              : "смен нет"
+              ? ` · ${shiftsWord(list.length)} · ${money(total)}`
+              : ""
           }
         </div>
       </div>
 
       ${list.length
-        ? `<div class="sv-panel-list">${rows}</div>`
-        : `<div class="sv-panel-hint">
-             В этот день смен не записано.
-           </div>`}
+        ? `<div class="sv-panel-list">${
+            list
+              .map(shift=>panelShiftHTML({shift,format}))
+              .join("")
+          }</div>`
+        : `<div class="sv-panel-hint">${
+            selectedDay<=today
+              ? "В этот день смен не записано."
+              : "На этот день смен пока нет."
+          }</div>`}
 
       ${isAdmin
         ? `<button
@@ -611,18 +482,192 @@ function dayPanelHTML({
   `;
 }
 
+/*
+  Панель выбора дней.
+
+  Календарь выбирает дни, а не строки: «эти дни у этого ПВЗ» — и есть
+  тот вопрос, с которым сюда приходят убирать ошибочно заведённое или
+  заводить смены на несколько дней сразу. Поэтому массовое действие
+  здесь начинается с дней, а панель показывает, во что выбор
+  превращается: какие смены, на какую сумму. Любую из них можно снять —
+  в одном дне бывают смены разных людей, а убрать нужно только чужие.
+
+  Если среди смен есть закрытый или выплаченный период, панель говорит
+  об этом до нажатия. Сама защита остаётся там, где была: сервер
+  откажет, и про каждый такой период спросят отдельно.
+*/
+function pickPanelHTML({
+  picked,
+  shifts,
+  skipped,
+  scopeName,
+  canPickAll,
+  format
+}){
+  const {esc,money,calc,plural,shiftsWord,shiftsAccWord,periodLock}=format;
+
+  const daysWord=count=>plural(
+    count,
+    ["день","дня","дней"]
+  );
+
+  if(!picked.length){
+    return `
+      <div class="sv-panel sv-panel-pick">
+        <div class="sv-panel-head">
+          <div class="sv-panel-date">Выбор дней</div>
+          <div class="sv-panel-sub">${esc(scopeName)}</div>
+        </div>
+
+        <div class="sv-panel-hint">
+          Отметьте дни в календаре — здесь соберутся их смены.
+          <span class="sv-pick-range-hint">
+            С Shift отмечаются дни подряд.
+          </span>
+        </div>
+
+        ${canPickAll
+          ? `<button
+               type="button"
+               class="lnk b sv-pick-all"
+               data-calendar-pick-all
+             >
+               Отметить все дни со сменами
+             </button>`
+          : ""}
+      </div>
+    `;
+  }
+
+  const included=shifts.filter(
+    shift=>!skipped.has(shift.id)
+  );
+
+  const total=included.reduce(
+    (sum,shift)=>sum+calc(shift).total,
+    0
+  );
+
+  const locks=new Map();
+
+  for(const shift of included){
+    const lock=periodLock(shift.date);
+
+    if(lock){
+      locks.set(lock.key,lock.label);
+    }
+  }
+
+  return `
+    <div class="sv-panel sv-panel-pick">
+      <div class="sv-panel-head">
+        <div class="sv-panel-date">
+          Выбрано ${daysWord(picked.length)}
+        </div>
+        <div class="sv-panel-sub">
+          ${esc(scopeName)}${
+            shifts.length
+              ? ` · ${shiftsWord(included.length)} · ${money(total)}`
+              : ""
+          }
+        </div>
+        <button
+          type="button"
+          class="lnk sv-pick-clear"
+          data-calendar-pick-clear
+        >
+          Снять выбор
+        </button>
+      </div>
+
+      ${shifts.length
+        ? `<div class="sv-panel-list">${
+            shifts
+              .map(shift=>panelShiftHTML({
+                shift,
+                pick:{included:!skipped.has(shift.id)},
+                format
+              }))
+              .join("")
+          }</div>`
+        : `<div class="sv-panel-hint">
+             В выбранных днях смен нет.
+           </div>`}
+
+      ${locks.size
+        ? `<div class="sv-panel-note">${
+            [...locks.values()]
+              .map(label=>esc(label))
+              .join(". ")
+          }. Удаление там попадёт в историю периода — перед ним спросим отдельно.</div>`
+        : ""}
+
+      <div class="sv-panel-actions">
+        <button
+          type="button"
+          class="btn gold"
+          data-calendar-add-picked
+        >
+          Добавить смену на ${daysWord(picked.length)}
+        </button>
+
+        ${shifts.length
+          ? `<button
+               type="button"
+               class="btn warn"
+               data-calendar-delete-picked
+               ${included.length ? "" : "disabled"}
+             >
+               Удалить ${
+                 included.length
+                   ? `${included.length} ${shiftsAccWord(included.length)}`
+                   : "смены"
+               }
+             </button>`
+          : ""}
+      </div>
+    </div>
+  `;
+}
+
+/*
+  Смены, которые попадают в выбранные дни при текущем ПВЗ. Тот же
+  расчёт нужен и разметке, и действию, поэтому он здесь, в одном месте.
+*/
+export function pickedShifts({
+  shifts,
+  pointId,
+  picked
+}){
+  return shifts
+    .filter(shift=>
+      picked.has(shift.date) &&
+      (!pointId || shiftPointId(shift)===pointId)
+    )
+    .sort((first,second)=>
+      first.date.localeCompare(second.date) ||
+      String(first.point).localeCompare(
+        String(second.point),
+        "ru"
+      )
+    );
+}
+
 export function calendarViewHTML({
   cursor,
   shifts,
   points,
   pointId,
+  pointOpen,
+  pointQuery,
   selectedDay,
+  picking,
+  picked,
+  skipped,
   today,
   isAdmin,
   format
 }){
-  const {esc}=format;
-
   const counts=new Map();
 
   for(const shift of shifts){
@@ -662,6 +707,8 @@ export function calendarViewHTML({
         list:map.get(date) || [],
         today,
         selectedDay,
+        picking,
+        picked,
         pointId,
         format
       })
@@ -672,30 +719,45 @@ export function calendarViewHTML({
     item=>item.id===pointId
   );
 
+  const scopeName=point?.name || "Все ПВЗ";
+
+  const pickedDays=days.filter(
+    date=>picked.has(date)
+  );
+
   return `
-    <div class="ml">Пункт выдачи</div>
-    ${pointChipsHTML({
+    ${pointPickerHTML({
       points,
       pointId,
       counts,
-      esc
+      total:shifts.length,
+      open:pointOpen,
+      query:pointQuery,
+      format
     })}
 
-    <div class="sv-summary">
-      <span class="sv-summary-name">
-        ${point ? esc(point.name) : "Все ПВЗ"}
-      </span>
-      <span class="sv-summary-item">
-        смен <b>${summary.shifts}</b>
-      </span>
-      <span class="sv-summary-item">
-        дней со сменами <b>${summary.withShifts}</b>
-      </span>
-      <span class="sv-summary-item ${
-        summary.missed ? "warn" : ""
-      }">
-        прошло без смен <b>${summary.missed}</b>
-      </span>
+    <div class="sv-summary-row">
+      <div class="sv-summary">
+        <span class="sv-summary-item">
+          дней со сменами <b>${summary.withShifts}</b>
+        </span>
+        <span class="sv-summary-item ${
+          summary.missed ? "warn" : ""
+        }">
+          прошло без смен <b>${summary.missed}</b>
+        </span>
+      </div>
+
+      ${isAdmin
+        ? `<button
+             type="button"
+             class="ml-action sv-pick-toggle"
+             data-calendar-pick-mode
+             aria-pressed="${picking ? "true" : "false"}"
+           >
+             ${picking ? "Готово" : "Выбрать дни"}
+           </button>`
+        : ""}
     </div>
 
     <div class="sv-layout">
@@ -706,7 +768,11 @@ export function calendarViewHTML({
           `).join("")}
         </div>
 
-        <div class="sv-grid" role="grid" aria-label="Смены по дням">
+        <div
+          class="sv-grid"
+          role="group"
+          aria-label="${picking ? "Выбор дней" : "Смены по дням"}"
+        >
           ${cells.join("")}
         </div>
 
@@ -727,15 +793,29 @@ export function calendarViewHTML({
       </div>
 
       <div class="sv-panel-slot">
-        ${dayPanelHTML({
-          selectedDay,
-          list:selectedDay
-            ? map.get(selectedDay) || []
-            : [],
-          pointName:point?.name || "",
-          isAdmin,
-          format
-        })}
+        ${picking
+          ? pickPanelHTML({
+              picked:pickedDays,
+              shifts:pickedShifts({
+                shifts,
+                pointId,
+                picked
+              }),
+              skipped,
+              scopeName,
+              canPickAll:summary.withShifts>0,
+              format
+            })
+          : dayPanelHTML({
+              selectedDay,
+              list:selectedDay
+                ? map.get(selectedDay) || []
+                : [],
+              scopeName,
+              today,
+              isAdmin,
+              format
+            })}
       </div>
     </div>
 

@@ -136,6 +136,7 @@ import {
 
 import {
   formatAmount,
+  formatDayList,
   formatMoney,
   formatNumber,
   plural,
@@ -200,10 +201,9 @@ import {
 
 import {
   SHIFT_VIEW_MODES,
-  afterShiftViewRender,
   calendarViewHTML,
   controlViewHTML,
-  installShiftViewChips,
+  pickedShifts,
   shiftViewSwitcherHTML
 } from "./shift-views.js";
 
@@ -1293,9 +1293,6 @@ const app = document.getElementById("app");
 
 initManageSwipe({app});
 
-/* Прокрутка ленты ПВЗ в календаре: колесо, стрелки, жест. */
-installShiftViewChips(app);
-
 function render(){
   saveUIState();
 
@@ -1432,14 +1429,6 @@ function render(){
 
   requestAnimationFrame(
     fitShiftWindow
-  );
-
-  /*
-    Состояние ленты ПВЗ считается по готовой разметке: помещается ли она,
-    видны ли стрелки, не уехал ли выбранный пункт за край.
-  */
-  requestAnimationFrame(()=>
-    afterShiftViewRender(app)
   );
 }
 
@@ -1893,22 +1882,26 @@ function shiftListAreaHTML(){
 }
 
 /*
-  Удалить выбранные смены.
+  Удалить пачку смен — выбранные в реестре или собранные из дней
+  календаря. Путь один, чтобы защиты не расходились между экранами.
 
   Массовость не даёт никаких поблажек: каждая смена уходит тем же
   вызовом, что и поштучно, со всеми серверными проверками. Разница
-  ровно одна — про закрытый период спрашивают один раз на всю пачку, а
-  не по разу на смену: двадцать одинаковых окон подряд человек
+  ровно одна — про закрытый период спрашивают один раз на весь период,
+  а не по разу на смену: двадцать одинаковых окон подряд человек
   перестаёт читать после третьего, и защита превращается в помеху.
 
+  Но именно на период, а не на пачку. Выбор в календаре легко
+  захватывает обе половины месяца, и согласие менять выплаченное 1–15
+  не означает согласия менять закрытое 16–конец: про второй период
+  спрашивают отдельно. Отказ по одному периоду оставляет его смены на
+  месте и не мешает удалить остальные.
+
   Подтверждение показывает, что именно исчезнет: сколько смен, за какие
-  даты и на какую сумму. От пяти смен его приходится ещё и набрать
+  дни и на какую сумму. От пяти смен его приходится ещё и набрать
   числом — случайно попасть в такое действие уже нельзя.
 */
-async function deleteChosenShifts(){
-  const list=filteredMonthShifts()
-    .filter(shift=>shiftSelection.has(shift.id));
-
+async function deleteShiftBatch(list,done){
   if(!list.length){
     return;
   }
@@ -1918,18 +1911,15 @@ async function deleteChosenShifts(){
     0
   );
 
-  const dates=[...new Set(
-    list.map(shift=>Number(shift.date.slice(8,10)))
-  )].sort((first,second)=>first-second);
-
   const people=[...new Set(
     list.map(shift=>shift.employeeName).filter(Boolean)
   )];
 
   const detail=[
-    dates.length===1
-      ? `${dates[0]} ${monthGen(cursor)}`
-      : `${dates[0]}–${dates[dates.length-1]} ${monthGen(cursor)}`,
+    formatDayList(
+      list.map(shift=>shift.date.slice(8,10)),
+      monthGen(cursor)
+    ),
     people.length===1
       ? people[0]
       : `${people.length} ${employeesNoun(people.length)}`,
@@ -1953,14 +1943,26 @@ async function deleteChosenShifts(){
     return;
   }
 
-  let force=false;
+  const periodKey=date=>
+    `${periodMonthKey(date.slice(0,7))}|${periodKindForDate(date)}`;
+
+  const allowed=new Set();
+  const refused=new Set();
   let removed=0;
   let skipped=0;
+  let failure="";
 
   for(const shift of list){
+    const key=periodKey(shift.date);
+
+    if(refused.has(key)){
+      skipped+=1;
+      continue;
+    }
+
     try{
       await deleteAdminShift(shift.id,{
-        force,
+        force:allowed.has(key),
         reason:"Массовое удаление смен"
       });
 
@@ -1969,22 +1971,19 @@ async function deleteChosenShifts(){
       const info=closedPeriodInfo(error);
 
       if(!info){
-        toast(
-          error instanceof Error
-            ? error.message
-            : "Не удалось удалить смены",
-          4200
-        );
+        failure=error instanceof Error
+          ? error.message
+          : "Не удалось удалить смены";
 
         break;
       }
 
-      if(force){
+      if(allowed.has(key)){
         skipped+=1;
         continue;
       }
 
-      const allowed=await appConfirm(
+      const allowedNow=await appConfirm(
         "Удалить смены в закрытом периоде?",
         {
           detail:`Период ${info.label} за ${info.monthLabel} ${
@@ -1995,12 +1994,13 @@ async function deleteChosenShifts(){
         }
       );
 
-      if(!allowed){
+      if(!allowedNow){
+        refused.add(key);
         skipped+=1;
-        break;
+        continue;
       }
 
-      force=true;
+      allowed.add(key);
 
       try{
         await deleteAdminShift(shift.id,{
@@ -2017,14 +2017,24 @@ async function deleteChosenShifts(){
 
   await refreshTeamData({renderAfter:false});
 
-  resetShiftSelection();
+  done();
   render();
 
   toast(
-    skipped
-      ? `Удалено ${removed} из ${list.length}: остальные в закрытом периоде`
-      : `Удалено ${removed} ${shiftsNoun(removed)}`,
-    skipped ? 4200 : 2600
+    failure
+      ? `Удалено ${removed} из ${list.length}. ${failure}`
+      : skipped
+        ? `Удалено ${removed} из ${list.length}: остальные в закрытом периоде`
+        : `Удалено ${removed} ${shiftsNoun(removed)}`,
+    failure || skipped ? 4200 : 2600
+  );
+}
+
+function deleteChosenShifts(){
+  return deleteShiftBatch(
+    filteredMonthShifts()
+      .filter(shift=>shiftSelection.has(shift.id)),
+    resetShiftSelection
   );
 }
 
@@ -2048,10 +2058,115 @@ function updateShiftList(){
   что месяц, поиск и фильтры (см. resetSectionOnLeave). В sessionStorage
   они намеренно не попадают: раздел открывается реестром, а реестр —
   ответ на вопрос «что записано», с которого и начинают.
+
+  Открытый день помнится только внутри своего месяца. Ушли в другой —
+  панель не показывает чужую дату; вернулись в текущий без выбора —
+  открыт сегодняшний день, его и ищут первым (см. calendarOpenDay).
 */
 let shiftViewMode="registry";
 let shiftViewPointId="";
 let shiftViewDay="";
+
+/* Выбор ПВЗ в календаре: раскрыт ли список и что набрано в поиске. */
+let shiftViewPointOpen=false;
+let shiftViewPointQuery="";
+
+/*
+  Выбор дней в календаре — массовые действия над сменами этих дней.
+
+  Выбираются дни, а смены получаются из них с учётом выбранного ПВЗ;
+  отдельные смены из выбора можно исключить (calendarSkipped). Как и
+  выбор в реестре, живёт только в памяти экрана и снимается уходом из
+  календаря: забытый выбор, всплывший позже над другими данными, —
+  ровно то, из чего получаются ошибочные удаления.
+*/
+let calendarPicking=false;
+const calendarPicked=new Set();
+const calendarSkipped=new Set();
+let calendarPickAnchor="";
+
+function resetCalendarPick(){
+  calendarPicking=false;
+  calendarPicked.clear();
+  calendarSkipped.clear();
+  calendarPickAnchor="";
+}
+
+function calendarOpenDay(){
+  if(shiftViewDay.startsWith(cursor+"-")){
+    return shiftViewDay;
+  }
+
+  const today=localYMD();
+
+  return today.startsWith(cursor+"-")
+    ? today
+    : "";
+}
+
+/*
+  Отметить день или снять отметку. С Shift отмечаются все дни от
+  предыдущей отметки до этой — так выбирают неделю или половину месяца,
+  не нажимая пятнадцать раз.
+*/
+function toggleCalendarPick(date,{range=false}={}){
+  if(
+    range &&
+    calendarPickAnchor.startsWith(cursor+"-") &&
+    calendarPickAnchor!==date
+  ){
+    const [from,to]=[calendarPickAnchor,date].sort();
+
+    for(
+      let day=from;
+      day<=to;
+      day=nextYMD(day)
+    ){
+      calendarPicked.add(day);
+    }
+  }else if(calendarPicked.has(date)){
+    calendarPicked.delete(date);
+  }else{
+    calendarPicked.add(date);
+  }
+
+  calendarPickAnchor=date;
+}
+
+/* Смены выбранных дней, которые человек не исключил. */
+function calendarPickedShifts(){
+  return pickedShifts({
+    shifts:inMonth(cursor),
+    pointId:shiftViewPointId,
+    picked:calendarPicked
+  }).filter(shift=>
+    !calendarSkipped.has(shift.id)
+  );
+}
+
+/*
+  Закрыт ли период, в который попадает день. Панель выбора говорит об
+  этом заранее; решает по-прежнему сервер.
+*/
+function calendarPeriodLock(date){
+  const kind=periodKindForDate(date);
+  const status=periodStatus(
+    teamData.periods,
+    date.slice(0,7),
+    kind
+  );
+
+  if(!["closed","paid"].includes(status)){
+    return null;
+  }
+
+  return {
+    key:kind,
+    label:`Период ${
+      kind==="first_half" ? "1–15" : "16–конец месяца"
+    } ${status==="paid" ? "уже выплачен" : "закрыт"}`
+  };
+}
 
 /*
   Пункты для календаря и контроля: действующие плюс те, по которым в
@@ -2078,12 +2193,22 @@ function shiftViewFormat(){
     money,
     calc,
     dateLabel,
-    shortDateLabel
+    shortDateLabel,
+    plural,
+    shiftsWord,
+    shiftsAccWord:shiftsAccNoun,
+    reveal:fieldRevealHTML,
+    search:inlineSearchHTML,
+    filterOptions:filterChoiceOptions,
+    periodLock:calendarPeriodLock
   };
 }
 
-/* Открыть форму новой смены из конкретного дня календаря. */
-function openShiftForCalendarDay(date){
+/*
+  Открыть форму новой смены из календаря: на открытый день или сразу на
+  все выбранные.
+*/
+function openShiftForCalendarDays(dates){
   openSheet(null);
 
   if(!draft){
@@ -2091,12 +2216,12 @@ function openShiftForCalendarDay(date){
   }
 
   /*
-    Дату человек выбрал сам, поэтому datesTouched=true: следующий тап по
-    календарю в форме добавит день, а не заменит подставленный. Иначе
+    Даты человек выбрал сам, поэтому datesTouched=true: следующий тап по
+    календарю в форме добавит день, а не заменит подставленные. Иначе
     мультивыбор из календаря был бы недоступен.
   */
-  draft.date=date;
-  draft.dates=[date];
+  draft.date=dates[0];
+  draft.dates=[...dates];
   draft.datesTouched=true;
 
   const point=(teamData.points || []).find(
@@ -2110,7 +2235,7 @@ function openShiftForCalendarDay(date){
     draft.point=point.name;
   }
 
-  shiftDateCursor=date.slice(0,7);
+  shiftDateCursor=dates[0].slice(0,7);
 
   drawSheet(false);
   saveUIState();
@@ -2149,7 +2274,12 @@ function viewShifts(){
             shifts:monthShifts,
             points,
             pointId:shiftViewPointId,
-            selectedDay:shiftViewDay,
+            pointOpen:shiftViewPointOpen,
+            pointQuery:shiftViewPointQuery,
+            selectedDay:calendarOpenDay(),
+            picking:isAdmin && calendarPicking,
+            picked:calendarPicked,
+            skipped:calendarSkipped,
             today:localYMD(),
             isAdmin,
             format:shiftViewFormat()
@@ -12516,6 +12646,11 @@ function changeMonth(
   const apply=()=>{
     cursor=nextCursor;
 
+    /* Выбранные дни принадлежат своему месяцу. */
+    calendarPicked.clear();
+    calendarSkipped.clear();
+    calendarPickAnchor="";
+
     /*
       Реальную страницу переводим
       к началу нового месяца, пока
@@ -13901,8 +14036,9 @@ document.addEventListener(
 
   Правило одно на все разделы: вложенный экран закрывается, раскрытое
   внутри страницы сворачивается, временный поиск внутри раскрытого
-  очищается. У «Смен» и «Данных» вложенных экранов нет, и сбрасывать им
-  нечего — правило для них просто ничего не делает.
+  очищается. У «Данных» вложенных экранов нет, и правило для них просто
+  ничего не делает. У «Смен» сворачивается выбор ПВЗ в календаре и
+  снимается выбор дней — он временный, как и поиск в раскрытом списке.
 
   Внутренняя навигация раздела сюда не заходит: переход между
   «Управлением», «Сотрудниками» и «ПВЗ» идёт через changeManageSection и
@@ -13923,6 +14059,12 @@ function resetSectionOnLeave(section){
     statsEmployeeOpen=false;
     statsEmployeeQuery="";
     expandedPayoutKind="";
+  }
+
+  if(section==="shifts"){
+    shiftViewPointOpen=false;
+    shiftViewPointQuery="";
+    resetCalendarPick();
   }
 }
 
@@ -15371,6 +15513,12 @@ document.getElementById("sheetSave").onclick=async()=>{
     });
 
     cursor=dates[0].slice(0,7);
+
+    /*
+      Смены заведены — выбор дней, из которого их, возможно, заводили,
+      своё отработал. Оставленный, он висел бы над уже другими днями.
+    */
+    resetCalendarPick();
     closeSheet();
     render();
 
@@ -16563,7 +16711,8 @@ app.addEventListener(
         "employeeSearch",
         "pointSearch",
         "shiftSearch",
-        "statsEmployeeSearch"
+        "statsEmployeeSearch",
+        "calendarPointSearch"
       ].includes(event.target.id)
     ){
       return;
@@ -16571,6 +16720,12 @@ app.addEventListener(
 
     if(event.target.id==="statsEmployeeSearch"){
       statsEmployeeQuery=event.target.value;
+      render();
+      return;
+    }
+
+    if(event.target.id==="calendarPointSearch"){
+      shiftViewPointQuery=event.target.value;
       render();
       return;
     }
@@ -16658,32 +16813,123 @@ app.addEventListener("click",async event=>{
   if(button.dataset.shiftView){
     if(SHIFT_VIEW_MODES.includes(button.dataset.shiftView)){
       shiftViewMode=button.dataset.shiftView;
+      shiftViewPointOpen=false;
+      shiftViewPointQuery="";
+      resetCalendarPick();
       render();
     }
 
     return;
   }
 
+  if(button.id==="calendarPointOpen"){
+    shiftViewPointOpen=!shiftViewPointOpen;
+    shiftViewPointQuery="";
+    render();
+
+    if(shiftViewPointOpen){
+      focusInlineSearch("calendarPointSearch");
+    }
+
+    return;
+  }
+
+  /*
+    Смена ПВЗ оставляет открытым тот же день: «а что в этот день на
+    соседнем пункте» — естественный следующий вопрос. Выбранные дни тоже
+    остаются, меняется только то, какие смены в них попадают.
+  */
   if(button.hasAttribute("data-calendar-point")){
     shiftViewPointId=button.dataset.calendarPoint;
-    shiftViewDay="";
+    shiftViewPointOpen=false;
+    shiftViewPointQuery="";
+    calendarSkipped.clear();
     render();
     return;
   }
 
-  if(button.dataset.calendarDay){
-    shiftViewDay=
-      shiftViewDay===button.dataset.calendarDay
-        ? ""
-        : button.dataset.calendarDay;
+  if(button.hasAttribute("data-calendar-pick-mode")){
+    const entering=!calendarPicking;
 
+    resetCalendarPick();
+    calendarPicking=entering;
+    render();
+    return;
+  }
+
+  if(button.hasAttribute("data-calendar-pick-all")){
+    for(const shift of inMonth(cursor)){
+      if(
+        !shiftViewPointId ||
+        (shift.dbPointId || shift.pointId)===shiftViewPointId
+      ){
+        calendarPicked.add(shift.date);
+      }
+    }
+
+    render();
+    return;
+  }
+
+  if(button.hasAttribute("data-calendar-pick-clear")){
+    calendarPicked.clear();
+    calendarSkipped.clear();
+    calendarPickAnchor="";
+    render();
+    return;
+  }
+
+  if(button.dataset.calendarPickShift){
+    const id=button.dataset.calendarPickShift;
+
+    if(calendarSkipped.has(id)){
+      calendarSkipped.delete(id);
+    }else{
+      calendarSkipped.add(id);
+    }
+
+    render();
+    return;
+  }
+
+  if(button.hasAttribute("data-calendar-add-picked")){
+    const dates=[...calendarPicked]
+      .filter(date=>date.startsWith(cursor+"-"))
+      .sort();
+
+    if(dates.length){
+      openShiftForCalendarDays(dates);
+    }
+
+    return;
+  }
+
+  if(button.hasAttribute("data-calendar-delete-picked")){
+    void deleteShiftBatch(
+      calendarPickedShifts(),
+      resetCalendarPick
+    );
+
+    return;
+  }
+
+  if(button.dataset.calendarDay){
+    const date=button.dataset.calendarDay;
+
+    if(calendarPicking){
+      toggleCalendarPick(date,{
+        range:event.shiftKey
+      });
+
+      render();
+      return;
+    }
+
+    shiftViewDay=date;
     render();
 
     /* На узком экране панель дня лежит под календарём. */
-    if(
-      shiftViewDay &&
-      window.innerWidth<900
-    ){
+    if(window.innerWidth<900){
       requestAnimationFrame(()=>
         document
           .querySelector(".sv-panel")
@@ -16698,9 +16944,9 @@ app.addEventListener("click",async event=>{
   }
 
   if(button.dataset.calendarAdd){
-    openShiftForCalendarDay(
+    openShiftForCalendarDays([
       button.dataset.calendarAdd
-    );
+    ]);
 
     return;
   }
@@ -16712,6 +16958,7 @@ app.addEventListener("click",async event=>{
     shiftViewMode="calendar";
     shiftViewPointId=pointId;
     shiftViewDay=date;
+    resetCalendarPick();
     render();
     return;
   }

@@ -88,3 +88,58 @@ export function pluralForm(count,[one,few,many]){
 export function plural(count,forms){
   return `${count} ${pluralForm(count,forms)}`;
 }
+
+/*
+  Дни месяца одной строкой: «2, 3 сентября», «2–5, 9, 16 сентября».
+
+  Подряд идущие дни от трёх сжимаются в диапазон, два соседних остаются
+  через запятую — «2–3» читается как «со второго по третье» и ничего не
+  экономит. Подпись нужна там, где человек соглашается на действие над
+  выбранными днями, и прежняя «первый–последний» врала бы про дни,
+  выбранные вразброс: «2–16» при выбранных 2, 9 и 16.
+
+  Когда кусков больше пяти, перечисление уже не читается, и подпись
+  честно говорит о границах и числе дней.
+*/
+export function formatDayList(days,month=""){
+  const sorted=[...new Set(
+    days
+      .map(Number)
+      .filter(Number.isFinite)
+  )].sort((first,second)=>first-second);
+
+  if(!sorted.length){
+    return "";
+  }
+
+  const runs=[];
+
+  for(const day of sorted){
+    const last=runs.at(-1);
+
+    if(last && day===last[1]+1){
+      last[1]=day;
+    }else{
+      runs.push([day,day]);
+    }
+  }
+
+  const parts=runs.flatMap(([from,to])=>
+    to-from>=2
+      ? [`${from}–${to}`]
+      : from===to
+        ? [String(from)]
+        : [String(from),String(to)]
+  );
+
+  const tail=month ? ` ${month}` : "";
+
+  if(parts.length>5){
+    return `${sorted[0]}–${sorted.at(-1)}${tail}, ${plural(
+      sorted.length,
+      ["день","дня","дней"]
+    )}`;
+  }
+
+  return parts.join(", ")+tail;
+}

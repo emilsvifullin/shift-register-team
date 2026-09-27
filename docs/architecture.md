@@ -119,20 +119,39 @@ A day is never called "missed" in the sense of "a shift was due". The
 application does not know a point's schedule. It states a fact: the day has
 passed and no shift is recorded. Future days are marked neutrally.
 
-`src/shift-views.js` imports nothing from the application. Data and
-formatters arrive as arguments and markup comes back, so the module stays
-testable and the screen keeps its state in one place. The one exception is
-the point strip: its scrolling is behaviour of that markup, so
-`installShiftViewChips` and `afterShiftViewRender` live there too. The strip
-claims the wheel while the pointer is over it — month paging listens for a
-horizontal gesture on the whole document, and without that a two-finger
-swipe along the strip would page the month as well.
+`src/shift-views.js` imports nothing from the application. Data,
+formatters and shared pieces of markup (the field reveal, the search field)
+arrive as arguments and markup comes back, so the module stays testable and
+the screen keeps its state in one place. The module has no behaviour of its
+own.
+
+The point is chosen from a row that expands into a searchable list — the
+same control that picks an employee in «Итоги». It used to be a horizontal
+strip of chips, which works for five points and turns into scrolling for
+thirty; a vertical list narrowed by search does not depend on the count.
+
+The calendar opens on today when the current month is shown. The open day
+belongs to its month: in another month nothing is open, and coming back
+restores the day chosen there (`calendarOpenDay`). Every cell of the grid
+has the height of its grid row, not of its content, so a busy week and the
+empty last row of a month are the same size.
+
+Picking days is the calendar's mass action. The person marks days (with
+Shift, a range), the panel turns them into the shifts of the chosen point
+and lets any of them be left out, and offers two actions: a new shift on
+all marked days, and deleting the marked shifts. Deletion goes through the
+same `deleteShiftBatch` as the registry's selection. Every shift is deleted
+by the same server call as a single one; a closed or paid period is asked
+about once per period, not once per batch, so consent to change a paid
+first half does not silently extend to a closed second half.
 
 The view, the selected point and the open day are settings of the screen,
 not a place where the person stopped, so they survive a re-render and a trip
 to another section — the same rule as the month cursor, search and filters
 (see `resetSectionOnLeave`). They are deliberately not persisted to
-`sessionStorage`: the section opens on the registry.
+`sessionStorage`: the section opens on the registry. Picked days are not a
+setting: they are dropped on leaving the calendar, the section or the month,
+so a forgotten selection cannot resurface over other data.
 
 Only the registry uses the `shifts-layout` class, which fits the list into
 the remaining height and stops the page from scrolling. The calendar and the

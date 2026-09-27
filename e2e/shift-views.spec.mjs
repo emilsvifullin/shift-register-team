@@ -15,10 +15,10 @@ import {
   этом дне», контроль — «где вообще пропуски», а реестр от их появления
   не изменился.
 
-  Отдельно закреплены две вещи, которые легко сломать незаметно:
-  геометрия (панель дня по высоте календаря, число дня над центром своей
-  клетки) и лента ПВЗ, до дальних пунктов которой нужно доставать и
-  мышью, и пальцем.
+  Отдельно закреплены вещи, которые легко сломать незаметно: геометрия
+  (панель дня по высоте календаря, одинаковые клетки месяца, число дня
+  над центром своей клетки) и выбор ПВЗ, который должен находить пункт
+  одинаково быстро и среди семи, и среди сотни.
 */
 
 const YEAR=FROZEN_TODAY.getFullYear();
@@ -113,31 +113,17 @@ async function openCalendar(page){
   ).toBeVisible();
 }
 
-function stripState(page){
-  return page.evaluate(()=>{
-    const frame=document.querySelector(
-      "[data-points-strip]"
-    );
+/* ПВЗ выбирается из раскрывающегося списка, как сотрудник в «Итогах». */
+async function choosePoint(page,id){
+  await page.locator("#calendarPointOpen").click();
 
-    const strip=document.querySelector(
-      "[data-points-chips]"
-    );
+  await page
+    .locator(`[data-calendar-point="${id}"]`)
+    .click();
 
-    return {
-      overflow:Math.round(
-        strip.scrollWidth-strip.clientWidth
-      ),
-      left:Math.round(strip.scrollLeft),
-      start:frame.classList.contains("has-start"),
-      end:frame.classList.contains("has-end"),
-      back:frame.querySelector(
-        '[data-points-scroll="-1"]'
-      ).disabled,
-      ahead:frame.querySelector(
-        '[data-points-scroll="1"]'
-      ).disabled
-    };
-  });
+  await expect(
+    page.locator("#calendarPointOpen")
+  ).toHaveAttribute("aria-expanded","false");
 }
 
 test.describe("desktop",()=>{
@@ -236,9 +222,7 @@ test.describe("desktop",()=>{
       await openApp(page,{seed:seed({points:1})});
       await openCalendar(page);
 
-      await page
-        .locator('[data-calendar-point="point-0"]')
-        .click();
+      await choosePoint(page,"point-0");
 
       /*
         Сентябрь: 30 дней, сегодня 21-е. Смен 12 дней, значит прошедших
@@ -478,9 +462,7 @@ test.describe("desktop",()=>{
       await openApp(page,{seed:seed()});
       await openCalendar(page);
 
-      await page
-        .locator('[data-calendar-point="point-1"]')
-        .click();
+      await choosePoint(page,"point-1");
 
       await page
         .locator(`[data-calendar-day="${day(9)}"]`)
@@ -629,109 +611,103 @@ test.describe("desktop",()=>{
     }
   );
 
+  /*
+    Пунктов много — лента кнопок заставила бы их долистывать. Список
+    сужается поиском, число пунктов на это не влияет, а выбор сразу
+    сворачивает список и оставляет открытый день на месте.
+  */
   test(
-    "the point strip reaches every point with a mouse",
+    "the point picker finds any of a hundred points by search",
     async({page})=>{
-      await openApp(page,{seed:seed()});
-      await openCalendar(page);
+      const source=seed({points:3});
 
-      const start=await stripState(page);
-
-      expect(start.overflow).toBeGreaterThan(0);
-      expect(start.back).toBe(true);
-      expect(start.ahead).toBe(false);
-      expect(start.end).toBe(true);
-
-      /* Колесо мыши шлёт только deltaY — лента всё равно едет. */
-      await page
-        .locator("[data-points-chips]")
-        .hover();
-
-      await page.mouse.wheel(0,240);
-
-      await expect
-        .poll(()=>
-          stripState(page).then(state=>state.left)
-        )
-        .toBeGreaterThan(0);
-
-      /*
-        Горизонтальный жест над лентой принадлежит ей: листание месяцев
-        слушает его на всём документе.
-      */
-      const month=await page
-        .locator("#period")
-        .innerText();
-
-      for(let step=0;step<6;step++){
-        await page.mouse.wheel(-90,0);
+      for(let index=0;index<100;index++){
+        source.points.push({
+          id:`extra-${index}`,
+          code:`x${index}`,
+          name:`Пункт ${String(index).padStart(3,"0")}`,
+          active:true,
+          advance_enabled:false
+        });
       }
 
-      await page.waitForTimeout(600);
+      await openApp(page,{seed:source});
+      await openCalendar(page);
 
-      expect(
-        await page.locator("#period").innerText()
-      ).toBe(month);
-
-      /* Стрелка доводит до конца и там гаснет. */
-      const ahead=page.locator(
-        '[data-points-scroll="1"]'
-      );
-
-      await expect
-        .poll(
-          async()=>{
-            if(await ahead.isEnabled()){
-              /*
-                Прокрутка плавная: стрелка может погаснуть между
-                проверкой и нажатием — это и есть конец ленты, а не сбой.
-              */
-              await ahead
-                .click({timeout:2000})
-                .catch(()=>{});
-            }
-
-            return (await stripState(page)).ahead;
-          },
-          {timeout:25000}
-        )
-        .toBe(true);
-
-      const end=await stripState(page);
-
-      expect(end.ahead).toBe(true);
-      expect(end.end).toBe(false);
-      expect(end.start).toBe(true);
-
-      /* Дальний ПВЗ выбирается и остаётся на виду. */
-      const last=`point-${POINT_NAMES.length-1}`;
+      await expect(
+        page.locator("#calendarPointOpen")
+      ).toContainText("Все ПВЗ");
 
       await page
-        .locator(`[data-calendar-point="${last}"]`)
+        .locator(`[data-calendar-day="${day(3)}"]`)
         .click();
 
-      /* Лента подтягивает выбранный пункт плавно, поэтому с ожиданием. */
-      await expect
-        .poll(()=>
-          page.evaluate(()=>{
-            const strip=document.querySelector(
-              "[data-points-chips]"
-            );
+      await page.locator("#calendarPointOpen").click();
 
-            const chip=strip.querySelector(
-              ".sv-chip.on"
-            );
+      /* Мышью поле поиска получает фокус сразу — можно печатать. */
+      await expect(
+        page.locator("#calendarPointSearch")
+      ).toBeFocused();
 
-            const a=chip.getBoundingClientRect();
-            const b=strip.getBoundingClientRect();
+      /* «Все ПВЗ» и все 103 пункта, а прокручивается сам список. */
+      await expect(
+        page.locator(".sv-point-card .inline-options [data-calendar-point]")
+      ).toHaveCount(104);
 
-            return (
-              a.left>=b.left-2 &&
-              a.right<=b.right+2
-            );
-          })
-        )
-        .toBe(true);
+      expect(
+        await page.evaluate(()=>{
+          const list=document.querySelector(
+            ".sv-point-card .inline-options"
+          );
+
+          return list.scrollHeight>list.clientHeight+1;
+        })
+      ).toBe(true);
+
+      await page
+        .locator("#calendarPointSearch")
+        .fill("пункт 09");
+
+      await expect(
+        page.locator(".sv-point-card .inline-options [data-calendar-point]")
+      ).toHaveCount(10);
+
+      await page
+        .locator('[data-calendar-point="extra-97"]')
+        .click();
+
+      await expect(
+        page.locator("#calendarPointOpen")
+      ).toHaveAttribute("aria-expanded","false");
+
+      await expect(
+        page.locator("#calendarPointOpen .t")
+      ).toHaveText("Пункт 097");
+
+      /* У пункта без смен так и написано — ноль тоже ответ. */
+      await expect(
+        page.locator("#calendarPointOpen .point-value")
+      ).toHaveText("0 смен");
+
+      /* Открытый день остался тем же. */
+      await expect(
+        page.locator(".sv-panel-date")
+      ).toContainText("3 сентября 2026");
+
+      /* Поиск без совпадений не оставляет пустой коробки. */
+      await page.locator("#calendarPointOpen").click();
+
+      await expect(
+        page.locator("#calendarPointSearch")
+      ).toHaveValue("");
+
+      await page
+        .locator("#calendarPointSearch")
+        .fill("такого нет");
+
+      await expect(
+        page.locator(".sv-point-card .inline-empty")
+      ).toHaveText("Ничего не найдено");
     }
   );
 });
@@ -743,35 +719,30 @@ test.describe("mobile",()=>{
   });
 
   test(
-    "the strip scrolls by finger and keeps its arrows away",
+    "a point is chosen by finger from the same list",
     async({page})=>{
       await openApp(page,{seed:seed()});
       await openCalendar(page);
 
-      /* Пальцем лента двигается сама, стрелки только мешали бы. */
-      expect(
-        await page.evaluate(()=>
-          getComputedStyle(
-            document.querySelector(
-              "[data-points-scroll]"
-            )
-          ).display
-        )
-      ).toBe("none");
+      await page.locator("#calendarPointOpen").tap();
 
-      await page.evaluate(()=>{
-        const strip=document.querySelector(
-          "[data-points-chips]"
-        );
+      /*
+        Пальцем фокус в поиск не ставится: клавиатура закрыла бы
+        половину списка, из которого чаще выбирают глазами.
+      */
+      await expect(
+        page.locator("#calendarPointSearch")
+      ).not.toBeFocused();
 
-        strip.scrollLeft=strip.scrollWidth;
-      });
+      const last=`point-${POINT_NAMES.length-1}`;
 
-      await expect
-        .poll(()=>
-          stripState(page).then(state=>state.start)
-        )
-        .toBe(true);
+      await page
+        .locator(`[data-calendar-point="${last}"]`)
+        .tap();
+
+      await expect(
+        page.locator("#calendarPointOpen .t")
+      ).toHaveText(POINT_NAMES.at(-1));
     }
   );
 

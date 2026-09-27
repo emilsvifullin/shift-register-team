@@ -8,7 +8,7 @@
 
   Раскладка рассчитана прежде всего на desktop: там месяц виден целиком
   и рядом помещается панель дня. На узком экране те же данные идут в
-  одну колонку, а клетка дня сжимается до числа и счётчика смен.
+  одну колонку, а клетка дня сжимается до числа и счётчика смен под ним.
 */
 
 /*
@@ -27,209 +27,68 @@ main.shifts-layout > .sv-switch{
 /* ===== выбор ПВЗ ===== */
 
 /*
-  Лента ПВЗ: сама полоса прокрутки скрыта, поэтому обрезанный край
-  показывают затенение и стрелка. Затенение включается классом, а не
-  живёт всегда: тень у края, за которым ничего нет, врала бы.
+  Строка выбора — та же, что выбирает сотрудника в «Итогах»: слева
+  выбранный пункт, справа число его смен. Подпись «Пункт выдачи» уже
+  стоит над карточкой, поэтому место подписи в строке занимает само
+  название, а не повтор заголовка.
 */
-.sv-points{
-  position:relative;
-  display:flex;
-  align-items:center;
-  gap:6px;
-  margin:0 0 14px;
+.sv-point-card{
+  margin-bottom:12px;
 }
 
-.sv-chips{
-  display:flex;
-  gap:8px;
+.sv-point-row .t{
   flex:1;
+  width:auto;
   min-width:0;
 
-  padding:2px 2px 6px;
-
-  overflow-x:auto;
-  overscroll-behavior-x:contain;
-  scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;
-}
-
-.sv-chips:focus-visible{
-  outline:2px solid var(--gold-line);
-  outline-offset:2px;
-  border-radius:12px;
-}
-
-.sv-chips::-webkit-scrollbar{
-  display:none;
-}
-
-.sv-points::before,
-.sv-points::after{
-  content:"";
-  position:absolute;
-  top:0;
-  bottom:6px;
-  width:28px;
-  z-index:1;
-
-  opacity:0;
-  pointer-events:none;
-  transition:opacity var(--ui-base) ease;
-}
-
-.sv-points::before{
-  left:0;
-  background:linear-gradient(
-    to right,
-    var(--bg),
-    transparent
-  );
-}
-
-.sv-points::after{
-  right:0;
-  background:linear-gradient(
-    to left,
-    var(--bg),
-    transparent
-  );
-}
-
-.sv-points.has-start::before,
-.sv-points.has-end::after{
-  opacity:1;
-}
-
-/*
-  Стрелки — для мыши: пальцем ленту двигают жестом, а колесо и клик
-  нужны тем, у кого жеста нет. Поэтому на сенсорных экранах их нет.
-*/
-.sv-points-nav{
-  display:none;
-}
-
-@media (hover:hover) and (pointer:fine){
-  .sv-points-nav{
-    display:grid;
-    place-items:center;
-    flex:none;
-
-    width:30px;
-    height:30px;
-    margin-bottom:4px;
-
-    border:1px solid var(--line);
-    border-radius:50%;
-
-    background:var(--surf);
-    color:var(--ink2);
-    cursor:pointer;
-
-    transition:
-      opacity var(--ui-base) ease,
-      color var(--ui-base) ease,
-      border-color var(--ui-base) ease;
-  }
-
-  .sv-points-nav[hidden]{
-    display:none;
-  }
-
-  .sv-points-nav:disabled{
-    opacity:.35;
-    cursor:default;
-  }
-
-  .sv-points-nav:not(:disabled):hover{
-    border-color:var(--line2);
-    color:var(--ink);
-  }
-
-  .sv-points-nav svg{
-    width:11px;
-    height:14px;
-    fill:none;
-    stroke:currentColor;
-    stroke-width:1.7;
-    stroke-linecap:round;
-    stroke-linejoin:round;
-  }
-
-  /* Затенение начинается за стрелкой, а не под ней. */
-  .sv-points.has-start::before{
-    left:36px;
-  }
-
-  .sv-points.has-end::after{
-    right:36px;
-  }
-}
-
-.sv-chip{
-  display:inline-flex;
-  align-items:center;
-  gap:7px;
-  flex:none;
-
-  padding:9px 14px;
-  border:1px solid var(--line);
-  border-radius:999px;
-
-  background:var(--surf);
-  color:var(--ink2);
-
-  font-size:13px;
-  font-weight:550;
-  letter-spacing:-.1px;
+  overflow:hidden;
+  text-overflow:ellipsis;
   white-space:nowrap;
-  cursor:pointer;
 
-  transition:
-    background-color var(--ui-base) ease,
-    border-color var(--ui-base) ease,
-    color var(--ui-base) ease;
-}
-
-.sv-chip.on{
-  border-color:var(--gold-line);
-  background:var(--gold-soft);
   color:var(--ink);
 }
 
-.sv-chip-count{
-  padding:1px 6px;
-  border-radius:999px;
-
-  background:var(--tint2);
+.sv-point-row .point-value{
+  flex:none;
   color:var(--ink3);
-
-  font-size:11px;
-  font-weight:600;
+  font-size:13px;
+  letter-spacing:0;
 }
 
-.sv-chip.on .sv-chip-count{
-  background:rgba(214,178,120,.22);
-  color:var(--gold);
+.sv-option-count{
+  flex:none;
+  min-width:22px;
+
+  color:var(--ink3);
+  font-size:12px;
+  font-variant-numeric:tabular-nums;
+  text-align:right;
+}
+
+.point-option.on .sv-option-count{
+  color:inherit;
 }
 
 /* ===== сводка месяца ===== */
+
+.sv-summary-row{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+
+  margin:0 4px 10px 2px;
+}
 
 .sv-summary{
   display:flex;
   flex-wrap:wrap;
   align-items:baseline;
   gap:4px 14px;
+  min-width:0;
 
-  margin:0 2px 12px;
   color:var(--ink3);
   font-size:12.5px;
-}
-
-.sv-summary-name{
-  color:var(--ink);
-  font-size:14px;
-  font-weight:600;
-  letter-spacing:-.2px;
 }
 
 .sv-summary-item b{
@@ -239,6 +98,11 @@ main.shifts-layout > .sv-switch{
 
 .sv-summary-item.warn b{
   color:var(--rust);
+}
+
+.sv-pick-toggle{
+  flex:none;
+  cursor:pointer;
 }
 
 /* ===== раскладка ===== */
@@ -284,13 +148,31 @@ main.shifts-layout > .sv-switch{
   text-align:center;
 }
 
+/*
+  Высоту клетки задаёт строка сетки, а не содержимое: день без смен
+  ровно такой же, как день с тремя именами, и последняя строка месяца не
+  выходит ниже остальных. Всё, что не помещается, клетка обрезает, —
+  сколько строк влезает, разметка знает сама.
+*/
+.sv-grid{
+  grid-auto-rows:44px;
+}
+
+@media (min-width:900px){
+  .sv-grid{
+    grid-auto-rows:96px;
+  }
+}
+
 .sv-day{
   display:flex;
   flex-direction:column;
   gap:4px;
 
-  min-height:44px;
-  padding:6px;
+  min-width:0;
+  min-height:0;
+  padding:5px;
+  overflow:hidden;
 
   border:1px solid var(--line);
   border-radius:12px;
@@ -309,7 +191,7 @@ main.shifts-layout > .sv-switch{
 
 @media (min-width:900px){
   .sv-day{
-    min-height:92px;
+    padding:6px;
   }
 }
 
@@ -345,25 +227,62 @@ main.shifts-layout > .sv-switch{
   font-weight:700;
 }
 
-.sv-day.on{
+/*
+  Открытый день и отмеченные дни. Сплошная рамка поверх любой другой:
+  пунктир прошедшего или будущего дня под выделением читался как
+  «наполовину выбран», а приглушённость будущего дня гасила и само
+  выделение.
+*/
+.sv-day.on,
+.sv-day.picked{
+  border-style:solid;
   border-color:var(--gold-line);
   background:var(--gold-soft);
+  opacity:1;
 }
 
-.sv-day:active{
+/*
+  Отмеченный день плотнее открытого: в режиме выбора их много, и каждый
+  должен читаться отмеченным и сам по себе, без соседей для сравнения.
+*/
+.sv-day.picked{
+  border-color:var(--gold);
+}
+
+@media (hover:hover) and (pointer:fine){
+  .sv-day:not(.outside):not(.on):not(.picked):hover{
+    border-color:var(--gold-line);
+  }
+}
+
+.sv-day:not(.outside):active{
   transform:scale(.98);
 }
 
+/*
+  На телефоне клетка узкая: число и счётчик стоят столбиком по центру,
+  а не спорят за одну строку. Число при этом в каждой клетке на одном
+  месте — есть под ним счётчик или нет.
+*/
 .sv-day-head{
   display:flex;
+  flex-direction:column;
   align-items:center;
-  justify-content:space-between;
-  gap:6px;
+  gap:3px;
+}
+
+@media (min-width:900px){
+  .sv-day-head{
+    flex-direction:row;
+    justify-content:space-between;
+    gap:6px;
+  }
 }
 
 .sv-day-num{
   font-size:13px;
   font-weight:600;
+  line-height:16px;
   letter-spacing:-.2px;
 }
 
@@ -377,12 +296,14 @@ main.shifts-layout > .sv-switch{
 
   font-size:11px;
   font-weight:650;
+  line-height:13px;
   text-align:center;
 }
 
 .sv-day-gap{
   width:6px;
   height:6px;
+  margin:4px 0;
   border-radius:50%;
   background:var(--rust);
   opacity:.75;
@@ -409,6 +330,7 @@ main.shifts-layout > .sv-switch{
 
   color:var(--ink2);
   font-size:11px;
+  line-height:14px;
 }
 
 .sv-day-flag{
@@ -421,12 +343,14 @@ main.shifts-layout > .sv-switch{
 
   font-size:9.5px;
   font-weight:600;
+  line-height:13px;
 }
 
 .sv-day-more,
 .sv-day-sum{
   color:var(--ink3);
   font-size:10.5px;
+  line-height:13px;
 }
 
 .sv-day-sum{
@@ -597,6 +521,65 @@ main.shifts-layout > .sv-switch{
   color:var(--ink3);
   font-size:11.5px;
   line-height:1.4;
+}
+
+/* ===== выбор дней ===== */
+
+.sv-panel-pick .sv-panel-head{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:baseline;
+  column-gap:12px;
+}
+
+.sv-panel-pick .sv-panel-sub{
+  grid-column:1 / -1;
+}
+
+.sv-pick-clear{
+  grid-row:1;
+  grid-column:2;
+  font-size:12.5px;
+}
+
+/* Shift-диапазон есть только у клавиатуры — пальцу подсказка ни к чему. */
+.sv-pick-range-hint{
+  display:none;
+}
+
+@media (hover:hover) and (pointer:fine){
+  .sv-pick-range-hint{
+    display:block;
+    margin-top:4px;
+  }
+}
+
+.sv-pick-all{
+  align-self:flex-start;
+  margin-top:12px;
+  font-size:13px;
+  text-align:left;
+}
+
+.sv-panel-actions{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:12px;
+}
+
+.sv-panel-actions .btn{
+  margin-top:0;
+}
+
+@media (min-width:900px){
+  .sv-panel-actions{
+    flex:none;
+  }
+
+  .sv-panel-pick .sv-panel-hint{
+    flex:none;
+  }
 }
 
 /* ===== контроль ===== */

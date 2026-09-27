@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   formatAmount,
+  formatDayList,
   formatMoney,
   formatNumber,
   plural,
@@ -83,6 +84,44 @@ test(
     assert.equal(
       plural(3,forms),
       "3 смены"
+    );
+  }
+);
+
+/*
+  Дни, выбранные в календаре вразброс, подписываются как есть: диапазон
+  «первый–последний» утверждал бы, что выбраны и дни между ними.
+*/
+test(
+  "a list of days names exactly the days that were chosen",
+  ()=>{
+    assert.equal(
+      formatDayList([16,2,9],"сентября"),
+      "2, 9, 16 сентября"
+    );
+
+    assert.equal(
+      formatDayList([2,3,4,5,9]),
+      "2–5, 9"
+    );
+
+    /* Два соседних дня — не диапазон. */
+    assert.equal(
+      formatDayList([7,8]),
+      "7, 8"
+    );
+
+    assert.equal(
+      formatDayList([3,3,3],"сентября"),
+      "3 сентября"
+    );
+
+    assert.equal(formatDayList([]),"");
+
+    /* Россыпь длиннее пяти кусков — границы и число дней. */
+    assert.equal(
+      formatDayList([1,3,5,7,9,11,13],"сентября"),
+      "1–13 сентября, 7 дней"
     );
   }
 );

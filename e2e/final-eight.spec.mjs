@@ -253,21 +253,42 @@ test(
   }
 );
 
-/* 5. Охват блока периодов назван прямо. */
+/*
+  5. Охват блока периодов назван прямо — заголовком и местом: периоды
+  команды стоят до выбора сотрудника, а не между его цифрами.
+*/
 test(
   "the periods block names its whole-team scope",
   async({page})=>{
     await openApp(page,{seed:seed()});
     await page.locator("#tab-stats").click();
 
-    await expect(page.locator(".payroll-periods-scope"))
-      .toContainText("По всей команде");
+    const order=()=>page.evaluate(()=>{
+      const app=document.getElementById("app");
+      const periods=app.querySelector(".payroll-periods");
+      const picker=app.querySelector("#statsEmployeeOpen");
+
+      return {
+        heading:app.querySelector(".ml").textContent.trim(),
+        periodsFirst:Boolean(
+          periods.compareDocumentPosition(picker)&
+          Node.DOCUMENT_POSITION_FOLLOWING
+        )
+      };
+    });
+
+    expect(await order()).toEqual({
+      heading:"Периоды команды",
+      periodsFirst:true
+    });
 
     await pickStatsEmployee(page);
 
-    /* С выбранным сотрудником подпись тем более нужна — и она на месте. */
-    await expect(page.locator(".payroll-periods-scope"))
-      .toContainText("По всей команде");
+    /* С выбранным сотрудником порядок тот же. */
+    expect(await order()).toEqual({
+      heading:"Периоды команды",
+      periodsFirst:true
+    });
   }
 );
 

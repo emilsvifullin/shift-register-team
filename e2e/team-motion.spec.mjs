@@ -204,7 +204,7 @@ test("stats month ghost keeps the exact live vertical geometry after clone ids a
 
     const app=document.getElementById("app");
     app.innerHTML=`
-      <div class="ml">Фильтры</div>
+      <div class="ml">Расчёт сотрудника</div>
       <div class="card">
         <button class="row stats-filter-row" type="button">
           <span class="t">Сотрудник</span>
@@ -253,8 +253,9 @@ test("stats month ghost keeps the exact live vertical geometry after clone ids a
     return values;
   });
 
-  expect(result.liveLabelDisplay).toBe("none");
-  expect(result.ghostLabelDisplay).toBe("none");
+  /* Заголовок личного уровня виден — и одинаково у экрана и у слепка. */
+  expect(result.liveLabelDisplay).toBe("block");
+  expect(result.ghostLabelDisplay).toBe(result.liveLabelDisplay);
   expect(result.ghostFilterBorder).toBe(result.liveFilterBorder);
   expect(result.ghostFilterBackground).toBe(result.liveFilterBackground);
   expect(result.verticalDelta).toBeLessThanOrEqual(0.5);

@@ -841,18 +841,6 @@
   color:var(--rust);
 }
 
-/*
-  Охват блока расчётных периодов. Экран вокруг показывает одного
-  сотрудника, блок — всю команду; подпись стоит под заголовком и
-  читается как его продолжение, а не как ещё одна строка данных.
-*/
-.payroll-periods-scope{
-  margin:-6px 0 8px;
-  padding:0 4px;
-  color:var(--ink3);
-  font-size:12px;
-}
-
 .payroll-period-figures{
   display:flex;
   flex-wrap:wrap;
@@ -866,6 +854,48 @@
 .payroll-period-figures b{
   color:var(--ink);
   font-weight:600;
+}
+
+/*
+  Доля выбранного сотрудника в периоде команды. Отделена волосяной
+  чертой, мельче цифр периода и без их яркости: читается как пояснение
+  к периоду, а не как его заголовок или вторая шапка.
+*/
+.payroll-person{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:2px 12px;
+
+  margin-top:10px;
+  padding-top:8px;
+  border-top:1px solid var(--line);
+
+  color:var(--ink3);
+  font-size:12px;
+}
+
+/* Пара «подпись — сумма» не рвётся посередине, переносится целиком. */
+.payroll-person > span{
+  white-space:nowrap;
+}
+
+.payroll-person-name{
+  color:var(--ink2);
+  font-weight:550;
+}
+
+.payroll-person b{
+  color:var(--ink2);
+  font-weight:600;
+}
+
+.payroll-person .underpaid b{
+  color:var(--rust);
+}
+
+.payroll-person .overpaid b{
+  color:var(--gold);
 }
 
 .payroll-period-actions{

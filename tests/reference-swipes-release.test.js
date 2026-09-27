@@ -64,10 +64,19 @@ test("stats month transition ghost keeps the same app-only refinement geometry",
     /body\[data-active-tab\] > main > \.ml:first-child/
   );
 
-  assert.match(
-    styles,
-    /body\[data-active-tab="stats"\] > main > \.ml:has\(\+ \.card \.stats-filter-row\)/
-  );
+  /*
+    Заголовок «Расчёт сотрудника» над выбором сотрудника виден всегда.
+    Раньше он был скрыт, и правило приходилось писать и для #app, и для
+    main, иначе слепок месяца показывал его на мгновение. Теперь скрывать
+    нечего — и правила, которое сработало бы только на живом экране, быть
+    не должно ни в одном файле.
+  */
+  for(const file of ["styles/management.css","styles/refinement.css"]){
+    assert.doesNotMatch(
+      read(file),
+      /\.ml:has\(\+ \.card \.stats-filter-row\)/
+    );
+  }
 
   assert.match(
     styles,

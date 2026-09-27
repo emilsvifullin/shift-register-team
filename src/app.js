@@ -3088,6 +3088,58 @@ function openPayrollReport({kind,detailed,employeeId}){
   });
 }
 
+/*
+  Строка выбранного сотрудника внутри периода команды.
+
+  Только для чтения и только из тех же строк, из которых собраны цифры
+  периода: к выплате и выплачено — его строка в state.entries,
+  недоплата и переплата — его строка в state.differences. Поэтому она
+  всегда складывается с шапкой периода и не может с ней спорить.
+
+  Строка стоит под цифрами периода, мельче и тише их и начинается с
+  имени: это «вот его доля», а не заголовок, — период по-прежнему
+  принадлежит всей команде.
+*/
+function payrollPeriodPersonHTML(state){
+  if(!isAdmin){
+    return "";
+  }
+
+  const employee=statsEmployeeOptions().find(
+    item=>item.id===statsEmployeeId
+  );
+
+  if(!employee){
+    return "";
+  }
+
+  const entry=state.entries.find(
+    item=>item.employeeId===employee.id
+  );
+
+  const gap=state.differences.rows.find(
+    item=>item.employeeId===employee.id
+  );
+
+  return `
+    <div class="payroll-person">
+      <span class="payroll-person-name">${esc(employee.full_name)}</span>
+      ${entry ? `
+        <span>к выплате <b>${money(entry.due)}</b></span>
+        <span>выплачено <b>${money(entry.paid)}</b></span>
+        ${gap?.underpaid ? `
+          <span class="underpaid">недоплата <b>${money(gap.underpaid)}</b></span>
+        ` : ""}
+        ${gap?.overpaid ? `
+          <span class="overpaid">переплата <b>${money(gap.overpaid)}</b></span>
+        ` : ""}
+      ` : `
+        <span>в этом периоде смен и выплат нет</span>
+      `}
+    </div>
+  `;
+}
+
 function payrollPeriodRowHTML(kind){
   const state=payrollPeriodState(kind);
   const busy=payrollPeriodSaving===kind;
@@ -3240,6 +3292,8 @@ function payrollPeriodRowHTML(kind){
           : ""
       }
 
+      ${payrollPeriodPersonHTML(state)}
+
       ${state.review.employees && !closed ? `
         <button
           type="button"
@@ -3343,16 +3397,15 @@ function payrollPeriodsHTML(){
   }
 
   /*
-    Блок считает всю команду, а вокруг него — экран одного сотрудника:
-    «Начислено» сверху и «Выплаты» снизу относятся к выбранному
-    человеку. Без подписи легко решить, что и закрытие периода
-    касается только его. Подпись стоит всегда: при выбранном сотруднике
-    она снимает двусмысленность, без него — объясняет, почему блок
-    остался на экране один.
+    Периоды — верхний уровень «Итогов», и стоят они до выбора
+    сотрудника. Раньше блок лежал между «Начислено» и «Выплатами» одного
+    человека, и подпись «По всей команде» приходилось держать отдельно:
+    без неё закрытие периода читалось как действие над этим человеком.
+    Теперь охват говорит заголовок, а место на экране — порядок: сначала
+    команда, ниже — расчёт выбранного сотрудника.
   */
   return `
-    <div class="ml">Расчётные периоды</div>
-    <div class="payroll-periods-scope">По всей команде</div>
+    <div class="ml">Периоды команды</div>
     <div class="card payroll-periods">
       ${PERIOD_KINDS.map(kind=>
         payrollPeriodRowHTML(kind)
@@ -4463,7 +4516,7 @@ function viewStats(){
   const statsFilters=
     isAdmin
       ? `
-        <div class="ml">Фильтры</div>
+        <div class="ml">Расчёт сотрудника</div>
         <div class="card employee-editor">
           <button
             type="button"
@@ -4517,9 +4570,9 @@ function viewStats(){
   */
   if(isAdmin && !selectedEmployee){
     return `
-      ${statsFilters}
-
       ${payrollPeriodsHTML()}
+
+      ${statsFilters}
 
       <div class="card">
         <div class="stats-empty">
@@ -4534,6 +4587,8 @@ function viewStats(){
   }
 
   return `
+    ${payrollPeriodsHTML()}
+
     ${statsFilters}
 
     <div class="card">
@@ -4562,9 +4617,6 @@ function viewStats(){
         </div>
       </div>
     </div>
-
-
-    ${payrollPeriodsHTML()}
 
     <div class="ml">
       Выплаты

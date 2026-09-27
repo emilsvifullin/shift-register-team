@@ -355,6 +355,16 @@ in the final settlement. That is a rule of the payment, not a reason to
 move the working day into another period, and the payout card already
 marks such shifts «первая половина».
 
+**Where periods sit on screen.** «Итоги» has two levels. «Периоды команды»
+comes first, before the employee picker, because a period belongs to the
+whole team: its status, snapshot and closing are shared. Below it starts
+«Расчёт сотрудника» — the picker and everything about one person. When a
+person is chosen, each period shows one read-only line with that person's
+share: due and paid from their row in the same `entries` the period totals
+are summed from, and underpaid/overpaid from their row in the same
+`periodDifferences`. The line is therefore always consistent with the
+period header and adds no calculation of its own.
+
 ## Reports and the PDF
 
 A report is a view of the period, not a second calculation. It takes the

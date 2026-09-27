@@ -1061,7 +1061,7 @@ test(
 
     assert.match(
       app,
-      /<div class="ml">Фильтры<\/div>[\s\S]*id="statsEmployeeOpen"/
+      /<div class="ml">Расчёт сотрудника<\/div>[\s\S]*id="statsEmployeeOpen"/
     );
 
     assert.doesNotMatch(

@@ -46,20 +46,6 @@ export function isValidDateString(value){
     date.getDate()===day;
 }
 
-export function createShiftId(){
-  if(globalThis.crypto?.randomUUID){
-    return `s-${globalThis.crypto.randomUUID()}`;
-  }
-
-  // Старые браузеры: криптографически случайный fallback без Date.now()+Math.random().
-  if(globalThis.crypto?.getRandomValues){
-    const bytes=new Uint8Array(16);
-    globalThis.crypto.getRandomValues(bytes);
-    return "s-"+Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
-  }
-
-  throw new Error("Безопасный генератор идентификаторов недоступен");
-}
 
 export function rateForShk(shk){
   const value=Number(shk) || 0;
@@ -69,7 +55,7 @@ export function rateForShk(shk){
   return TIERS.at(-1).rate;
 }
 
-export function resolvePointIdentity(record,index=null){
+function resolvePointIdentity(record,index=null){
   const recordIndex=index;
   const rawName=typeof record?.point==="string" ? record.point : "";
   const rawId=typeof record?.pointId==="string" ? record.pointId : "";
@@ -335,7 +321,7 @@ function normalizeFineEntries(
   return entries;
 }
 
-export function snapshotPricing({pointId,point,shk}){
+function snapshotPricing({pointId,point,shk}){
   const id=pointId || pointIdForName(point);
   if(!id || !POINT_BY_ID.has(id)){
     throw new DataValidationError("невозможно определить тариф для неизвестного ПВЗ");
@@ -583,7 +569,7 @@ export function createBackupEnvelope(shifts,{revision=null,exportedAt=new Date()
   };
 }
 
-export function parseBackupValue(value){
+function parseBackupValue(value){
   if(Array.isArray(value)){
     return {
       envelopeVersion:1,
@@ -642,7 +628,7 @@ export function parseBackupJson(text){
   return parseBackupValue(parsed);
 }
 
-export function pricingDriversEqual(a,b){
+function pricingDriversEqual(a,b){
   if(!a || !b) return false;
   const aIdentity=resolvePointIdentity(a);
   const bIdentity=resolvePointIdentity(b);
@@ -771,7 +757,7 @@ export function inMonth(shifts,ym){
     .sort((a,b)=>a.date===b.date ? a.id.localeCompare(b.id) : (a.date<b.date ? 1 : -1));
 }
 
-export function sumUp(list){
+function sumUp(list){
   const aggregate={n:list.length,shk:0,base:0,bonus:0,fine:0,total:0,extra:0,part:0};
   for(const shift of list){
     const result=calc(shift);

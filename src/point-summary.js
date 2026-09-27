@@ -14,7 +14,7 @@ const EMPLOYEE_FORMS=Object.freeze([
   "сотрудников"
 ]);
 
-export function assignedEmployees(
+function assignedEmployees(
   pointId,
   employees,
   employeePoints

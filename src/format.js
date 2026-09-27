@@ -5,6 +5,24 @@
 
 const NBSP=" ";
 
+/*
+  Форматировщики создаются один раз.
+
+  toLocaleString() и new Intl.NumberFormat() при каждом вызове заново
+  разбирают локаль и настройки — и это самая дорогая часть отрисовки
+  списка: на экране со всеми сменами месяца форматирование съедало
+  почти половину времени перерисовки. Настроек всего две, и обе
+  известны заранее.
+*/
+const WHOLE=new Intl.NumberFormat("ru-RU",{
+  maximumFractionDigits:0
+});
+
+const EXACT=new Intl.NumberFormat("ru-RU",{
+  minimumFractionDigits:2,
+  maximumFractionDigits:2
+});
+
 function withNonBreakingSpaces(value){
   return value.replace(/\s/g,NBSP);
 }
@@ -17,7 +35,7 @@ export function formatNumber(number){
   }
 
   return withNonBreakingSpaces(
-    Math.round(value).toLocaleString("ru-RU")
+    WHOLE.format(Math.round(value))
   );
 }
 
@@ -31,16 +49,8 @@ export function formatAmount(number){
   const cents=Math.round(value*100);
 
   return withNonBreakingSpaces(
-    (cents/100).toLocaleString(
-      "ru-RU",
-      {
-        minimumFractionDigits:
-          Math.abs(cents)%100===0
-            ? 0
-            : 2,
-        maximumFractionDigits:2
-      }
-    )
+    (Math.abs(cents)%100===0 ? WHOLE : EXACT)
+      .format(cents/100)
   );
 }
 

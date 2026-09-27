@@ -6,7 +6,7 @@ import {
 export const DB_KEY="shift-register-team-db-v3";
 export const LEGACY_DB_KEY="shift-register-team-legacy-v1";
 export const BACKUP_KEY="shift-register-team-last-good-v3";
-export const CORRUPT_KEY="shift-register-team-corrupt-v3";
+const CORRUPT_KEY="shift-register-team-corrupt-v3";
 export const CHANNEL_NAME="shift-register-team-sync-v3";
 
 export class StorageConflictError extends Error {
@@ -17,7 +17,7 @@ export class StorageConflictError extends Error {
   }
 }
 
-export class StorageUnavailableError extends Error {
+class StorageUnavailableError extends Error {
   constructor(message="Постоянное хранилище недоступно"){
     super(message);
     this.name="StorageUnavailableError";

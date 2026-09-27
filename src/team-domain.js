@@ -543,16 +543,6 @@ export function roleCapabilities(
   });
 }
 
-export function ownEmployee(
-  employees,
-  userId
-){
-  return (employees || [])
-    .find(
-      employee=>
-        employee.user_id===userId
-    ) || null;
-}
 
 export function filterEmployeeShifts(
   shifts,

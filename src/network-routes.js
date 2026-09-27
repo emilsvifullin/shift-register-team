@@ -49,7 +49,7 @@ const GATEWAY_FAILURES=new Set([502,504]);
 
 const EMPTY_BODY_STATUSES=new Set([204,205,304]);
 
-export class NetworkRouteError extends TypeError{
+class NetworkRouteError extends TypeError{
   constructor(message="Failed to fetch"){
     super(message);
     this.name="NetworkRouteError";

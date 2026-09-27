@@ -42,7 +42,7 @@ const VALUE_TAGS=new Set([
   "SELECT"
 ]);
 
-export function nodeKey(node){
+function nodeKey(node){
   if(!node || node.nodeType!==1){
     return null;
   }
@@ -54,7 +54,7 @@ export function nodeKey(node){
   );
 }
 
-export function isCompatible(target,source){
+function isCompatible(target,source){
   if(target.nodeType!==source.nodeType){
     return false;
   }
@@ -159,10 +159,26 @@ function applyFormSignature(target,source,previous){
   иначе, например, выделение с плитки «Сотрудники» уезжало на кнопку
   «Выберите сотрудника» при переходе на другую вкладку.
 */
+/*
+  Подавляющее большинство узлов экрана — обычные span и div с одним
+  классом: опознавательных атрибутов у них нет вовсе. Раньше каждый
+  такой узел всё равно заводил массив, складывал в него имя тега,
+  сортировал и склеивал — и так дважды на узел за перерисовку, живой и
+  разобранный. Список смен за месяц это около четырёх тысяч лишних
+  массивов на одно нажатие клавиши в поиске.
+
+  Поэтому массив заводится только тогда, когда опознавательный атрибут
+  действительно нашёлся, а сортировка — только когда их больше одного.
+*/
 function identity(element){
-  const parts=[element.nodeName];
   const attributes=element.attributes;
+
+  if(!attributes.length){
+    return element.nodeName;
+  }
+
   const field=VALUE_TAGS.has(element.nodeName);
+  let parts=null;
 
   for(let index=0;index<attributes.length;index++){
     const {name,value}=attributes[index];
@@ -188,11 +204,21 @@ function identity(element){
       name==="type" ||
       name.startsWith("data-")
     ){
+      if(!parts){
+        parts=[element.nodeName];
+      }
+
       parts.push(`${name}=${value}`);
     }
   }
 
-  return parts.sort().join("|");
+  if(!parts){
+    return element.nodeName;
+  }
+
+  return parts.length>2
+    ? parts.sort().join("|")
+    : parts.join("|");
 }
 
 function releaseRuntimeState(element){

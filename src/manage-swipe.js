@@ -33,7 +33,7 @@ const INTERACTIVE_SELECTOR=
 
 let instance=null;
 
-export function swipeAxis({dx,dy}){
+function swipeAxis({dx,dy}){
   const absX=Math.abs(dx);
   const absY=Math.abs(dy);
 
@@ -59,7 +59,7 @@ export function swipeAxis({dx,dy}){
   return null;
 }
 
-export function swipeCompletesBack({
+function swipeCompletesBack({
   dx,
   dy,
   axis,

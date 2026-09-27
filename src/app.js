@@ -98,6 +98,21 @@ import {
 } from "./wheel-gesture.js";
 
 import {
+  bindBottomSheetDismiss,
+  findTouch
+} from "./sheet-dismiss.js";
+
+import {
+  prefersReducedMotion
+} from "./reduced-motion.js";
+
+import {
+  animatePickerYearChange,
+  makeDateCalendarGhost,
+  makeMonthTransitionGhost
+} from "./picker-motion.js";
+
+import {
   fieldRevealHTML,
   REVEAL_DURATION
 } from "./field-reveal.js";
@@ -3106,9 +3121,16 @@ function payrollPeriodRowHTML(kind){
         >
           <span>
             ${
+              /*
+                «0 из 1 готовы» и «Все 1 готовы» — числительное не
+                согласовано, а для одного человека фраза и вовсе лишняя.
+                Важно одно: у скольких есть вопросы.
+              */
               state.review.troubled
-                ? `${state.review.ready} из ${state.review.employees} готовы, у ${state.review.troubled} есть вопросы`
-                : `Все ${state.review.employees} готовы`
+                ? `Вопросы по ${state.review.troubled} из ${state.review.employees}`
+                : state.review.employees===1
+                  ? "Всё готово"
+                  : `Все ${state.review.employees} готовы`
             }
           </span>
           ${state.review.troubled ? `
@@ -3951,6 +3973,36 @@ async function persistPayout(){
   }
 }
 
+/*
+  Сотрудник в раскрывающемся списке.
+
+  Подпись и строка поиска собирались в двух местах по отдельности и
+  успели разойтись: в одном списке архивный сотрудник помечался
+  «· архив», в другом «· в архиве». Ищут человека по всему, чем его
+  могут назвать, — имени, телефонам, банку, получателю и почте
+  аккаунта.
+*/
+function employeeChoiceOption(employee){
+  return {
+    value:employee.id,
+    label:
+      employee.full_name+
+      (
+        employee.status==="inactive"
+          ? " · архив"
+          : ""
+      ),
+    searchText:[
+      employee.full_name,
+      employee.phone,
+      employee.transfer_phone,
+      employee.transfer_bank,
+      employee.transfer_recipient,
+      employeeAccountEmail(employee)
+    ].filter(Boolean).join(" ")
+  };
+}
+
 function viewStats(){
   const state=serverStateCard();
 
@@ -4307,26 +4359,7 @@ function viewStats(){
             body:inlineChoiceHTML({
               options:
                 availableStatsEmployees
-                  .map(employee=>({
-                    value:employee.id,
-                    label:
-                      employee.full_name+
-                      (
-                        employee.status==="inactive"
-                          ? " · архив"
-                          : ""
-                      ),
-                    searchText:[
-                      employee.full_name,
-                      employee.phone,
-                      employee.transfer_phone,
-                      employee.transfer_bank,
-                      employee.transfer_recipient,
-                      employeeAccountEmail(
-                        employee
-                      )
-                    ].filter(Boolean).join(" ")
-                  })),
+                  .map(employeeChoiceOption),
               value:statsEmployeeId,
               attribute:"data-stats-employee",
               searchId:"statsEmployeeSearch",
@@ -9429,28 +9462,17 @@ async function saveEmployeeDraft(){
 
     if(wasExisting){
       updateEmployeeList();
-
-      showEmployeeView(
-        employeeId
-      );
-
-      toast(
-        authFailure
-          ? `Карточка сохранена. Вход не настроен: ${authFailure}`
-          : pendingRateFailure
-            ? `Карточка сохранена. Ставка не задана: ${pendingRateFailure}`
-            : "Сотрудник сохранён",
-        authFailure || pendingRateFailure
-          ? 5200
-          : 2200
-      );
-
-      return;
+      showEmployeeView(employeeId);
+    }else{
+      closeEmployeeEditor();
+      render();
     }
 
-    closeEmployeeEditor();
-    render();
-
+    /*
+      Сообщение одно на оба исхода: карточка сохранена, а необязательная
+      часть — вход или ставка — могла не получиться, и об этом нужно
+      сказать, не выдавая сохранение за неудачу.
+    */
     toast(
       authFailure
         ? `Карточка сохранена. Вход не настроен: ${authFailure}`
@@ -9611,11 +9633,13 @@ function viewManage(){
     return viewPoints();
   }
 
+  /*
+    Два заголовка над двумя строками ничего не добавляли: «Команда» над
+    «Сотрудниками» и «Пункты и расчёт» над «Пунктами выдачи и тарифами»
+    повторяли то, что и так написано ниже. Осталась одна карточка с
+    двумя входами — ровно то, чем этот экран и является.
+  */
   return `
-    <div class="ml">
-      Команда
-    </div>
-
     <div class="card manage-menu">
       <button
         type="button"
@@ -9641,13 +9665,7 @@ function viewManage(){
           </svg>
         </span>
       </button>
-    </div>
 
-    <div class="ml">
-      Пункты и расчёт
-    </div>
-
-    <div class="card manage-menu">
       <button
         type="button"
         class="manage-row"
@@ -10586,51 +10604,6 @@ function drawDateJump(){
 
 let dateCalendarTransitionRunning=false;
 
-function makeDateCalendarGhost(
-  element,
-  picker
-){
-  const rect=
-    element.getBoundingClientRect();
-
-  const pickerRect=
-    picker.getBoundingClientRect();
-
-  const ghost=
-    element.cloneNode(true);
-
-  ghost.removeAttribute("id");
-  ghost.setAttribute(
-    "aria-hidden",
-    "true"
-  );
-  ghost.setAttribute(
-    "inert",
-    ""
-  );
-
-  ghost.style.position="absolute";
-
-  ghost.style.left=
-    rect.left-pickerRect.left+"px";
-
-  ghost.style.top=
-    rect.top-pickerRect.top+"px";
-
-  ghost.style.width=
-    rect.width+"px";
-
-  ghost.style.height=
-    rect.height+"px";
-
-  ghost.style.margin="0";
-  ghost.style.zIndex="5";
-  ghost.style.pointerEvents="none";
-
-  picker.appendChild(ghost);
-
-  return ghost;
-}
 
 function changeDateCalendarMonth(
   nextCursor,
@@ -11589,9 +11562,16 @@ function calcHTML(){
           ? "Индивидуальная ставка сотрудника"
           : "Тариф ПВЗ"
       }</span>
-      <b>${esc(
-        rateEffectiveLabel(result.pricing)
-      )}</b>
+      ${
+        /*
+          У старых снимков даты нет, и строка показывала прочерк — будто
+          чего-то не хватает. Откуда ставка, сказано слева; если знаем
+          ещё и с какого числа, говорим, если нет — молчим.
+        */
+        result.pricing?.effectiveFrom
+          ? `<b>${esc(rateEffectiveLabel(result.pricing))}</b>`
+          : ""
+      }
     </div>
     ${draft.partial?`<div class="ln"><span>${nf(result.perHour)} ₽/час × ${hoursWord(result.hours)}</span><b>${money(result.calculatedBase)}</b></div>`:""}
     ${correction?`<div class="ln"><span>Корректировка</span><b class="${correction<0 ? "neg" : "pos"}">${correction<0 ? "−" : "+"} ${money(Math.abs(correction))}</b></div>`:""}
@@ -11910,7 +11890,7 @@ function drawSheet(isEdit){
                 point.name+
                 (
                   point.active===false
-                    ? " · в архиве"
+                    ? " · архив"
                     : ""
                 ),
               searchText:[
@@ -11954,26 +11934,7 @@ function drawSheet(isEdit){
         open:shiftInlineField==="employee",
         body:inlineChoiceHTML({
           options:shiftEmployeeOptions()
-            .map(employee=>({
-              value:employee.id,
-              label:
-                employee.full_name+
-                (
-                  employee.status==="inactive"
-                    ? " · в архиве"
-                    : ""
-                ),
-              searchText:[
-                employee.full_name,
-                employee.phone,
-                employee.transfer_phone,
-                employee.transfer_bank,
-                employee.transfer_recipient,
-                employeeAccountEmail(
-                  employee
-                )
-              ].filter(Boolean).join(" ")
-            })),
+            .map(employeeChoiceOption),
           value:draft.employeeId,
           attribute:"data-shift-employee",
           searchId:"shiftEmployeeSearch",
@@ -12514,114 +12475,6 @@ function closeMonthPicker(){
 let monthTransitionRunning=false;
 let tabTransitionRunning=false;
 
-function prefersReducedMotion(){
-  return window.matchMedia?.(
-    "(prefers-reduced-motion: reduce)"
-  ).matches===true;
-}
-
-function makeMonthTransitionGhost(
-  element,
-  zIndex
-){
-  const rect=
-    element.getBoundingClientRect();
-
-  const ghost=
-    element.cloneNode(true);
-
-  ghost.removeAttribute(
-    "id"
-  );
-
-  ghost
-    .querySelectorAll("[id]")
-    .forEach(node=>{
-      node.removeAttribute(
-        "id"
-      );
-    });
-
-  ghost.setAttribute(
-    "aria-hidden",
-    "true"
-  );
-
-  ghost.setAttribute(
-    "inert",
-    ""
-  );
-
-  ghost.style.position=
-    "fixed";
-
-  ghost.style.left=
-    rect.left+"px";
-
-  ghost.style.top=
-    rect.top+"px";
-
-  ghost.style.width=
-    rect.width+"px";
-
-  ghost.style.height=
-    rect.height+"px";
-
-  ghost.style.margin=
-    "0";
-
-  ghost.style.zIndex=
-    String(zIndex);
-
-  ghost.style.pointerEvents=
-    "none";
-
-  ghost.style.willChange=
-    "transform, opacity";
-
-  ghost.style.setProperty(
-    "view-transition-name",
-    "none"
-  );
-
-  document.body.appendChild(
-    ghost
-  );
-
-  if(
-    element instanceof HTMLElement &&
-    ghost instanceof HTMLElement
-  ){
-    ghost.scrollTop=
-      element.scrollTop;
-
-    ghost.scrollLeft=
-      element.scrollLeft;
-
-    const sourceShiftScroll=
-      element.querySelector(
-        ".shift-scroll"
-      );
-
-    const ghostShiftScroll=
-      ghost.querySelector(
-        ".shift-scroll"
-      );
-
-    if(
-      sourceShiftScroll instanceof HTMLElement &&
-      ghostShiftScroll instanceof HTMLElement
-    ){
-      ghostShiftScroll.scrollTop=
-        sourceShiftScroll.scrollTop;
-
-      ghostShiftScroll.scrollLeft=
-        sourceShiftScroll.scrollLeft;
-    }
-  }
-
-  return ghost;
-}
 
 function changeMonth(
   nextCursor,
@@ -12902,177 +12755,6 @@ let dateJumpYearTransitionRunning=false;
 let monthPickerYearPendingDirection=0;
 let dateJumpYearPendingDirection=0;
 
-function animatePickerYearChange({
-  container,
-  grid,
-  label,
-  direction,
-  apply,
-  onFinish
-}){
-  const finish=()=>{
-    if(onFinish){
-      onFinish();
-    }
-  };
-
-  if(
-    prefersReducedMotion() ||
-    typeof grid.animate!=="function"
-  ){
-    apply();
-    finish();
-    return;
-  }
-
-  let oldGrid=null;
-  let oldLabel=null;
-  let animations=[];
-  let applied=false;
-
-  try{
-    oldGrid=
-      makeDateCalendarGhost(
-        grid,
-        container
-      );
-
-    oldLabel=
-      makeDateCalendarGhost(
-        label,
-        container
-      );
-
-    apply();
-    applied=true;
-
-    grid.style.pointerEvents="none";
-
-    const oldGridX=
-      direction>0
-        ? -28
-        : 28;
-
-    const newGridX=
-      -oldGridX;
-
-    const oldLabelX=
-      direction>0
-        ? -10
-        : 10;
-
-    const newLabelX=
-      -oldLabelX;
-
-    const options={
-      duration:320,
-      easing:
-        "cubic-bezier(.22,.72,.22,1)",
-      fill:"both"
-    };
-
-    animations=[
-      oldGrid.animate(
-        [
-          {
-            opacity:1,
-            transform:
-              "translate3d(0,0,0)"
-          },
-          {
-            opacity:0,
-            transform:
-              `translate3d(${oldGridX}px,0,0)`
-          }
-        ],
-        options
-      ),
-
-      grid.animate(
-        [
-          {
-            opacity:0,
-            transform:
-              `translate3d(${newGridX}px,0,0)`
-          },
-          {
-            opacity:1,
-            transform:
-              "translate3d(0,0,0)"
-          }
-        ],
-        options
-      ),
-
-      oldLabel.animate(
-        [
-          {
-            opacity:1,
-            transform:
-              "translate3d(0,0,0)"
-          },
-          {
-            opacity:0,
-            transform:
-              `translate3d(${oldLabelX}px,0,0)`
-          }
-        ],
-        options
-      ),
-
-      label.animate(
-        [
-          {
-            opacity:0,
-            transform:
-              `translate3d(${newLabelX}px,0,0)`
-          },
-          {
-            opacity:1,
-            transform:
-              "translate3d(0,0,0)"
-          }
-        ],
-        options
-      )
-    ];
-
-    whenAnimationsSettle(
-      animations,
-      ()=>{
-        animations.forEach(
-          animation=>animation.cancel()
-        );
-
-        oldGrid?.remove();
-        oldLabel?.remove();
-
-        grid.style.removeProperty(
-          "pointer-events"
-        );
-
-        finish();
-      }
-    );
-  }catch{
-    animations.forEach(
-      animation=>animation.cancel()
-    );
-
-    oldGrid?.remove();
-    oldLabel?.remove();
-
-    grid.style.removeProperty(
-      "pointer-events"
-    );
-
-    if(!applied){
-      apply();
-    }
-
-    finish();
-  }
-}
 
 function changeMonthPickerYear(direction){
   if(monthPickerYearTransitionRunning){
@@ -13581,653 +13263,6 @@ document.getElementById("monthDone").onclick=()=>{
 const monthPickerElement=
   document.getElementById("monthPicker");
 
-function bindBottomSheetDismiss({
-  element,
-  dragProperty,
-  close,
-  canStart=()=>true,
-  onBegin=()=>{}
-}){
-  let gesture=null;
-  let dragFrame=0;
-  let pendingDistance=0;
-  let snapTimer=0;
-  let suppressClickUntil=0;
-  let wheelTimer=0;
-  let wheelSequence=null;
-
-  const blockedTarget=target=>
-    target instanceof Element &&
-    Boolean(
-      target.closest(
-        'input,textarea,select,[contenteditable="true"]'
-      )
-    );
-
-  const dismissSurface=target=>
-    target instanceof Element &&
-    Boolean(
-      target.closest(
-        ".grab,.shead,.point-picker-handle,.month-picker-handle,.date-picker-handle,.picker-toolbar"
-      )
-    );
-
-  const queueDistance=distance=>{
-    pendingDistance=distance;
-
-    if(dragFrame){
-      return;
-    }
-
-    dragFrame=requestAnimationFrame(()=>{
-      dragFrame=0;
-
-      element.style.setProperty(
-        dragProperty,
-        pendingDistance+"px"
-      );
-    });
-  };
-
-  const flushDistance=()=>{
-    if(!dragFrame){
-      return;
-    }
-
-    cancelAnimationFrame(dragFrame);
-    dragFrame=0;
-
-    element.style.setProperty(
-      dragProperty,
-      pendingDistance+"px"
-    );
-  };
-
-  const beginDrag=()=>{
-    clearTimeout(snapTimer);
-
-    onBegin();
-
-    element.style.transition="none";
-  };
-
-  /*
-    Возврат на место — короткая поправка: столько же занимает возврат в
-    остальных жестах приложения (src/swipe-close-guard.js,
-    src/month-picker-swipe.js). Роспуск окна идёт своим, длинным ходом.
-  */
-  const snapBack=()=>{
-    element.style.transition=
-      "transform .26s cubic-bezier(.4,0,.2,1)";
-
-    requestAnimationFrame(()=>{
-      element.style.setProperty(
-        dragProperty,
-        "0px"
-      );
-    });
-
-    snapTimer=setTimeout(()=>{
-      if(
-        element.classList.contains("on")
-      ){
-        element.style.removeProperty(
-          "transition"
-        );
-
-        element.style.removeProperty(
-          dragProperty
-        );
-      }
-    },284);
-  };
-
-  const resetInteraction=()=>{
-    clearTimeout(snapTimer);
-    clearTimeout(wheelTimer);
-
-    snapTimer=0;
-    wheelTimer=0;
-    wheelSequence=null;
-    gesture=null;
-
-    if(dragFrame){
-      cancelAnimationFrame(
-        dragFrame
-      );
-
-      dragFrame=0;
-    }
-
-    pendingDistance=0;
-
-    element.style.removeProperty(
-      dragProperty
-    );
-  };
-
-  element.addEventListener(
-    "bottomsheetopen",
-    resetInteraction
-  );
-
-  const animateClose=distance=>{
-    const endDistance=
-      element.getBoundingClientRect()
-        .height+40;
-
-    if(
-      prefersReducedMotion() ||
-      typeof element.animate!=="function"
-    ){
-      element.style.removeProperty(
-        "transition"
-      );
-
-      close();
-      return;
-    }
-
-    element.style.removeProperty(
-      "transition"
-    );
-
-    const animation=
-      element.animate(
-        [
-          {
-            transform:
-              `translate3d(0,${distance}px,0)`
-          },
-          {
-            transform:
-              `translate3d(0,${endDistance}px,0)`
-          }
-        ],
-        {
-          duration:420,
-          easing:
-            "cubic-bezier(.4,0,.2,1)",
-          fill:"both"
-        }
-      );
-
-    close();
-
-    animation.finished
-      .catch(()=>{})
-      .finally(()=>{
-        animation.cancel();
-      });
-  };
-
-  const finishDrag=({
-    allowClose=true
-  }={})=>{
-    if(
-      !gesture ||
-      gesture.axis!=="y"
-    ){
-      gesture=null;
-      return;
-    }
-
-    flushDistance();
-
-    const distance=
-      gesture.distance;
-
-    const duration=Math.max(
-      1,
-      performance.now()-
-        gesture.started
-    );
-
-    const fastSwipe=
-      distance>=22 &&
-      distance/duration>=0.32;
-
-    const shouldClose=
-      allowClose &&
-      (
-        distance>=56 ||
-        fastSwipe
-      );
-
-    gesture=null;
-
-    suppressClickUntil=
-      performance.now()+650;
-
-    if(shouldClose){
-      animateClose(distance);
-      return;
-    }
-
-    snapBack();
-  };
-
-  const lockAxis=(
-    dx,
-    dy
-  )=>{
-    if(!gesture){
-      return false;
-    }
-
-    const absX=Math.abs(dx);
-    const absY=Math.abs(dy);
-
-    if(gesture.axis!==null){
-      return gesture.axis==="y";
-    }
-
-    if(
-      absX<8 &&
-      absY<8
-    ){
-      return false;
-    }
-
-    if(
-      absX>=10 &&
-      absX>absY*1.10
-    ){
-      gesture.axis="x";
-      return false;
-    }
-
-    if(
-      dy<0 &&
-      absY>=10 &&
-      absY>absX*1.10
-    ){
-      gesture.axis="scroll";
-      return false;
-    }
-
-    if(
-      dy>0 &&
-      absY>=10 &&
-      absY>absX*1.08
-    ){
-      if(!canStart(gesture.target)){
-        gesture.axis="scroll";
-        return false;
-      }
-
-      gesture.axis="y";
-      beginDrag();
-      return true;
-    }
-
-    return false;
-  };
-
-  element.addEventListener(
-    "touchstart",
-    event=>{
-      if(
-        event.touches.length!==1 ||
-        !element.classList.contains("on") ||
-        blockedTarget(event.target) ||
-        !dismissSurface(event.target)
-      ){
-        gesture=null;
-        return;
-      }
-
-      const touch=
-        event.touches[0];
-
-      gesture={
-        kind:"touch",
-        id:touch.identifier,
-        target:event.target,
-        startX:touch.clientX,
-        startY:touch.clientY,
-        distance:0,
-        started:performance.now(),
-        axis:null
-      };
-    },
-    {passive:true}
-  );
-
-  element.addEventListener(
-    "touchmove",
-    event=>{
-      if(
-        !gesture ||
-        gesture.kind!=="touch"
-      ){
-        return;
-      }
-
-      const touch=
-        findTouch(
-          event.touches,
-          gesture.id
-        );
-
-      if(!touch){
-        return;
-      }
-
-      const dx=
-        touch.clientX-
-        gesture.startX;
-
-      const dy=
-        touch.clientY-
-        gesture.startY;
-
-      if(!lockAxis(dx,dy)){
-        return;
-      }
-
-      gesture.distance=
-        Math.max(0,dy);
-
-      queueDistance(
-        gesture.distance
-      );
-
-      if(event.cancelable){
-        event.preventDefault();
-      }
-    },
-    {passive:false}
-  );
-
-  element.addEventListener(
-    "touchend",
-    event=>{
-      if(
-        !gesture ||
-        gesture.kind!=="touch"
-      ){
-        return;
-      }
-
-      const touch=
-        findTouch(
-          event.changedTouches,
-          gesture.id
-        );
-
-      if(
-        touch &&
-        gesture.axis==="y"
-      ){
-        gesture.distance=
-          Math.max(
-            0,
-            touch.clientY-
-              gesture.startY
-          );
-
-        pendingDistance=
-          gesture.distance;
-      }
-
-      finishDrag();
-    }
-  );
-
-  element.addEventListener(
-    "touchcancel",
-    ()=>{
-      if(
-        !gesture ||
-        gesture.kind!=="touch"
-      ){
-        return;
-      }
-
-      finishDrag({
-        allowClose:false
-      });
-    }
-  );
-
-  element.addEventListener(
-    "pointerdown",
-    event=>{
-      if(
-        event.pointerType==="touch" ||
-        !event.isPrimary ||
-        !element.classList.contains("on") ||
-        blockedTarget(event.target) ||
-        !dismissSurface(event.target)
-      ){
-        return;
-      }
-
-      gesture={
-        kind:"pointer",
-        id:event.pointerId,
-        target:event.target,
-        startX:event.clientX,
-        startY:event.clientY,
-        distance:0,
-        started:performance.now(),
-        axis:null
-      };
-    }
-  );
-
-  element.addEventListener(
-    "pointermove",
-    event=>{
-      if(
-        !gesture ||
-        gesture.kind!=="pointer" ||
-        event.pointerId!==gesture.id
-      ){
-        return;
-      }
-
-      const dx=
-        event.clientX-
-        gesture.startX;
-
-      const dy=
-        event.clientY-
-        gesture.startY;
-
-      const wasDragging=
-        gesture.axis==="y";
-
-      if(!lockAxis(dx,dy)){
-        return;
-      }
-
-      if(!wasDragging){
-        try{
-          element.setPointerCapture(
-            event.pointerId
-          );
-        }catch{}
-      }
-
-      gesture.distance=
-        Math.max(0,dy);
-
-      queueDistance(
-        gesture.distance
-      );
-
-      event.preventDefault();
-    }
-  );
-
-  element.addEventListener(
-    "pointerup",
-    event=>{
-      if(
-        !gesture ||
-        gesture.kind!=="pointer" ||
-        event.pointerId!==gesture.id
-      ){
-        return;
-      }
-
-      if(gesture.axis==="y"){
-        gesture.distance=
-          Math.max(
-            0,
-            event.clientY-
-              gesture.startY
-          );
-
-        pendingDistance=
-          gesture.distance;
-      }
-
-      try{
-        if(
-          element.hasPointerCapture(
-            event.pointerId
-          )
-        ){
-          element.releasePointerCapture(
-            event.pointerId
-          );
-        }
-      }catch{}
-
-      finishDrag();
-    }
-  );
-
-  element.addEventListener(
-    "pointercancel",
-    event=>{
-      if(
-        !gesture ||
-        gesture.kind!=="pointer" ||
-        event.pointerId!==gesture.id
-      ){
-        return;
-      }
-
-      finishDrag({
-        allowClose:false
-      });
-    }
-  );
-
-  element.addEventListener(
-    "wheel",
-    event=>{
-      if(
-        !element.classList.contains("on") ||
-        !dismissSurface(event.target) ||
-        Math.abs(event.deltaX)>
-          Math.abs(event.deltaY)*1.15 ||
-        (
-          gesture &&
-          gesture.kind!=="wheel"
-        )
-      ){
-        return;
-      }
-
-      if(event.deltaY>=0){
-        clearTimeout(wheelTimer);
-        wheelTimer=0;
-        wheelSequence=null;
-
-        if(
-          gesture?.kind==="wheel"
-        ){
-          finishDrag({
-            allowClose:false
-          });
-        }
-
-        return;
-      }
-
-      const now=performance.now();
-
-      if(
-        !wheelSequence ||
-        now-wheelSequence.lastAt>130
-      ){
-        wheelSequence={
-          lastAt:now,
-          canDismiss:
-            canStart(event.target)
-        };
-      }else{
-        wheelSequence.lastAt=now;
-      }
-
-      clearTimeout(wheelTimer);
-      wheelTimer=setTimeout(()=>{
-        wheelTimer=0;
-        wheelSequence=null;
-
-        if(
-          gesture?.kind==="wheel"
-        ){
-          finishDrag();
-        }
-      },90);
-
-      if(!wheelSequence.canDismiss){
-        return;
-      }
-
-      if(!gesture){
-        gesture={
-          kind:"wheel",
-          target:event.target,
-          distance:0,
-          started:performance.now(),
-          axis:"y"
-        };
-
-        beginDrag();
-      }
-
-      if(event.cancelable){
-        event.preventDefault();
-      }
-
-      gesture.distance+=Math.min(
-        34,
-        Math.abs(event.deltaY)*.72
-      );
-
-      queueDistance(
-        gesture.distance
-      );
-    },
-    {passive:false}
-  );
-
-  element.addEventListener(
-    "click",
-    event=>{
-      if(
-        performance.now()>
-        suppressClickUntil
-      ){
-        return;
-      }
-
-      suppressClickUntil=0;
-
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    },
-    true
-  );
-}
-
 bindBottomSheetDismiss({
   element:monthPickerElement,
   dragProperty:"--month-drag",
@@ -14242,18 +13277,6 @@ const monthSwipeArea=document;
 function resetMonthSwipe(){
   monthSwipe=null;
   document.body.classList.remove("month-swiping");
-}
-
-function findTouch(list,id){
-  for(let i=0;i<list.length;i++){
-    const touch=list[i];
-
-    if(touch.identifier===id){
-      return touch;
-    }
-  }
-
-  return null;
 }
 
 function monthSwipeStartBlocked(target){

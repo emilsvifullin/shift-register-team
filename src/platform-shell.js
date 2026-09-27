@@ -819,7 +819,7 @@ function installTabShell({
   };
 }
 
-export function installPlatformShell({
+function installPlatformShell({
   windowRef=window,
   documentRef=document
 }={}){

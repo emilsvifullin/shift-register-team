@@ -105,7 +105,7 @@ function byDay(shifts){
   Сводка месяца для выбранного среза. Считается один раз и используется
   и подписью над календарём, и строкой итогов в «Контроле».
 */
-export function monthSummary({
+function monthSummary({
   shifts,
   cursor,
   today
@@ -234,7 +234,7 @@ const SCROLL_EPS=2;
   ли затенять обрезанный край. Вызывается после каждой перерисовки и на
   прокрутку с изменением размера окна.
 */
-export function syncShiftViewChips(root=document){
+function syncShiftViewChips(root=document){
   const frame=root.querySelector("[data-points-strip]");
   const strip=frame?.querySelector("[data-points-chips]");
 

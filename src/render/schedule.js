@@ -15,8 +15,8 @@
   останавливается вместе с ними) и всегда ограничено сверху.
 */
 
-export const MAX_RENDER_DEFERRAL=900;
-export const TRANSITION_TIMEOUT=1200;
+const MAX_RENDER_DEFERRAL=900;
+const TRANSITION_TIMEOUT=1200;
 
 export function createDeferredRender({
   shouldDefer,

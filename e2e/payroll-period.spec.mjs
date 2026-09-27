@@ -328,8 +328,12 @@ test(
       "[data-period-review]"
     );
 
+    /*
+      Сводка называет только то, что требует внимания: «0 из 1 готовы»
+      не согласовано по числу, а для одного человека и вовсе лишнее.
+    */
     await expect(summary).toContainText(
-      "есть вопросы"
+      "Вопросы по 1 из 1"
     );
 
     await summary.click();
@@ -363,7 +367,7 @@ test(
 
     await expect(
       periodRow(page,0).locator("[data-period-review]")
-    ).toContainText("готовы");
+    ).toContainText("Всё готово");
 
     await expect(
       periodRow(page,0).locator(".payroll-review-count")

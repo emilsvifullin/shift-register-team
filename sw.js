@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="9284f8f5f40364b1c21a3d0e4510fe2564b098f60902f95dd31bf74d240f58b8";
+const SHELL_FINGERPRINT="3fbf1cdbf9ad274b7b950977bc9f8311a1126da80646536fcca4212826f34604";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -89,14 +89,17 @@ const SCRIPTS=[
   "./src/payroll-report.js",
   "./src/payroll-review.js",
   "./src/phone.js",
+  "./src/picker-motion.js",
   "./src/picker-position.js",
   "./src/platform-shell.js",
   "./src/point-summary.js",
   "./src/pwa.js",
+  "./src/reduced-motion.js",
   "./src/reference-swipes.js",
   "./src/render/dom-patch.js",
   "./src/render/schedule.js",
   "./src/shift-views.js",
+  "./src/sheet-dismiss.js",
   "./src/storage.js",
   "./src/supabase.js",
   "./src/swipe-close-guard.js",

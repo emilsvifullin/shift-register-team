@@ -4,6 +4,15 @@ function text(value){
     .toLocaleLowerCase("ru-RU");
 }
 
+/*
+  Создание форматировщика стоит дороже самого форматирования, а поиск
+  зовёт эту функцию для каждой суммы каждой смены на каждое нажатие
+  клавиши. Настройки одни и те же — значит и форматировщик один.
+*/
+const MONEY_SEARCH_FORMAT=new Intl.NumberFormat("ru-RU",{
+  maximumFractionDigits:2
+});
+
 function moneySearchVariants(value){
   const number=Number(value);
 
@@ -14,9 +23,7 @@ function moneySearchVariants(value){
   return [
     String(number),
     String(number).replace(".",","),
-    new Intl.NumberFormat("ru-RU",{
-      maximumFractionDigits:2
-    }).format(number)
+    MONEY_SEARCH_FORMAT.format(number)
   ];
 }
 
@@ -54,7 +61,7 @@ export function toggleFilterSelection(
   return Array.from(selected);
 }
 
-export function shiftSearchText(
+function shiftSearchText(
   shift,
   extra=[]
 ){

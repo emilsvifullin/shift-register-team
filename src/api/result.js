@@ -47,7 +47,7 @@ const ERROR_MESSAGES=Object.freeze({
     "Удаление сотрудника уже выполняется"
 });
 
-export function readableError(
+function readableError(
   result,
   fallback
 ){

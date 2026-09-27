@@ -805,9 +805,13 @@ test(
       /shiftPointReveal[\s\S]*inlineChoiceHTML\(/
     );
 
+    /*
+      Подпись и строка поиска сотрудника собираются одним помощником:
+      два места успели разойтись в пометке архива.
+    */
     assert.match(
       app,
-      /shiftEmployeeReveal[\s\S]*inlineChoiceHTML\([\s\S]*employeeAccountEmail/
+      /shiftEmployeeReveal[\s\S]*inlineChoiceHTML\([\s\S]*employeeChoiceOption/
     );
 
     assert.match(
@@ -1174,8 +1178,12 @@ test(
       /class="card employee-detail"[\s\S]*ФИО[\s\S]*esc\(employee\.full_name\)/
     );
 
+    /*
+      Жест закрытия нижних поверхностей переехал в отдельный модуль:
+      в app.js он занимал шестьсот строк среди совсем других забот.
+    */
     assert.match(
-      app,
+      await read("src/sheet-dismiss.js"),
       /kind:"wheel"/
     );
 
@@ -1232,13 +1240,15 @@ test(
       /function prepareBottomSheetOpen[\s\S]*getAnimations/
     );
 
+    const dismiss=await read("src/sheet-dismiss.js");
+
     assert.match(
-      app,
+      dismiss,
       /wheelSequence[\s\S]*canDismiss:[\s\S]*canStart\(event\.target\)/
     );
 
     assert.match(
-      app,
+      dismiss,
       /wheelSequence\.canDismiss/
     );
 

@@ -19,12 +19,6 @@ export const PERIOD_KINDS=Object.freeze([
   "second_half"
 ]);
 
-export const PERIOD_STATUSES=Object.freeze([
-  "open",
-  "checked",
-  "closed",
-  "paid"
-]);
 
 const STATUS_LABELS={
   open:"В работе",
@@ -62,11 +56,6 @@ export function periodStatus(periods,ym,kind){
   return findPeriod(periods,ym,kind)?.status || "open";
 }
 
-export function periodClosed(periods,ym,kind){
-  return ["closed","paid"].includes(
-    periodStatus(periods,ym,kind)
-  );
-}
 
 /*
   Отпечаток данных периода.

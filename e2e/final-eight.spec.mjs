@@ -10,6 +10,26 @@ import {
 } from "./support/supabase-stub.mjs";
 
 /*
+  Список сотрудника раскрывается переходом, и клик по строке, которая
+  ещё едет, на медленной машине промахивается. Ждём не время, а сам
+  переход.
+*/
+async function pickStatsEmployee(page,selector='[data-stats-employee]'){
+  await page.locator("#statsEmployeeOpen").click();
+
+  const reveal=page.locator('[data-key="statsEmployeeReveal"]');
+
+  await expect(reveal).toHaveClass(/\bon\b/);
+
+  await expect
+    .poll(()=>reveal.evaluate(node=>node.getAnimations().length))
+    .toBe(0);
+
+  await page.locator(selector).first().click();
+}
+
+
+/*
   Восемь доработок, доведённых после аудита. Каждая проверяется тем
   сценарием, в котором она была не сделана, — чтобы вернуться назад
   незаметно стало нельзя.
@@ -70,8 +90,7 @@ function seed({days=[3,8],partial=false}={}){
 
 async function openStats(page){
   await page.locator("#tab-stats").click();
-  await page.locator("#statsEmployeeOpen").click();
-  await page.locator("[data-stats-employee]").first().click();
+  await pickStatsEmployee(page);
 }
 
 const periodRow=page=>page.locator(".payroll-period").first();
@@ -244,8 +263,7 @@ test(
     await expect(page.locator(".payroll-periods-scope"))
       .toContainText("По всей команде");
 
-    await page.locator("#statsEmployeeOpen").click();
-    await page.locator("[data-stats-employee]").first().click();
+    await pickStatsEmployee(page);
 
     /* С выбранным сотрудником подпись тем более нужна — и она на месте. */
     await expect(page.locator(".payroll-periods-scope"))

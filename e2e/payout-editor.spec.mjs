@@ -103,8 +103,28 @@ async function openStats(page,payouts=[]){
 
   await page.locator("#tab-stats").click();
 
-  /* Сотрудник выбирается внутри плитки «Сотрудник», без окна снизу. */
+  /*
+    Сотрудник выбирается внутри плитки «Сотрудник», без окна снизу.
+
+    Список раскрывается переходом, и клик по строке, которая ещё едет,
+    на медленной машине промахивается: на Firefox в CI выбор не
+    срабатывал, а вместе с ним не появлялся и блок выплат. Ждём не
+    время, а сам переход — он и есть условие.
+  */
   await page.locator("#statsEmployeeOpen").click();
+
+  const reveal=page.locator(
+    '[data-key="statsEmployeeReveal"]'
+  );
+
+  await expect(reveal).toHaveClass(/\bon\b/);
+
+  await expect
+    .poll(()=>reveal.evaluate(node=>
+      node.getAnimations().length
+    ))
+    .toBe(0);
+
   await page.locator("[data-stats-employee]").first().click();
 
   await expect(

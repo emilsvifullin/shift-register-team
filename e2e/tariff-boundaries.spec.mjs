@@ -10,6 +10,26 @@ import {
 } from "./support/supabase-stub.mjs";
 
 /*
+  Список сотрудника раскрывается переходом, и клик по строке, которая
+  ещё едет, на медленной машине промахивается. Ждём не время, а сам
+  переход.
+*/
+async function pickStatsEmployee(page,selector='[data-stats-employee]'){
+  await page.locator("#statsEmployeeOpen").click();
+
+  const reveal=page.locator('[data-key="statsEmployeeReveal"]');
+
+  await expect(reveal).toHaveClass(/\bon\b/);
+
+  await expect
+    .poll(()=>reveal.evaluate(node=>node.getAnimations().length))
+    .toBe(0);
+
+  await page.locator(selector).first().click();
+}
+
+
+/*
   Тариф смены определяется её собственной датой: последний тариф ПВЗ,
   начавший действовать не позже этой даты. Здесь это проверяется на
   границе — за день до перехода, в сам день и после, — и на пачке дат,
@@ -684,8 +704,7 @@ test(
 
     /* Итог месяца — оплата обеих смен плюс обе премии. */
     await page.locator("#tab-stats").click();
-    await page.locator("#statsEmployeeOpen").click();
-    await page.locator('[data-stats-employee="employee-2"]').click();
+    await pickStatsEmployee(page,'[data-stats-employee="employee-2"]');
 
     await expect(
       page.locator("#app")

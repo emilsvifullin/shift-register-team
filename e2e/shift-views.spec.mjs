@@ -113,9 +113,24 @@ async function openCalendar(page){
   ).toBeVisible();
 }
 
-/* ПВЗ выбирается из раскрывающегося списка, как сотрудник в «Итогах». */
+/*
+  ПВЗ выбирается из раскрывающегося списка, как сотрудник в «Итогах». Список
+  раскрывается переходом, и по строке, которая ещё едет, нажатие может
+  промахнуться — поэтому ждём конца перехода, а не время.
+*/
+async function pointListSettled(page){
+  const reveal=page.locator('[data-key="calendarPointReveal"]');
+
+  await expect(reveal).toHaveClass(/\bon\b/);
+
+  await expect
+    .poll(()=>reveal.evaluate(node=>node.getAnimations({subtree:true}).length))
+    .toBe(0);
+}
+
 async function choosePoint(page,id){
   await page.locator("#calendarPointOpen").click();
+  await pointListSettled(page);
 
   await page
     .locator(`[data-calendar-point="${id}"]`)
@@ -643,6 +658,7 @@ test.describe("desktop",()=>{
         .click();
 
       await page.locator("#calendarPointOpen").click();
+      await pointListSettled(page);
 
       /* Мышью поле поиска получает фокус сразу — можно печатать. */
       await expect(
@@ -725,6 +741,7 @@ test.describe("mobile",()=>{
       await openCalendar(page);
 
       await page.locator("#calendarPointOpen").tap();
+      await pointListSettled(page);
 
       /*
         Пальцем фокус в поиск не ставится: клавиатура закрыла бы

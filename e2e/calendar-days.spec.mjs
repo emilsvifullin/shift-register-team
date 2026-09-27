@@ -129,12 +129,29 @@ async function openCalendar(page){
   ).toBeVisible();
 }
 
+/*
+  Список раскрывается переходом, и нажатие по строке, которая ещё едет,
+  на медленной машине промахивается. Ждём не время, а сам переход — как
+  с выбором сотрудника в «Итогах».
+*/
 async function choosePoint(page,id){
   await page.locator("#calendarPointOpen").click();
+
+  const reveal=page.locator('[data-key="calendarPointReveal"]');
+
+  await expect(reveal).toHaveClass(/\bon\b/);
+
+  await expect
+    .poll(()=>reveal.evaluate(node=>node.getAnimations({subtree:true}).length))
+    .toBe(0);
 
   await page
     .locator(`[data-calendar-point="${id}"]`)
     .click();
+
+  await expect(
+    page.locator("#calendarPointOpen")
+  ).toHaveAttribute("aria-expanded","false");
 }
 
 const cell=(page,number)=>

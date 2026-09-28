@@ -84,10 +84,7 @@ async function frameOf(page,frame){
       radius=parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
     }
 
-    /* Поля вокруг снятого отдельно элемента: тогда в кадре его собственные углы и тень. */
-    const bare=Boolean(frame.isolate && (m.l>0 || m.r>0));
-
-    return {x:left,y:top,width:right-left,height:bottom-top,radius,bare};
+    return {x:left,y:top,width:right-left,height:bottom-top,radius};
   },frame);
 }
 
@@ -131,6 +128,7 @@ async function marksOf(page,marks,clip,{clampX=false}={}){
         at:m.at || "left",
         pad:m.pad ?? 5,
         radius:m.radius ?? 12,
+        dy:m.dy ?? 0,
         x:r.left-clip.x,
         y:r.top-clip.y,
         w:r.width,
@@ -166,11 +164,62 @@ async function marksOf(page,marks,clip,{clampX=false}={}){
   return found;
 }
 
+/*
+  Собственная тень панели в кадр не попадает: на странице снимок лежит на
+  подложке, и тень там была бы чужой. Остаются только скругления элемента.
+*/
 const ISOLATE_CSS=`
   html,body{background:transparent!important}
   body *{visibility:hidden!important}
   [data-manual-keep],[data-manual-keep] *{visibility:visible!important}
+  [data-manual-keep]{box-shadow:none!important;filter:none!important}
 `;
+
+/* Длина растворения края в CSS-пикселях окна. */
+const FADE_PX={top:70,bottom:110,right:150};
+
+/*
+  Растворение края пишется в прозрачность самого PNG. CSS-маска в PDF
+  превращается в полупрозрачную группу, и Просмотр на macOS рисует её
+  серым прямоугольником; прозрачность картинки он показывает верно.
+*/
+async function bakeFade(png,{fade,scale}){
+  const page=await context.newPage();
+  const out=await page.evaluate(async({src,fade,lengths})=>{
+    const image=new Image();
+    image.src=src;
+    await image.decode();
+    const canvas=document.createElement("canvas");
+    canvas.width=image.naturalWidth;
+    canvas.height=image.naturalHeight;
+    const g=canvas.getContext("2d");
+    g.drawImage(image,0,0);
+    g.globalCompositeOperation="destination-in";
+
+    const along=(x0,y0,x1,y1,edge)=>{
+      const ramp=g.createLinearGradient(x0,y0,x1,y1);
+      ramp.addColorStop(0,"rgba(0,0,0,1)");
+      ramp.addColorStop(1-edge,"rgba(0,0,0,1)");
+      ramp.addColorStop(1,"rgba(0,0,0,0)");
+      g.fillStyle=ramp;
+      g.fillRect(0,0,canvas.width,canvas.height);
+    };
+
+    const H=canvas.height;
+    const W=canvas.width;
+    if(/bottom|both/.test(fade)) along(0,0,0,H,Math.min(lengths.bottom/H,.35));
+    if(/top|both/.test(fade)) along(0,H,0,0,Math.min(lengths.top/H,.25));
+    if(/right/.test(fade)) along(0,0,W,0,Math.min(lengths.right/W,.35));
+
+    return canvas.toDataURL("image/png");
+  },{
+    src:"data:image/png;base64,"+png.toString("base64"),
+    fade,
+    lengths:{top:FADE_PX.top*scale,bottom:FADE_PX.bottom*scale,right:FADE_PX.right*scale}
+  });
+  await page.close();
+  return Buffer.from(out.split(",")[1],"base64");
+}
 
 async function shoot(page,name,{frame={},marks=[],wait=700}={}){
   await settle(page,wait);
@@ -184,8 +233,7 @@ async function shoot(page,name,{frame={},marks=[],wait=700}={}){
     await page.waitForTimeout(60);
   }
 
-  await page.screenshot({
-    path:`${OUT}${name}.png`,
+  let png=await page.screenshot({
     clip:{x:clip.x,y:clip.y,width:clip.width,height:clip.height},
     omitBackground:Boolean(frame.isolate)
   });
@@ -195,20 +243,26 @@ async function shoot(page,name,{frame={},marks=[],wait=700}={}){
     await page.evaluate(()=>document.querySelectorAll("[data-manual-keep]").forEach(el=>el.removeAttribute("data-manual-keep")));
   }
 
+  if(frame.fade){
+    png=await bakeFade(png,{fade:frame.fade,scale:await page.evaluate(()=>devicePixelRatio)});
+  }
+
+  writeFileSync(`${OUT}${name}.png`,png);
   writeFileSync(`${OUT}${name}.json`,JSON.stringify({
     width:clip.width,
     height:clip.height,
     floating:Boolean(frame.isolate),
-    bare:clip.bare,
     radius:clip.radius,
     fade:frame.fade || null,
+    device:frame.device || null,
     marks:found
   },null,1));
 }
 
 /* ---------- стенд ---------- */
 
-const {browser,context}=await launch();
+const SCALE=2.4;
+const {browser,context}=await launch({scale:SCALE});
 
 /*
   Суммы первой половины месяца считает само приложение: по ним записываются
@@ -249,7 +303,7 @@ const scene=(name,run)=>scenes.push({name,run});
 
 scene("00-cover",async()=>{
   const page=await demo();
-  await shoot(page,"00-cover",{frame:{x0:MAIN.x0-60,x1:MAIN.x1+60}});
+  await shoot(page,"00-cover",{frame:{x0:MAIN.x0,x1:MAIN.x1,until:[".shift-scroll .sh","",8],fade:"bottom"}});
   await page.close();
 });
 
@@ -259,7 +313,7 @@ scene("01-login",async()=>{
   await page.route("**/login.html",async r=>{const res=await r.fetch();const html=await res.text();await r.fulfill({status:200,contentType:"text/html; charset=utf-8",body:html.replace(/\n\s*integrity="[^"]*"/,"")});});
   await page.goto(`${ORIGIN}/login.html`);
   await shoot(page,"01-login",{
-    frame:{el:".auth-card",isolate:true,margin:40},
+    frame:{el:".auth-card",isolate:true},
     marks:[
       {sel:"#email",n:1},
       {sel:"#current-password",n:2},
@@ -283,11 +337,29 @@ scene("02-overview",async()=>{
   await page.close();
 });
 
+/*
+  Тот же экран на телефоне: так Shift Register выглядит в браузере телефона
+  и установленным на экран «Домой».
+*/
+scene("02b-phone",async()=>{
+  const phone=await browser.newContext({
+    viewport:{width:390,height:844},
+    deviceScaleFactor:3,
+    isMobile:true,
+    hasTouch:true,
+    colorScheme:"light",
+    serviceWorkers:"block"
+  });
+  const page=await openDemo(phone,{seed:SEED()});
+  await shoot(page,"02b-phone",{frame:{device:"phone"}});
+  await phone.close();
+});
+
 scene("03-month",async()=>{
   const page=await demo();
   await page.locator("#period").click();
   await shoot(page,"03-month",{
-    frame:{el:"#monthPicker",isolate:true,margin:24},
+    frame:{el:"#monthPicker",isolate:true},
     marks:[
       {sel:".month-picker-head",n:1,at:"left",radius:12},
       {sel:".month-option",text:"Август",n:2,at:"left",radius:12},
@@ -365,7 +437,7 @@ scene("06-dates",async()=>{
     await settle(page,250);
   }
   await shoot(page,"06-dates",{
-    frame:sheet("#sheet",".date-chosen",{fade:"bottom",margin:{b:60}}),
+    frame:sheet("#sheet",".date-chosen",{fade:"bottom",margin:{b:120}}),
     marks:[
       {sel:"#sheet .date-day.on",index:0,n:1,at:"left",radius:10,pad:3},
       {sel:"#sheet .date-day.on",index:1,radius:10,pad:3},
@@ -459,10 +531,10 @@ scene("10-select",async()=>{
   await shoot(page,"10a-select",{
     frame:{x0:MAIN.x0,x1:MAIN.x1},
     marks:[
-      {sel:"#shiftSelectToggle",n:1,at:"right",radius:8},
+      {sel:"#shiftSelectToggle",n:1,at:"right",radius:8,dy:-2.2},
       {sel:"[data-select-all]",n:2,at:"left",radius:10},
       {sel:".shift-select-count",n:3,at:"top",radius:8,content:true,pad:6},
-      {sel:"#shiftSelectDelete",n:4,at:"right"},
+      {sel:"#shiftSelectDelete",n:4,at:"right",dy:2.2},
       {sel:".shift-scroll .sh.chosen .sh-check",index:0,n:5,at:"left",radius:8,pad:4}
     ]
   });
@@ -472,7 +544,7 @@ scene("10-select",async()=>{
   await page.locator("#shiftSelectDelete").click();
   await page.locator("#appConfirmInput").fill("5");
   await shoot(page,"10b-confirm",{
-    frame:{el:".app-confirm-box",isolate:true,margin:40},
+    frame:{el:".app-confirm-box",isolate:true},
     marks:[
       {sel:"#appConfirmInput",n:1,at:"left"},
       {sel:"#appConfirmOk",n:2,at:"bottom"}
@@ -507,7 +579,7 @@ scene("11-calendar",async()=>{
       {sel:"#calendarPointOpen",n:1,at:"left",pad:2},
       {sel:".sv-summary",n:2,at:"left",radius:8,pad:6},
       {sel:"[data-calendar-pick-mode]",n:3,at:"right",radius:8},
-      {sel:'[data-calendar-day="2026-09-01"]',n:4,at:"top",radius:14,pad:3},
+      {sel:'[data-calendar-day="2026-09-01"]',n:4,at:"left",radius:14,pad:3},
       {sel:".sv-calendar .sv-legend",n:5,at:"left",radius:8,pad:4},
       {sel:".sv-panel",n:6,at:"right",radius:16},
       {sel:"[data-calendar-add]",n:7,at:"left"}
@@ -517,7 +589,7 @@ scene("11-calendar",async()=>{
   await settle(page,600);
   await page.locator("#calendarPointSearch").fill("пят");
   await shoot(page,"11b-points",{
-    frame:{x0:MAIN.x0,x1:820,from:"#calendarPointOpen",until:".sv-point-card",margin:{t:44,b:40},fade:"bottom-right"},
+    frame:{x0:MAIN.x0,x1:820,from:[".ml","Пункт выдачи"],until:".sv-point-card",margin:{t:14,b:40},fade:"bottom-right"},
     marks:[
       {sel:"#calendarPointSearch",n:1,at:"left",pad:10},
       {sel:".sv-point-card [data-calendar-point]",index:0,n:2,at:"left",pad:0}
@@ -596,7 +668,7 @@ scene("15-period",async()=>{
       {sel:`${row} .payout-summary`,n:1,at:"left",pad:0},
       {sel:`${row} .payroll-person-row`,index:0,n:2,at:"left",pad:2},
       {sel:`${row} .payroll-review-summary`,n:3,at:"left",pad:2},
-      {sel:`${row} .payroll-report-actions`,n:4,at:"left",radius:8,pad:2},
+      {sel:`${row} .payroll-report-actions`,n:4,at:"right",radius:8,pad:2},
       {sel:`${row} .payroll-period-actions`,n:5,at:"left"}
     ]
   });
@@ -660,7 +732,7 @@ scene("18-closed",async()=>{
   await page.locator("#f-note").fill("Уточнили время");
   await page.locator("#sheetSave").click();
   await shoot(page,"18-closed",{
-    frame:{el:".app-confirm-box",isolate:true,margin:40},
+    frame:{el:".app-confirm-box",isolate:true},
     marks:[
       {sel:"#appConfirmDetail",n:1,at:"left",box:false},
       {sel:"#appConfirmOk",n:2,at:"bottom"}
@@ -679,6 +751,19 @@ async function openManage(page,section){
     await settle(page,600);
   }
 }
+
+scene("19-manage",async()=>{
+  const page=await demo();
+  await openManage(page);
+  await shoot(page,"19-manage",{
+    frame:{x0:MAIN.x0,x1:MAIN.x1,until:'#app [data-manage-section="points"]',margin:{b:36}},
+    marks:[
+      {sel:'#app [data-manage-section="employees"]',n:1,at:"left",pad:0},
+      {sel:'#app [data-manage-section="points"]',n:2,at:"left",pad:0}
+    ]
+  });
+  await page.close();
+});
 
 scene("20-employees",async()=>{
   const page=await demo();
@@ -785,7 +870,7 @@ scene("24-point-card",async()=>{
   await page.locator('#manageEditorSheet button:has-text("По ШК")').click();
   await settle(page,500);
   await shoot(page,"24c-tariff-shk",{
-    frame:sheet("#manageEditorSheet",["#manageEditorSheet button","Добавить тариф"],{from:["#manageEditorSheet .seg","",2],margin:{t:44,b:24},fade:"top"}),
+    frame:sheet("#manageEditorSheet",["#manageEditorSheet button","Добавить тариф"],{from:["#manageEditorSheet .seg","",2],margin:{t:44,b:4},fade:"top"}),
     marks:[
       {sel:"#manageEditorSheet .seg",index:2,n:1,at:"left"},
       {sel:"#manageEditorSheet .row",text:"Действует с",n:2,at:"left",pad:2},

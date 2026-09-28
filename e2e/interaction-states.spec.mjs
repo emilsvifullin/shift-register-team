@@ -103,19 +103,22 @@ async function pressedLook(page,locator){
   return state;
 }
 
+/*
+  «Итоги» в режиме «Все сотрудники» с раскрытой первой половиной
+  месяца: там и отчёты, и действия периода.
+*/
 async function openStats(page){
   await page.locator("#tab-stats").click();
-  await page.locator("#statsEmployeeOpen").click();
 
-  const reveal=page.locator('[data-key="statsEmployeeReveal"]');
+  const row=page.locator(".payroll-period").first();
 
-  await expect(reveal).toHaveClass(/\bon\b/);
+  await row.locator("[data-payout-toggle]").click();
 
   await expect
-    .poll(()=>reveal.evaluate(node=>node.getAnimations().length))
+    .poll(()=>row.evaluate(node=>
+      node.getAnimations({subtree:true}).length
+    ))
     .toBe(0);
-
-  await page.locator('[data-stats-employee="employee-1"]').click();
 }
 
 test.describe("mouse",()=>{
@@ -412,20 +415,16 @@ test.describe("registry selection",()=>{
       await expect(remove).toBeDisabled();
 
       /*
-        Панель приставлена к списку, а её флажок стоит в одном столбце с
-        флажками строк.
+        Панель — строка управления, а не плитка: своей поверхности у неё
+        нет, и пустое место в ней ни на что не реагирует. Флажок стоит в
+        одном столбце с флажками строк.
       */
       const layout=await page.evaluate(()=>{
-        const bar=document
-          .querySelector(".shift-select-bar")
-          .getBoundingClientRect();
+        const bar=document.querySelector(".shift-select-bar");
+        const style=getComputedStyle(bar);
 
-        const list=document
-          .querySelector(".shift-window")
-          .getBoundingClientRect();
-
-        const head=document
-          .querySelector(".shift-select-bar .sh-check")
+        const head=bar
+          .querySelector(".sh-check")
           .getBoundingClientRect();
 
         const row=document
@@ -433,15 +432,17 @@ test.describe("registry selection",()=>{
           .getBoundingClientRect();
 
         return {
-          gap:Math.round(list.top-bar.bottom),
-          width:Math.round(list.width-bar.width),
+          background:style.backgroundColor,
+          image:style.backgroundImage,
+          border:style.borderTopWidth,
           column:Math.round(Math.abs(head.left-row.left))
         };
       });
 
       expect(layout).toEqual({
-        gap:0,
-        width:0,
+        background:"rgba(0, 0, 0, 0)",
+        image:"none",
+        border:"0px",
         column:0
       });
 
@@ -497,7 +498,7 @@ test.describe("registry selection",()=>{
 
       const column=await page.evaluate(()=>{
         const head=document
-          .querySelector(".sv-pick-bar .sh-check")
+          .querySelector(".sv-pick-all .sh-check")
           .getBoundingClientRect();
 
         const row=document
@@ -516,7 +517,7 @@ test.describe("registry selection",()=>{
       await expect(page.locator(".sv-day.picked")).toHaveCount(4);
 
       await expect(
-        page.locator(".sv-pick-bar .shift-select-count")
+        page.locator(".sv-panel-date")
       ).toHaveText("Выбрано 4 дня");
 
       await master.tap();

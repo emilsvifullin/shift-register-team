@@ -591,6 +591,7 @@ nav.tabs button{
   .employee-point:hover,
   .point-option:hover,
   .payout-summary:hover,
+  .payroll-person-row:hover,
   .tariff-history-item > summary:hover{
     background:var(--tint-soft);
   }

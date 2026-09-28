@@ -780,122 +780,122 @@
 }
 
 /*
-  Расчётные периоды в «Итогах».
+  Период команды в «Итогах» — строка выплаты в режиме «Все сотрудники».
 
-  Две половины месяца стоят рядом и читаются одинаково: заголовок с
-  состоянием, цифры периода, действия. Состояние окрашено сдержанно —
-  это статус процесса, а не предупреждение, и кричать ему незачем.
+  Шапку и раскрытие строка берёт у выплаты (payout-block,
+  payout-summary, payout-expanded); здесь только то, что есть у периода
+  сверх неё: состояние, расхождения, люди и управление. Состояние
+  окрашено сдержанно — это статус процесса, а не предупреждение.
 */
-.payroll-periods{
-  padding:4px 0;
-}
-
-.payroll-period{
-  padding:12px 16px;
-  border-top:1px solid var(--line);
-}
-
-.payroll-period:first-child{
-  border-top:0;
-}
-
-.payroll-period-head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-}
-
-.payroll-period-title{
-  font-size:14.5px;
-  font-weight:600;
-  letter-spacing:-.2px;
-}
-
 .payroll-period-status{
-  flex:none;
-  padding:3px 9px;
-  border:1px solid var(--line2);
-  border-radius:999px;
-
-  color:var(--ink2);
-  font-size:11px;
-  font-weight:600;
+  color:var(--ink3);
   white-space:nowrap;
 }
 
 .payroll-period-status.checked{
-  border-color:var(--gold-line);
   color:var(--gold);
 }
 
 .payroll-period-status.closed,
 .payroll-period-status.paid{
-  border-color:var(--green-line);
   color:var(--green);
 }
 
 .payroll-period-status.stale,
 .payroll-period-status.mismatched{
-  border-color:var(--rust-line);
   color:var(--rust);
 }
 
-.payroll-period-figures{
+/*
+  Из кого складывается сумма периода — строка на человека. Нажатие
+  открывает его расчёт: из общей картины в частную тем же выбором, что и
+  сверху экрана.
+*/
+.payroll-person-row{
   display:flex;
-  flex-wrap:wrap;
-  gap:4px 14px;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  width:100%;
+  min-height:52px;
 
-  margin-top:8px;
-  color:var(--ink3);
-  font-size:12.5px;
+  padding:9px 12px;
+  border:0;
+  border-top:1px solid var(--line);
+  background:transparent;
+  color:var(--ink);
+  text-align:left;
 }
 
-.payroll-period-figures b{
-  color:var(--ink);
-  font-weight:600;
+.payroll-person-row:first-child{
+  border-top:0;
+}
+
+.payroll-person-main{
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+
+.payroll-person-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+
+  font-size:12.5px;
+  font-weight:550;
+}
+
+.payroll-person-meta{
+  color:var(--ink3);
+  font-size:11.5px;
+}
+
+.payroll-person-meta .neg{
+  color:var(--rust);
+}
+
+.payroll-person-meta .over{
+  color:var(--gold);
+}
+
+.payroll-person-row b{
+  flex:none;
+  font-size:13px;
+  font-weight:550;
+  white-space:nowrap;
+}
+
+/* Проверка, история, отчёты и действия — под списком людей. */
+.payroll-period-manage{
+  padding:4px 16px 14px;
 }
 
 /*
-  Доля выбранного сотрудника в периоде команды. Отделена волосяной
-  чертой, мельче цифр периода и без их яркости: читается как пояснение
-  к периоду, а не как его заголовок или вторая шапка.
+  Выплата сотрудника знает о периоде команды: его состояние, отчёт по
+  этому человеку и дорога к самому периоду.
 */
-.payroll-person{
+.payout-period-note{
   display:flex;
   flex-wrap:wrap;
-  align-items:baseline;
-  gap:2px 12px;
+  align-items:center;
+  justify-content:space-between;
+  gap:0 12px;
 
-  margin-top:10px;
-  padding-top:8px;
+  padding:4px 16px 6px;
   border-top:1px solid var(--line);
 
   color:var(--ink3);
   font-size:12px;
 }
 
-/* Пара «подпись — сумма» не рвётся посередине, переносится целиком. */
-.payroll-person > span{
-  white-space:nowrap;
-}
-
-.payroll-person-name{
-  color:var(--ink2);
-  font-weight:550;
-}
-
-.payroll-person b{
-  color:var(--ink2);
+.payout-period-note b{
   font-weight:600;
 }
 
-.payroll-person .underpaid b{
-  color:var(--rust);
-}
-
-.payroll-person .overpaid b{
-  color:var(--gold);
+.payout-period-links{
+  display:flex;
+  gap:12px;
 }
 
 .payroll-period-actions{
@@ -1137,7 +1137,7 @@
   display:flex;
   flex-wrap:wrap;
   gap:6px;
-  margin-top:8px;
+  margin-top:6px;
 }
 
 .payroll-gap{
@@ -1329,61 +1329,51 @@
 }
 
 /*
-  Панель выбора приставлена к списку сверху: её нижний край — верхний
-  край карточки списка, углы скруглены только снаружи. Вместе они
-  читаются одной вещью — «список в режиме выбора», — а тёплый оттенок
-  панели тот же, что у выбранных строк.
+  Режим выбора — строка управления над списком, а не ещё одна плитка.
 
-  Флажок панели стоит в одном столбце с флажками строк: у обоих
-  одинаковый отступ слева.
+  Своей поверхности у неё нет: ни фона, ни рамки. Раньше панель была
+  приставлена к карточке списка и залита тем же тёплым оттенком, что и
+  выбранные строки, — и читалась одной большой выбранной строкой, будто
+  нажимается целиком. Теперь реагирует только то, что действительно
+  нажимается: общий флажок и «Удалить».
+
+  Флажок стоит в одном столбце с флажками строк: к отступу строки
+  добавлен пиксель рамки карточки.
 */
 .shift-select-bar{
   flex:none;
 
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:12px;
 
-  min-height:52px;
-  padding:8px 10px 8px var(--select-inline);
-
-  border:1px solid var(--line);
-  border-bottom-color:var(--line2);
-  border-radius:var(--r) var(--r) 0 0;
-
-  background:
-    linear-gradient(
-      color-mix(in srgb,var(--gold) 5%,transparent),
-      color-mix(in srgb,var(--gold) 5%,transparent)
-    ),
-    var(--surf);
+  min-height:44px;
+  margin:0 0 6px;
+  padding:0 0 0 calc(var(--select-inline) + 1px);
 }
 
 /*
-  Левый отступ панели повторяет отступ строк списка по тем же ступеням
-  ширины (refinement.css, interaction-core.css): только так общий флажок
-  стоит точно над флажками строк на любом экране.
+  Отступ повторяет отступ строк списка по тем же ступеням ширины
+  (refinement.css, interaction-core.css). Им же пользуется флажок в
+  панели выбора дней календаря.
 */
-.shift-select-bar{
+.shift-select-bar,
+.sv-panel-pick{
   --select-inline:14px;
 }
 
 @media (max-width:420px){
-  .shift-select-bar{
+  .shift-select-bar,
+  .sv-panel-pick{
     --select-inline:12px;
   }
 }
 
 @media (max-width:370px){
-  .shift-select-bar{
+  .shift-select-bar,
+  .sv-panel-pick{
     --select-inline:10px;
   }
-}
-
-.shift-select-bar + .shift-window{
-  border-top:0;
-  border-top-left-radius:0;
-  border-top-right-radius:0;
 }
 
 .shift-select-all{

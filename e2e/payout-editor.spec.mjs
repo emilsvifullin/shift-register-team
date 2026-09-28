@@ -125,7 +125,7 @@ async function openStats(page,payouts=[]){
     ))
     .toBe(0);
 
-  await page.locator("[data-stats-employee]").first().click();
+  await page.locator('[data-stats-employee]:not([data-stats-employee=""])').first().click();
 
   await expect(
     page.locator('[data-payout-toggle="first_half"]')

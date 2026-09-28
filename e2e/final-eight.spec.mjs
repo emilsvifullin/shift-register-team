@@ -14,7 +14,7 @@ import {
   ещё едет, на медленной машине промахивается. Ждём не время, а сам
   переход.
 */
-async function pickStatsEmployee(page,selector='[data-stats-employee]'){
+async function pickStatsEmployee(page,selector='[data-stats-employee]:not([data-stats-employee=""])'){
   await page.locator("#statsEmployeeOpen").click();
 
   const reveal=page.locator('[data-key="statsEmployeeReveal"]');
@@ -88,12 +88,34 @@ function seed({days=[3,8],partial=false}={}){
   return source;
 }
 
-async function openStats(page){
-  await page.locator("#tab-stats").click();
-  await pickStatsEmployee(page);
+const periodRow=page=>page.locator(".payroll-period").first();
+
+/*
+  Периоды — строки «Выплат» в режиме «Все сотрудники», с которого
+  «Итоги» и открываются. Проверка, история и действия периода — в
+  раскрытии строки; раскрытие — переход, ждём его конца.
+*/
+async function openPeriod(page,index=0){
+  const row=page.locator(".payroll-period").nth(index);
+  const toggle=row.locator("[data-payout-toggle]");
+
+  if(await toggle.getAttribute("aria-expanded")!=="true"){
+    await toggle.click();
+  }
+
+  await expect(toggle).toHaveAttribute("aria-expanded","true");
+
+  await expect
+    .poll(()=>row.evaluate(node=>
+      node.getAnimations({subtree:true}).length
+    ))
+    .toBe(0);
 }
 
-const periodRow=page=>page.locator(".payroll-period").first();
+async function openStats(page){
+  await page.locator("#tab-stats").click();
+  await openPeriod(page,0);
+}
 
 /* 1. По карточке видно, полная смена или неполная. */
 test(
@@ -150,6 +172,7 @@ test(
 
     const second=page.locator(".payroll-period").nth(1);
 
+    await openPeriod(page,1);
     await second.locator("[data-period-check]").click();
     await second.locator("[data-period-close]").click();
 
@@ -254,41 +277,52 @@ test(
 );
 
 /*
-  5. Охват блока периодов назван прямо — заголовком и местом: периоды
-  команды стоят до выбора сотрудника, а не между его цифрами.
+  5. «Итоги» открываются общей картиной: выбор сотрудника стоит первым и
+  показывает «Все сотрудники», а периоды команды — это строки «Выплат»
+  в этом режиме. Выбранный человек меняет те же строки на свои выплаты,
+  а не добавляет второй экран под первым.
 */
 test(
-  "the periods block names its whole-team scope",
+  "the stats screen opens on the whole team and narrows to one person",
   async({page})=>{
     await openApp(page,{seed:seed()});
     await page.locator("#tab-stats").click();
 
-    const order=()=>page.evaluate(()=>{
+    const layout=()=>page.evaluate(()=>{
       const app=document.getElementById("app");
-      const periods=app.querySelector(".payroll-periods");
-      const picker=app.querySelector("#statsEmployeeOpen");
 
       return {
-        heading:app.querySelector(".ml").textContent.trim(),
-        periodsFirst:Boolean(
-          periods.compareDocumentPosition(picker)&
-          Node.DOCUMENT_POSITION_FOLLOWING
-        )
+        first:app.firstElementChild.contains(
+          document.getElementById("statsEmployeeOpen")
+        ),
+        picker:document
+          .querySelector("#statsEmployeeOpen .point-value")
+          .textContent.trim(),
+        periods:app.querySelectorAll(".payroll-period").length,
+        rows:app.querySelectorAll("[data-payout-toggle]").length
       };
     });
 
-    expect(await order()).toEqual({
-      heading:"Периоды команды",
-      periodsFirst:true
+    expect(await layout()).toEqual({
+      first:true,
+      picker:"Все сотрудники",
+      periods:2,
+      rows:2
     });
 
     await pickStatsEmployee(page);
 
-    /* С выбранным сотрудником порядок тот же. */
-    expect(await order()).toEqual({
-      heading:"Периоды команды",
-      periodsFirst:true
+    expect(await layout()).toEqual({
+      first:true,
+      picker:"Марина Абрамова",
+      periods:0,
+      rows:2
     });
+
+    /* «Все сотрудники» — первый пункт того же списка. */
+    await pickStatsEmployee(page,'[data-stats-employee=""]');
+
+    expect((await layout()).picker).toBe("Все сотрудники");
   }
 );
 
@@ -319,8 +353,12 @@ test(
     const finding=page.locator('[data-review-payout="first_half"]');
     await expect(finding).toContainText("Выплачено не полностью");
 
-    /* Сотрудник уже выбран — и всё равно нажатие приводит к выплате. */
+    /* Нажатие открывает расчёт этого человека на его выплате. */
     await finding.click();
+
+    await expect(
+      page.locator("#statsEmployeeOpen .point-value")
+    ).toHaveText("Марина Абрамова");
 
     await expect(
       page.locator('[data-key="payoutReveal-first_half"]')
@@ -450,8 +488,9 @@ test(
 
     await page.locator("#shiftSelectDelete").click();
 
-    /* Крупная пачка требует набрать число. */
+    /* Крупная пачка требует набрать число — фокус уже в поле. */
     await expect(page.locator("#appConfirmOk")).toBeDisabled();
+    await expect(page.locator("#appConfirmInput")).toBeFocused();
     await page.locator("#appConfirmInput").fill("6");
     await expect(page.locator("#appConfirmOk")).toBeEnabled();
 

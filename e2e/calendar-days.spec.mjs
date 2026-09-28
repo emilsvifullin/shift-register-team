@@ -349,8 +349,13 @@ test.describe("desktop",()=>{
       await expect(page.locator(".sv-day.on")).toHaveCount(0);
 
       await expect(
-        page.locator(".sv-pick-bar .shift-select-count")
-      ).toHaveText("Ничего не выбрано");
+        page.locator(".sv-panel-date")
+      ).toHaveText("Выбор дней");
+
+      /* Пустая панель — одна фраза, без инструкции. */
+      await expect(
+        page.locator(".sv-panel-hint")
+      ).toHaveText("Отметьте дни — их смены соберутся здесь.");
 
       await cell(page,2).click();
       await cell(page,3).click();
@@ -360,7 +365,7 @@ test.describe("desktop",()=>{
 
       /* Пустой день выбрать можно, в смены он ничего не добавляет. */
       await expect(
-        page.locator(".sv-pick-bar .shift-select-count")
+        page.locator(".sv-panel-date")
       ).toHaveText("Выбрано 3 дня");
 
       /* Выбраны не все дни со сменами — общий флажок частичный. */
@@ -728,8 +733,13 @@ test.describe("mobile",()=>{
       await cell(page,3).tap();
       await cell(page,2).tap();
 
+      /* Панель снова пуста; подсказка о Shift есть, но пальцу не видна. */
       await expect(
-        page.locator(".sv-pick-range-hint")
+        page.locator(".sv-pick-tip")
+      ).toHaveCount(1);
+
+      await expect(
+        page.locator(".sv-pick-tip")
       ).toBeHidden();
 
       await cell(page,2).tap();

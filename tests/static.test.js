@@ -892,7 +892,7 @@ test(
 
     assert.match(
       statsView,
-      /"Выберите сотрудника"[\s\S]*"Сотрудники не добавлены"/
+      /"Все сотрудники"[\s\S]*"Сотрудники не добавлены"/
     );
 
     assert.doesNotMatch(
@@ -1061,7 +1061,7 @@ test(
 
     assert.match(
       app,
-      /<div class="ml">Расчёт сотрудника<\/div>[\s\S]*id="statsEmployeeOpen"/
+      /value:"",\s*label:"Все сотрудники"[\s\S]*id="statsEmployeeOpen"|id="statsEmployeeOpen"[\s\S]*value:"",\s*label:"Все сотрудники"/
     );
 
     assert.doesNotMatch(

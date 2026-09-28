@@ -512,10 +512,12 @@ function pickPanelHTML({
   );
 
   /*
-    Шапка панели — та же панель выбора, что над списком реестра: общий
-    флажок с тремя состояниями и счётчик. «Все» здесь — все дни, где у
-    выбранного ПВЗ есть смены: дни без смен отмечают руками, когда
-    заводят смену на несколько дней.
+    Панель выбора устроена как панель дня: заголовок говорит, что
+    выбрано, строка под ним — где и на сколько. Общий флажок стоит
+    отдельной строкой над списком, в столбце флажков смен, и отвечает
+    только за одно — отметить все дни со сменами или снять выбор. Раньше
+    он делил одну строку со счётчиком «Ничего не выбрано», и две подписи
+    одного веса спорили друг с другом.
   */
   const allShiftDays=
     shiftDays.length>0 &&
@@ -527,49 +529,51 @@ function pickPanelHTML({
       ? "some"
       : "none";
 
-  const bar=`
-    <div class="shift-select-bar sv-pick-bar" role="toolbar" aria-label="Выбор дней">
-      <button
-        type="button"
-        class="shift-select-all"
-        data-calendar-pick-all
-        aria-pressed="${
-          master==="all"
-            ? "true"
-            : master==="some"
-              ? "mixed"
-              : "false"
-        }"
-        ${shiftDays.length ? "" : "disabled"}
-      >
-        <span class="sh-check ${master}" aria-hidden="true">${
-          master==="all"
-            ? "✓"
-            : master==="some"
-              ? "–"
-              : ""
-        }</span>
-        <span>${allShiftDays ? "Снять выбор" : "Все дни со сменами"}</span>
-      </button>
-
-      <span class="shift-select-count" aria-live="polite">
-        ${picked.length
-          ? `Выбрано ${daysWord(picked.length)}`
-          : "Ничего не выбрано"}
-      </span>
-    </div>
+  const masterHTML=`
+    <button
+      type="button"
+      class="shift-select-all sv-pick-all"
+      data-calendar-pick-all
+      aria-pressed="${
+        master==="all"
+          ? "true"
+          : master==="some"
+            ? "mixed"
+            : "false"
+      }"
+      ${shiftDays.length ? "" : "disabled"}
+    >
+      <span class="sh-check ${master}" aria-hidden="true">${
+        master==="all"
+          ? "✓"
+          : master==="some"
+            ? "–"
+            : ""
+      }</span>
+      <span>${allShiftDays ? "Снять выбор" : "Все дни со сменами"}</span>
+    </button>
   `;
 
+  /*
+    Пустое состояние — одна фраза о смысле панели. Диапазон с Shift
+    остаётся тихой подсказкой внизу и только там, где есть клавиатура.
+  */
   if(!picked.length){
     return `
       <div class="sv-panel sv-panel-pick">
-        ${bar}
+        <div class="sv-panel-head">
+          <div class="sv-panel-date">Выбор дней</div>
+          <div class="sv-panel-sub">${esc(scopeName)}</div>
+        </div>
+
+        ${masterHTML}
 
         <div class="sv-panel-hint">
-          Отметьте дни в календаре — здесь соберутся их смены.
-          <span class="sv-pick-range-hint">
-            С Shift отмечаются дни подряд.
-          </span>
+          Отметьте дни — их смены соберутся здесь.
+        </div>
+
+        <div class="sv-pick-tip">
+          <kbd>Shift</kbd> — несколько дней подряд
         </div>
       </div>
     `;
@@ -596,15 +600,20 @@ function pickPanelHTML({
 
   return `
     <div class="sv-panel sv-panel-pick">
-      ${bar}
-
-      <div class="sv-panel-sub">
-        ${esc(scopeName)}${
-          shifts.length
-            ? ` · ${shiftsWord(included.length)} · ${money(total)}`
-            : ""
-        }
+      <div class="sv-panel-head">
+        <div class="sv-panel-date">
+          Выбрано ${daysWord(picked.length)}
+        </div>
+        <div class="sv-panel-sub">
+          ${esc(scopeName)}${
+            shifts.length
+              ? ` · ${shiftsWord(included.length)} · ${money(total)}`
+              : ""
+          }
+        </div>
       </div>
+
+      ${masterHTML}
 
       ${shifts.length
         ? `<div class="sv-panel-list">${

@@ -1018,7 +1018,14 @@ function appConfirm(message,{
   modal.setAttribute("aria-hidden","false");
   document.body.classList.add("confirm-open");
   setBackgroundInert(true);
-  setTimeout(()=>cancel.focus(),20);
+
+  /*
+    Где подтверждение надо набрать, фокус сразу в поле: дальше человеку
+    всё равно туда. Раньше фокус всегда уходил на «Отмена» — и если набор
+    успевал начаться раньше этого, фокус выдёргивало из поля посреди
+    ввода, число не попадало, а «Удалить» оставалась недоступной.
+  */
+  setTimeout(()=>(confirm ? input : cancel).focus(),20);
 
   return new Promise(resolve=>{appConfirmResolve=resolve;});
 }
@@ -2557,7 +2564,49 @@ function payoutExpandedHTML({kind,due,employee,statsShifts}){
             ${progress.paid ? "Добавить часть выплаты" : "Отметить выплату"}
           </button>
         `}
+        ${payoutPeriodNoteHTML(kind,employee)}
       ` : ""}
+    </div>
+  `;
+}
+
+/*
+  Связь выплаты сотрудника с периодом команды.
+
+  Период один на всех, поэтому действия с ним живут в «Все сотрудники».
+  Здесь — только его состояние, отчёт по этому человеку и дорога к
+  периоду: закрытый или выплаченный период меняет то, как дальше
+  правится и эта выплата.
+*/
+function payoutPeriodNoteHTML(kind,employee){
+  const period=findPeriod(teamData.periods,cursor,kind);
+  const status=period?.status || "open";
+
+  return `
+    <div class="payout-period-note">
+      <span>
+        Период ${kind==="first_half" ? "1–15" : "16–конец месяца"}
+        для всей команды —
+        <b class="payroll-period-status ${esc(status)}">${esc(periodStatusLabel(status))}</b>
+      </span>
+      <span class="payout-period-links">
+        <button
+          type="button"
+          class="payroll-report-link"
+          data-period-report="${kind}"
+          data-report-detailed="1"
+          data-report-employee="${esc(employee.id)}"
+        >
+          Отчёт по сотруднику
+        </button>
+        <button
+          type="button"
+          class="payroll-report-link"
+          data-stats-employee=""
+        >
+          Все сотрудники
+        </button>
+      </span>
     </div>
   `;
 }
@@ -3133,58 +3182,6 @@ function openPayrollReport({kind,detailed,employeeId}){
   });
 }
 
-/*
-  Строка выбранного сотрудника внутри периода команды.
-
-  Только для чтения и только из тех же строк, из которых собраны цифры
-  периода: к выплате и выплачено — его строка в state.entries,
-  недоплата и переплата — его строка в state.differences. Поэтому она
-  всегда складывается с шапкой периода и не может с ней спорить.
-
-  Строка стоит под цифрами периода, мельче и тише их и начинается с
-  имени: это «вот его доля», а не заголовок, — период по-прежнему
-  принадлежит всей команде.
-*/
-function payrollPeriodPersonHTML(state){
-  if(!isAdmin){
-    return "";
-  }
-
-  const employee=statsEmployeeOptions().find(
-    item=>item.id===statsEmployeeId
-  );
-
-  if(!employee){
-    return "";
-  }
-
-  const entry=state.entries.find(
-    item=>item.employeeId===employee.id
-  );
-
-  const gap=state.differences.rows.find(
-    item=>item.employeeId===employee.id
-  );
-
-  return `
-    <div class="payroll-person">
-      <span class="payroll-person-name">${esc(employee.full_name)}</span>
-      ${entry ? `
-        <span>к выплате <b>${money(entry.due)}</b></span>
-        <span>выплачено <b>${money(entry.paid)}</b></span>
-        ${gap?.underpaid ? `
-          <span class="underpaid">недоплата <b>${money(gap.underpaid)}</b></span>
-        ` : ""}
-        ${gap?.overpaid ? `
-          <span class="overpaid">переплата <b>${money(gap.overpaid)}</b></span>
-        ` : ""}
-      ` : `
-        <span>в этом периоде смен и выплат нет</span>
-      `}
-    </div>
-  `;
-}
-
 function payrollPeriodRowHTML(kind){
   const state=payrollPeriodState(kind);
   const busy=payrollPeriodSaving===kind;
@@ -3286,178 +3283,221 @@ function payrollPeriodRowHTML(kind){
     `);
   }
 
-  return `
-    <div class="payroll-period payroll-period-${state.status}">
-      <div class="payroll-period-head">
-        <div class="payroll-period-title">
-          ${kind==="first_half" ? "1–15" : "16–конец месяца"}
-        </div>
+  const statusClass=
+    state.stale
+      ? "stale"
+      : mismatched
+        ? "mismatched"
+        : state.status;
 
-        <div class="payroll-period-status ${
-          state.stale
-            ? "stale"
-            : mismatched
-              ? "mismatched"
-              : state.status
-        }">
-          ${
-            state.stale
-              ? "Данные изменились"
-              : mismatched
-                ? "Есть расхождение"
-                : esc(periodStatusLabel(state.status))
-          }
-        </div>
-      </div>
+  const statusText=
+    state.stale
+      ? "Данные изменились"
+      : mismatched
+        ? "Есть расхождение"
+        : periodStatusLabel(state.status);
 
-      <div class="payroll-period-figures">
-        <span>Сотрудников <b>${state.totals.employees}</b></span>
-        <span>Смен <b>${state.totals.shifts}</b></span>
-        <span>К выплате <b>${money(state.totals.due)}</b></span>
-        <span>Выплачено <b>${money(state.totals.paid)}</b></span>
-      </div>
+  const expanded=expandedPayoutKind===kind;
 
-      ${
-        state.differences.underpaid ||
-        state.differences.overpaid
-          ? `
-            <div class="payroll-period-gaps">
-              ${state.differences.underpaid ? `
-                <span class="payroll-gap underpaid">
-                  Недоплата ${money(state.differences.underpaid)}
-                </span>
-              ` : ""}
-              ${state.differences.overpaid ? `
-                <span class="payroll-gap overpaid">
-                  Переплата ${money(state.differences.overpaid)}
-                </span>
-              ` : ""}
-            </div>
-          `
-          : ""
-      }
+  const title=kind==="first_half"
+    ? `25 ${monthGen(cursor)}`
+    : `10 ${monthGen(shiftMonth(cursor,1))}`;
 
-      ${payrollPeriodPersonHTML(state)}
+  const people=state.entries
+    .filter(entry=>entry.due || entry.paid)
+    .map(entry=>{
+      const gap=state.differences.rows.find(
+        row=>row.employeeId===entry.employeeId
+      );
 
-      ${state.review.employees && !closed ? `
+      return `
         <button
           type="button"
-          class="payroll-review-summary ${
-            state.review.troubled ? "has-questions" : "clean"
-          }"
-          data-period-review="${kind}"
-          aria-expanded="${open ? "true" : "false"}"
+          class="payroll-person-row"
+          data-stats-person="${esc(entry.employeeId)}"
+          aria-label="Открыть расчёт: ${esc(entry.employeeName)}"
         >
-          <span>
-            ${
-              /*
-                «0 из 1 готовы» и «Все 1 готовы» — числительное не
-                согласовано, а для одного человека фраза и вовсе лишняя.
-                Важно одно: у скольких есть вопросы.
-              */
-              state.review.troubled
-                ? `Вопросы по ${state.review.troubled} из ${state.review.employees}`
-                : state.review.employees===1
-                  ? "Всё готово"
-                  : `Все ${state.review.employees} готовы`
-            }
-          </span>
-          ${state.review.troubled ? `
-            <span class="payroll-review-count">
-              ${state.review.findings.length}
+          <span class="payroll-person-main">
+            <span class="payroll-person-name">${esc(entry.employeeName)}</span>
+            <span class="payroll-person-meta">
+              выплачено ${money(entry.paid)}${
+                gap?.underpaid
+                  ? ` · <span class="neg">недоплата ${money(gap.underpaid)}</span>`
+                  : gap?.overpaid
+                    ? ` · <span class="over">переплата ${money(gap.overpaid)}</span>`
+                    : ""
+              }
             </span>
-          ` : ""}
+          </span>
+          <b>${money(entry.due)}</b>
         </button>
-      ` : ""}
-
-      ${open && state.review.findings.length ? `
-        <div class="payroll-findings">
-          ${state.review.findings
-            .map(payrollFindingHTML)
-            .join("")}
-        </div>
-      ` : ""}
-
-      ${events.length ? `
-        <button
-          type="button"
-          class="payroll-history-toggle"
-          data-period-history="${kind}"
-          aria-expanded="${historyOpen ? "true" : "false"}"
-        >
-          История изменений
-          <span class="payroll-history-count">${events.length}</span>
-        </button>
-      ` : ""}
-
-      ${historyOpen && events.length ? `
-        <div class="payroll-events">
-          ${events.map(payrollEventHTML).join("")}
-        </div>
-      ` : ""}
-
-      ${state.totals.employees ? `
-        <div class="payroll-report-actions">
-          <button
-            type="button"
-            class="payroll-report-link"
-            data-period-report="${kind}"
-          >
-            Отчёт
-          </button>
-          <button
-            type="button"
-            class="payroll-report-link"
-            data-period-report="${kind}"
-            data-report-detailed="1"
-          >
-            Подробно
-          </button>
-          ${statsEmployeeId ? `
-            <button
-              type="button"
-              class="payroll-report-link"
-              data-period-report="${kind}"
-              data-report-detailed="1"
-              data-report-employee="${esc(statsEmployeeId)}"
-            >
-              По сотруднику
-            </button>
-          ` : ""}
-        </div>
-      ` : ""}
-
-      ${actions.length ? `
-        <div class="payroll-period-actions">
-          ${actions.join("")}
-        </div>
-      ` : ""}
-    </div>
-  `;
-}
-
-function payrollPeriodsHTML(){
-  if(!isAdmin){
-    return "";
-  }
+      `;
+    })
+    .join("");
 
   /*
-    Периоды — верхний уровень «Итогов», и стоят они до выбора
-    сотрудника. Раньше блок лежал между «Начислено» и «Выплатами» одного
-    человека, и подпись «По всей команде» приходилось держать отдельно:
-    без неё закрытие периода читалось как действие над этим человеком.
-    Теперь охват говорит заголовок, а место на экране — порядок: сначала
-    команда, ниже — расчёт выбранного сотрудника.
+    Строка периода в режиме «Все сотрудники» устроена так же, как строка
+    выплаты сотрудника: та же дата выплаты слева, то же состояние и сумма
+    справа, раскрывается тем же движением. Это одна и та же половина
+    месяца — для всей команды или для одного человека, — и раньше она
+    стояла на экране дважды: плиткой «1–15» среди периодов и плиткой
+    «25 сентября» среди выплат.
+
+    В свёрнутом виде видно главное: сколько причитается, сколько
+    выплачено, есть ли расхождение и в каком состоянии период. Из кого
+    складывается сумма, проверка, история, отчёты и действия с периодом
+    лежат в раскрытии — они нужны раз в полмесяца, а не при каждом
+    взгляде на итоги.
   */
   return `
-    <div class="ml">Периоды команды</div>
-    <div class="card payroll-periods">
-      ${PERIOD_KINDS.map(kind=>
-        payrollPeriodRowHTML(kind)
-      ).join("")}
+    <div class="payout-block payroll-period payroll-period-${state.status}${expanded ? " open" : ""}">
+      <button
+        type="button"
+        class="row payout-summary"
+        data-payout-toggle="${kind}"
+        aria-expanded="${expanded}"
+      >
+        <div class="l">
+          <div class="t">${esc(title)}</div>
+          <div class="s payroll-period-sub">
+            за ${kind==="first_half" ? "1–15" : "16–конец месяца"} ·
+            выплачено ${money(state.totals.paid)}
+          </div>
+          ${
+            state.differences.underpaid ||
+            state.differences.overpaid
+              ? `
+                <div class="payroll-period-gaps">
+                  ${state.differences.underpaid ? `
+                    <span class="payroll-gap underpaid">
+                      Недоплата ${money(state.differences.underpaid)}
+                    </span>
+                  ` : ""}
+                  ${state.differences.overpaid ? `
+                    <span class="payroll-gap overpaid">
+                      Переплата ${money(state.differences.overpaid)}
+                    </span>
+                  ` : ""}
+                </div>
+              `
+              : ""
+          }
+        </div>
+        <div class="payout-summary-right">
+          <span class="payout-status payroll-period-status ${statusClass}">
+            ${esc(statusText)}
+          </span>
+          <span class="v">${money(state.totals.due)}</span>
+        </div>
+      </button>
+
+      ${fieldRevealHTML({
+        key:`payoutReveal-${kind}`,
+        open:expanded,
+        body:`
+          <div class="payout-expanded">
+            <div class="payout-breakdown">
+              <div class="payout-detail-title">
+                Сотрудников ${state.totals.employees} ·
+                смен ${state.totals.shifts}
+              </div>
+
+              ${people
+                ? `<div class="payout-source-list">${people}</div>`
+                : `<div class="payout-empty">В этой половине месяца начислений нет.</div>`}
+            </div>
+
+            <div class="payroll-period-manage">
+              ${state.review.employees && !closed ? `
+                <button
+                  type="button"
+                  class="payroll-review-summary ${
+                    state.review.troubled ? "has-questions" : "clean"
+                  }"
+                  data-period-review="${kind}"
+                  aria-expanded="${open ? "true" : "false"}"
+                >
+                  <span>
+                    ${
+                      /*
+                        «0 из 1 готовы» и «Все 1 готовы» — числительное не
+                        согласовано, а для одного человека фраза и вовсе
+                        лишняя. Важно одно: у скольких есть вопросы.
+                      */
+                      state.review.troubled
+                        ? `Вопросы по ${state.review.troubled} из ${state.review.employees}`
+                        : state.review.employees===1
+                          ? "Всё готово"
+                          : `Все ${state.review.employees} готовы`
+                    }
+                  </span>
+                  ${state.review.troubled ? `
+                    <span class="payroll-review-count">
+                      ${state.review.findings.length}
+                    </span>
+                  ` : ""}
+                </button>
+              ` : ""}
+
+              ${open && state.review.findings.length ? `
+                <div class="payroll-findings">
+                  ${state.review.findings
+                    .map(payrollFindingHTML)
+                    .join("")}
+                </div>
+              ` : ""}
+
+              ${events.length ? `
+                <button
+                  type="button"
+                  class="payroll-history-toggle"
+                  data-period-history="${kind}"
+                  aria-expanded="${historyOpen ? "true" : "false"}"
+                >
+                  История изменений
+                  <span class="payroll-history-count">${events.length}</span>
+                </button>
+              ` : ""}
+
+              ${historyOpen && events.length ? `
+                <div class="payroll-events">
+                  ${events.map(payrollEventHTML).join("")}
+                </div>
+              ` : ""}
+
+              ${state.totals.employees ? `
+                <div class="payroll-report-actions">
+                  <button
+                    type="button"
+                    class="payroll-report-link"
+                    data-period-report="${kind}"
+                  >
+                    Отчёт
+                  </button>
+                  <button
+                    type="button"
+                    class="payroll-report-link"
+                    data-period-report="${kind}"
+                    data-report-detailed="1"
+                  >
+                    Подробно
+                  </button>
+                </div>
+              ` : ""}
+
+              ${actions.length ? `
+                <div class="payroll-period-actions">
+                  ${actions.join("")}
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        `
+      })}
     </div>
   `;
 }
+
 
 /*
   Переходы состояния периода.
@@ -4231,6 +4271,173 @@ function employeeChoiceOption(employee){
   };
 }
 
+/*
+  «За месяц» — одна карточка на оба режима «Итогов»: у сотрудника это
+  его payouts().all, у команды — сумма тех же результатов по людям.
+*/
+function monthTotalsHTML(aggregate){
+  return `
+    <div class="ml">
+      За месяц
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div class="l">
+          <div class="t">
+            Смены
+          </div>
+        </div>
+
+        <div class="v">
+          ${money(aggregate.base)}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="l">
+          <div class="t">
+            Премии
+          </div>
+        </div>
+
+        <div class="v pos">
+          ${
+            aggregate.bonus
+              ? "+ "
+              : ""
+          }
+          ${money(
+            aggregate.bonus
+          )}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="l">
+          <div class="t">
+            Штрафы
+          </div>
+        </div>
+
+        <div class="v neg">
+          ${
+            aggregate.fine
+              ? "− "
+              : ""
+          }
+          ${money(
+            aggregate.fine
+          )}
+        </div>
+      </div>
+
+      <div class="row total">
+        <div class="l">
+          <div class="t">
+            Итого за
+            ${esc(monthNom(cursor))}
+          </div>
+        </div>
+
+        <div class="v">
+          ${money(
+            aggregate.total
+          )}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/*
+  Итоги месяца по всей команде.
+
+  Ничего не считается заново: у каждого сотрудника берётся тот же
+  payouts(), что рисует его собственные итоги, и результаты
+  складываются. Одним вызовом по всем сменам сразу считать нельзя —
+  потолок аванса у каждого человека свой.
+
+  Половины месяца — те же строки, что у сотрудника в «Выплатах», только
+  на всю команду: сумма к выплате, выплачено и состояние периода.
+  Подробности и действия периода — в раскрытии строки.
+*/
+function teamStatsHTML(){
+  const people=statsEmployeeOptions();
+
+  if(!people.length){
+    return `
+      <div class="card">
+        <div class="stats-empty">
+          Сотрудники не добавлены — расчёт показывать не по кому.
+        </div>
+      </div>
+    `;
+  }
+
+  const aggregate={
+    n:0,
+    base:0,
+    bonus:0,
+    fine:0,
+    total:0
+  };
+
+  let working=0;
+
+  for(const employee of people){
+    const own=shifts.filter(shift=>
+      shift.employeeId===employee.id
+    );
+
+    const result=payouts(cursor,own).all;
+
+    if(result.n){
+      working+=1;
+    }
+
+    for(const key of Object.keys(aggregate)){
+      aggregate[key]+=Number(result[key]) || 0;
+    }
+  }
+
+  return `
+    <div class="card">
+      <div class="hero">
+        <div class="k">Начислено</div>
+
+        <div class="n ${
+          String(Math.abs(Math.round(aggregate.total)))
+            .startsWith("1")
+            ? "starts-one"
+            : ""
+        }">
+          ${nfMoney(aggregate.total)}
+          <small> ₽</small>
+        </div>
+
+        <div class="sub">
+          Вся команда · ${shiftsWord(aggregate.n)}${
+            working
+              ? ` · ${working} ${employeesNoun(working)}`
+              : ""
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="ml">Выплаты</div>
+
+    <div class="card payout-card payroll-periods">
+      ${PERIOD_KINDS.map(kind=>
+        payrollPeriodRowHTML(kind)
+      ).join("")}
+    </div>
+
+    ${monthTotalsHTML(aggregate)}
+  `;
+}
+
 function viewStats(){
   const state=serverStateCard();
 
@@ -4555,13 +4762,18 @@ function viewStats(){
             : ""
         )
       : availableStatsEmployees.length
-        ? "Выберите сотрудника"
+        ? "Все сотрудники"
         : "Сотрудники не добавлены";
 
+  /*
+    Выбор сотрудника — линза всего экрана, а не фильтр одного блока.
+    Первый пункт — «Все сотрудники»: итоги месяца по команде, с которых
+    раздел и открывается. Выбранный человек меняет те же блоки на его
+    расчёт, а не добавляет второй экран под первым.
+  */
   const statsFilters=
     isAdmin
       ? `
-        <div class="ml">Расчёт сотрудника</div>
         <div class="card employee-editor">
           <button
             type="button"
@@ -4585,9 +4797,14 @@ function viewStats(){
             key:"statsEmployeeReveal",
             open:statsEmployeeOpen,
             body:inlineChoiceHTML({
-              options:
-                availableStatsEmployees
-                  .map(employeeChoiceOption),
+              options:[
+                {
+                  value:"",
+                  label:"Все сотрудники"
+                },
+                ...availableStatsEmployees
+                  .map(employeeChoiceOption)
+              ],
               value:statsEmployeeId,
               attribute:"data-stats-employee",
               searchId:"statsEmployeeSearch",
@@ -4599,41 +4816,14 @@ function viewStats(){
       `
       : "";
 
-  /*
-    Пока сотрудник не выбран, расчёта по нему нет — и показывать вместо
-    него нули нельзя.
-
-    Экран смешивает два масштаба: расчётные периоды считают всю команду,
-    а «Начислено», «Выплаты» и «За месяц» — одного человека. Без
-    выбранного человека вторые показывали не пустоту, а ложь: крупное
-    «0 ₽» под заголовком «Начислено», «Итого за сентябрь 0 ₽» и внутри
-    выплаты фразу «В этой части месяца смен нет» — всё это прямо под
-    строкой периода «Смен 133, К выплате 422 900 ₽» за тот же месяц.
-    Экран одновременно утверждал и то, и другое.
-
-    Периоды остаются: они не зависят от выбора. Остальное ждёт человека.
-  */
   if(isAdmin && !selectedEmployee){
     return `
-      ${payrollPeriodsHTML()}
-
       ${statsFilters}
-
-      <div class="card">
-        <div class="stats-empty">
-          ${
-            availableStatsEmployees.length
-              ? "Выберите сотрудника, чтобы увидеть его расчёт за месяц."
-              : "Сотрудники не добавлены — расчёт показывать не по кому."
-          }
-        </div>
-      </div>
+      ${teamStatsHTML()}
     `;
   }
 
   return `
-    ${payrollPeriodsHTML()}
-
     ${statsFilters}
 
     <div class="card">
@@ -4688,76 +4878,7 @@ function viewStats(){
 
     ${fineTransferNotes}
 
-    <div class="ml">
-      За месяц
-    </div>
-
-    <div class="card">
-      <div class="row">
-        <div class="l">
-          <div class="t">
-            Смены
-          </div>
-        </div>
-
-        <div class="v">
-          ${money(aggregate.base)}
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="l">
-          <div class="t">
-            Премии
-          </div>
-        </div>
-
-        <div class="v pos">
-          ${
-            aggregate.bonus
-              ? "+ "
-              : ""
-          }
-          ${money(
-            aggregate.bonus
-          )}
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="l">
-          <div class="t">
-            Штрафы
-          </div>
-        </div>
-
-        <div class="v neg">
-          ${
-            aggregate.fine
-              ? "− "
-              : ""
-          }
-          ${money(
-            aggregate.fine
-          )}
-        </div>
-      </div>
-
-      <div class="row total">
-        <div class="l">
-          <div class="t">
-            Итого за
-            ${esc(monthNom(cursor))}
-          </div>
-        </div>
-
-        <div class="v">
-          ${money(
-            aggregate.total
-          )}
-        </div>
-      </div>
-    </div>
+    ${monthTotalsHTML(aggregate)}
   `;
 }
 
@@ -17085,9 +17206,18 @@ app.addEventListener("click",async event=>{
     return;
   }
 
-  if(button.dataset.statsEmployee){
+  /*
+    Пустое значение — «Все сотрудники». Строка человека в раскрытом
+    периоде команды (data-stats-person) ведёт сюда же: из общей картины —
+    к его расчёту.
+  */
+  if(
+    button.hasAttribute("data-stats-employee") ||
+    button.hasAttribute("data-stats-person")
+  ){
     statsEmployeeId=
-      button.dataset.statsEmployee;
+      button.dataset.statsEmployee ??
+      button.dataset.statsPerson;
     statsEmployeeOpen=false;
     statsEmployeeQuery="";
     saveUIState();

@@ -527,36 +527,40 @@ main.shifts-layout > .sv-switch{
 /* ===== выбор дней ===== */
 
 /*
-  Шапка панели в режиме выбора — та же панель выбора, что над списком
-  реестра (workflow.css), только лежит внутри панели: от края до края,
-  со скруглением панели сверху.
+  Общий флажок стоит над флажками смен: строки списка сдвинуты на 6px
+  наружу и имеют отступ строк, флажок — ровно на ту же величину.
 */
+.sv-pick-all{
+  margin:0 0 8px calc(var(--select-inline) - 6px);
+}
+
 /*
-  Строки списка в панели сдвинуты на 6px наружу, а шапка — на все 14px
-  отступа панели; разницу в 8px шапка добирает к отступу строк, и её
-  флажок стоит ровно над их флажками.
+  Диапазон с Shift — тихая подсказка внизу пустой панели и только для
+  клавиатуры с мышью. Основной сценарий — отметить дни — она не
+  перекрикивает.
 */
-.sv-pick-bar{
-  margin:-14px -14px 12px;
-  padding-left:calc(var(--select-inline) + 8px);
-  border-width:0 0 1px;
-  border-radius:calc(var(--r) - 1px) calc(var(--r) - 1px) 0 0;
-}
-
-.sv-panel-pick .sv-panel-sub{
-  margin-bottom:10px;
-}
-
-/* Shift-диапазон есть только у клавиатуры — пальцу подсказка ни к чему. */
-.sv-pick-range-hint{
+.sv-pick-tip{
   display:none;
 }
 
 @media (hover:hover) and (pointer:fine){
-  .sv-pick-range-hint{
+  .sv-pick-tip{
     display:block;
-    margin-top:4px;
+    margin-top:auto;
+    padding-top:12px;
+
+    color:var(--ink3);
+    font-size:11px;
   }
+}
+
+.sv-pick-tip kbd{
+  padding:1px 5px;
+  border:1px solid var(--line2);
+  border-radius:5px;
+
+  font:inherit;
+  font-weight:600;
 }
 
 .sv-panel-actions{

@@ -14,7 +14,7 @@ import {
   ещё едет, на медленной машине промахивается. Ждём не время, а сам
   переход.
 */
-async function pickStatsEmployee(page,selector='[data-stats-employee]'){
+async function pickStatsEmployee(page,selector='[data-stats-employee]:not([data-stats-employee=""])'){
   await page.locator("#statsEmployeeOpen").click();
 
   const reveal=page.locator('[data-key="statsEmployeeReveal"]');

@@ -87,12 +87,36 @@ function periodRow(page,index){
     .nth(index);
 }
 
+/*
+  Период — строка «Выплат» в режиме «Все сотрудники»; проверка, история,
+  отчёты и действия лежат в её раскрытии. Раскрытие — переход, поэтому
+  ждём его конца, а не время.
+*/
+async function openPeriod(page,index=0){
+  const row=periodRow(page,index);
+  const toggle=row.locator("[data-payout-toggle]");
+
+  if(await toggle.getAttribute("aria-expanded")!=="true"){
+    await toggle.click();
+  }
+
+  await expect(toggle).toHaveAttribute("aria-expanded","true");
+
+  await expect
+    .poll(()=>row.evaluate(node=>
+      node.getAnimations({subtree:true}).length
+    ))
+    .toBe(0);
+}
+
 async function openStats(page){
   await page.locator("#tab-stats").click();
 
   await expect(
     page.locator(".payroll-periods")
   ).toBeVisible();
+
+  await openPeriod(page,0);
 }
 
 test.use({
@@ -547,6 +571,7 @@ test(
     await page.locator("#appConfirmOk").click();
 
     await page.locator("#tab-stats").click();
+    await openPeriod(page,0);
 
     const history=periodRow(page,0)
       .locator("[data-period-history]");

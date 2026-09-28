@@ -228,6 +228,7 @@ nav.tabs button{
 .payout-summary,
 .payroll-review-summary,
 .payroll-history-toggle,
+.payroll-person-row,
 .sv-cell button,
 .tariff-history-item > summary{
   transition:
@@ -290,6 +291,7 @@ nav.tabs button.touch-active,
 .payout-summary.touch-active,
 .payroll-review-summary.touch-active,
 .payroll-history-toggle.touch-active,
+.payroll-person-row.touch-active,
 .sv-cell button.touch-active{
   transform:none !important;
   box-shadow:
@@ -349,6 +351,7 @@ nav.tabs button.touch-active,
   .payout-summary:active,
   .payroll-review-summary:active,
   .payroll-history-toggle:active,
+  .payroll-person-row:active,
   .sv-cell button:active{
     transform:none !important;
     box-shadow:

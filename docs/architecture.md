@@ -182,11 +182,14 @@ the input modality on `<body>`, and `accessibility.css` hides the ring
 for pointer focus while keeping the 2px gold `:focus-visible` outline for
 the keyboard.
 
-Mass selection has one shape in both places. The registry shows a bar
-attached to the top of the list: a tri-state master checkbox in the same
-column as the row checkboxes, the count, and the only action. The calendar
-uses the same bar as the head of its panel, where "all" means every day
-that has shifts. Entry and exit are the same control, in the same place.
+Mass selection has one vocabulary in both places: a tri-state master
+checkbox standing in the column of the row checkboxes, and entry and exit
+as the same control in the same place. The registry puts it in a control
+line above the list — no surface of its own, so only the checkbox and
+«Удалить» react — with the count between them. The calendar panel reads
+like its day panel: a heading with what is picked, the scope and sum under
+it, and the master checkbox on its own line ("all" means every day that
+has shifts). The Shift range is a quiet hint for pointer users only.
 
 ## Rules
 
@@ -386,15 +389,25 @@ in the final settlement. That is a rule of the payment, not a reason to
 move the working day into another period, and the payout card already
 marks such shifts «первая половина».
 
-**Where periods sit on screen.** «Итоги» has two levels. «Периоды команды»
-comes first, before the employee picker, because a period belongs to the
-whole team: its status, snapshot and closing are shared. Below it starts
-«Расчёт сотрудника» — the picker and everything about one person. When a
-person is chosen, each period shows one read-only line with that person's
-share: due and paid from their row in the same `entries` the period totals
-are summed from, and underpaid/overpaid from their row in the same
-`periodDifferences`. The line is therefore always consistent with the
-period header and adds no calculation of its own.
+**Where periods sit on screen.** «Итоги» is one screen with one lens:
+the employee picker at the top, which opens on «Все сотрудники». The
+screen then shows the same three blocks for whoever is chosen — «Начислено»,
+«Выплаты» and «За месяц».
+
+The two rows of «Выплаты» are the two halves of the month, and a half
+*is* the period: 25th — days 1–15, 10th of the next month — the rest. For
+the whole team a row shows the team's due and paid, any underpayment or
+overpayment and the period status; expanding it lists the people (a tap
+opens that person), the review, the history, the reports and the period
+actions. For one person the same row is their payout, and its details end
+with the team period's status, the per-person report and a way back to the
+team. Period actions live only in the team view: a period belongs to
+everyone.
+
+Team figures are never computed separately: each employee's own
+`payouts()` result is summed (the advance cap is per person, so one call
+over all shifts would be wrong), and the period rows use the same
+`entries` and `periodDifferences` as closing and the report.
 
 ## Reports and the PDF
 

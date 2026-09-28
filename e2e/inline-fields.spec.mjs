@@ -216,8 +216,9 @@ test(
       })
     ).toBe(true);
 
+    /* Первый пункт — «Все сотрудники», дальше люди. */
     await page
-      .locator("[data-stats-employee]")
+      .locator('[data-stats-employee]:not([data-stats-employee=""])')
       .nth(3)
       .click();
 
@@ -860,7 +861,7 @@ test(
     await page.locator("#tab-stats").click();
     await page.locator("#statsEmployeeOpen").click();
     await settle(page,"statsEmployeeReveal");
-    await page.locator("[data-stats-employee]").first().click();
+    await page.locator('[data-stats-employee]:not([data-stats-employee=""])').first().click();
 
     const toggle=page.locator(
       '[data-payout-toggle="first_half"]'

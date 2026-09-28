@@ -74,7 +74,6 @@ test("interaction layer restores touch geometry after refinement",async()=>{
   assert.match(css,/nav\.tabs button[\s\S]*?min-height:44px/);
   assert.match(css,/\.date-day[\s\S]*?height:44px/);
   assert.match(css,/\.picker-toolbar-title[\s\S]*?left:clamp\(76px,21vw,84px\)[\s\S]*?right:clamp\(76px,21vw,84px\)/);
-  assert.match(css,/touch-active[\s\S]*?transform:scale\(\.985\)/);
   assert.match(css,/prefers-reduced-motion:reduce/);
 
   assert.doesNotMatch(
@@ -82,6 +81,30 @@ test("interaction layer restores touch geometry after refinement",async()=>{
     /#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i,
     "interaction polish must reuse the existing palette"
   );
+});
+
+/*
+  Состояния нажатия описаны в одном месте — motion-reference.css — по
+  видам элементов. Общего правила «любая кнопка при нажатии заливается»
+  нет ни в одном файле: у текстовых действий без фона такая заливка
+  выглядела случайной рамкой фокуса.
+*/
+test("press states come from one layer and never fill a bare button",async()=>{
+  const motion=await read("styles/motion-reference.css");
+
+  assert.match(motion,/\.btn\.touch-active[\s\S]*?transform:scale\(\.985\)/);
+  assert.match(motion,/\.ml-action\.touch-active[\s\S]*?opacity:\.55/);
+  assert.match(motion,/\.payroll-report-link:active[\s\S]*?opacity:\.55/);
+
+  for(const path of productionStyles){
+    const css=await read(path);
+
+    assert.doesNotMatch(
+      css,
+      /(^|,)[ \t]*button(\.touch-active|:active)\s*[,{]/m,
+      `${path} must not style every pressed button at once`
+    );
+  }
 });
 
 test("fluid mobile contract covers safe areas narrow phones foldables and landscape",async()=>{

@@ -123,6 +123,18 @@ select:focus-visible{
   outline-offset:2px;
 }
 
+/*
+  У текстовых действий нет своей поверхности, и прямоугольная рамка
+  вплотную к буквам читалась как ошибка вёрстки. Скругление здесь
+  влияет только на рамку фокуса: фона у этих кнопок нет.
+*/
+.lnk:focus-visible,
+.ml-action:focus-visible,
+.payroll-report-link:focus-visible,
+.shift-select-all:focus-visible{
+  border-radius:6px;
+}
+
 #sheet:focus,
 #sheet:focus-visible{
   outline:none;

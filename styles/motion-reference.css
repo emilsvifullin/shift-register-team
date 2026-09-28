@@ -183,10 +183,36 @@ nav.tabs button{
     box-shadow .18s ease;
 }
 
+/*
+  Состояния нажатия — одна система на всё приложение, по виду элемента.
+
+  Раньше основой было правило «любая кнопка при нажатии заливается
+  серым» (inset 999px) — отдельно для мыши через :active и для пальца
+  через .touch-active. На кнопке с фоном заливка не мешала, но у
+  текстовых действий — «Выбрать», «Выбрать дни», «Отчёт», «Подробно» —
+  фона нет, и серый прямоугольник вокруг слов появлялся на долю секунды
+  и гас с переходом. Он выглядел как случайная рамка фокуса. Для кнопок
+  с собственной реакцией заливка ложилась поверх неё: клетка календаря
+  и сжималась, и серела.
+
+  Теперь у каждого вида ровно одна реакция, одинаковая для мыши и
+  пальца:
+    текст        — бледнеет, не двигается и не получает фона;
+    строка       — слегка тонируется на месте;
+    плитка/кнопка с поверхностью — коротко прожимается;
+    переключатель — прожимается и бледнеет.
+  Кнопка, не попавшая ни в один вид, не реагирует ничем, — это лучше,
+  чем чужая реакция. Рамка остаётся только у фокуса с клавиатуры
+  (accessibility.css).
+*/
+
 /* Text controls fade rather than jump or scale. */
 .period,
 .lnk,
-.picker-toolbar-btn{
+.picker-toolbar-btn,
+.ml-action,
+.payroll-report-link,
+.shift-select-all{
   transition:
     opacity .12s ease,
     color .18s ease,
@@ -200,6 +226,9 @@ nav.tabs button{
 .employee-point,
 .point-option,
 .payout-summary,
+.payroll-review-summary,
+.payroll-history-toggle,
+.sv-cell button,
 .tariff-history-item > summary{
   transition:
     background-color .18s ease,
@@ -244,7 +273,10 @@ nav.tabs button.touch-active,
 
 .period.touch-active,
 .lnk.touch-active,
-.picker-toolbar-btn.touch-active{
+.picker-toolbar-btn.touch-active,
+.ml-action.touch-active,
+.payroll-report-link.touch-active,
+.shift-select-all.touch-active{
   transform:none !important;
   opacity:.55;
   box-shadow:none !important;
@@ -255,7 +287,10 @@ nav.tabs button.touch-active,
 .point-row.touch-active,
 .employee-point.touch-active,
 .point-option.touch-active,
-.payout-summary.touch-active{
+.payout-summary.touch-active,
+.payroll-review-summary.touch-active,
+.payroll-history-toggle.touch-active,
+.sv-cell button.touch-active{
   transform:none !important;
   box-shadow:
     inset 0 0 0 999px var(--tint) !important;
@@ -297,7 +332,10 @@ nav.tabs button.touch-active,
 
   .period:active,
   .lnk:active,
-  .picker-toolbar-btn:active{
+  .picker-toolbar-btn:active,
+  .ml-action:active,
+  .payroll-report-link:active,
+  .shift-select-all:active{
     transform:none !important;
     opacity:.55;
     box-shadow:none !important;
@@ -308,7 +346,10 @@ nav.tabs button.touch-active,
   .point-row:active,
   .employee-point:active,
   .point-option:active,
-  .payout-summary:active{
+  .payout-summary:active,
+  .payroll-review-summary:active,
+  .payroll-history-toggle:active,
+  .sv-cell button:active{
     transform:none !important;
     box-shadow:
       inset 0 0 0 999px var(--tint) !important;

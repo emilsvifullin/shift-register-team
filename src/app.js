@@ -1767,27 +1767,72 @@ function shiftListAreaHTML(){
     shiftSelection.has(shift.id)
   ).length;
 
+  /*
+    Режим выбора — одна панель над списком, приставленная к нему, а не
+    россыпь служебных надписей. Слева общий флажок с подписью: он стоит
+    в одном столбце с флажками строк и ведёт себя как они — пустой,
+    частичный, полный. Посередине — сколько выбрано. Справа — единственное
+    действие. Вход и выход — одна и та же надпись справа от заголовка
+    списка: «Выбрать» становится «Готово» на том же месте.
+  */
+  const allChosen=chosen===list.length;
+
+  const master=allChosen
+    ? "all"
+    : chosen
+      ? "some"
+      : "none";
+
   let html=`
     <div class="ml ml-action-row">
       <span>${label}</span>
       ${selectable ? `
-        <button type="button" class="ml-action" id="shiftSelectToggle">
+        <button
+          type="button"
+          class="ml-action"
+          id="shiftSelectToggle"
+          aria-pressed="${shiftSelectMode ? "true" : "false"}"
+        >
           ${shiftSelectMode ? "Готово" : "Выбрать"}
         </button>
       ` : ""}
     </div>
 
     ${shiftSelectMode ? `
-      <div class="shift-select-bar">
-        <span class="shift-select-count">
-          ${chosen
-            ? `${chosen} ${shiftsNoun(chosen)}`
-            : "Ничего не выбрано"}
-        </span>
-
-        <button type="button" class="lnk" data-select-all="1">
-          ${chosen===list.length ? "Снять всё" : "Выбрать все"}
+      <div
+        class="shift-select-bar"
+        role="toolbar"
+        aria-label="Выбор смен"
+      >
+        <button
+          type="button"
+          class="shift-select-all"
+          data-select-all="1"
+          aria-pressed="${
+            master==="all"
+              ? "true"
+              : master==="some"
+                ? "mixed"
+                : "false"
+          }"
+        >
+          <span class="sh-check ${master}" aria-hidden="true">${
+            master==="all"
+              ? "✓"
+              : master==="some"
+                ? "–"
+                : ""
+          }</span>
+          <span>${allChosen ? "Снять выбор" : "Выбрать все"}</span>
         </button>
+
+        <span class="shift-select-count" aria-live="polite">
+          ${!chosen
+            ? "Ничего не выбрано"
+            : allChosen
+              ? `Выбраны все ${chosen}`
+              : `Выбрано ${chosen} из ${list.length}`}
+        </span>
 
         <button
           type="button"
@@ -16909,24 +16954,35 @@ app.addEventListener("click",async event=>{
     return;
   }
 
+  /*
+    Общий флажок выбора дней: если отмечены все дни со сменами — снимает
+    выбор целиком, иначе отмечает их все. Так же ведёт себя общий флажок
+    над списком реестра.
+  */
   if(button.hasAttribute("data-calendar-pick-all")){
-    for(const shift of inMonth(cursor)){
-      if(
-        !shiftViewPointId ||
-        (shift.dbPointId || shift.pointId)===shiftViewPointId
-      ){
-        calendarPicked.add(shift.date);
+    const shiftDays=new Set(
+      inMonth(cursor)
+        .filter(shift=>
+          !shiftViewPointId ||
+          (shift.dbPointId || shift.pointId)===shiftViewPointId
+        )
+        .map(shift=>shift.date)
+    );
+
+    const everything=
+      shiftDays.size>0 &&
+      [...shiftDays].every(date=>calendarPicked.has(date));
+
+    if(everything){
+      calendarPicked.clear();
+      calendarSkipped.clear();
+      calendarPickAnchor="";
+    }else{
+      for(const date of shiftDays){
+        calendarPicked.add(date);
       }
     }
 
-    render();
-    return;
-  }
-
-  if(button.hasAttribute("data-calendar-pick-clear")){
-    calendarPicked.clear();
-    calendarSkipped.clear();
-    calendarPickAnchor="";
     render();
     return;
   }

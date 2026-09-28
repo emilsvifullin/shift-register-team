@@ -157,6 +157,37 @@ Only the registry uses the `shifts-layout` class, which fits the list into
 the remaining height and stops the page from scrolling. The calendar and the
 control table set their own height and scroll like every other section.
 
+## Interaction states
+
+Press feedback is one layer, `styles/motion-reference.css`, keyed by the
+kind of control rather than by the input: a mouse `:active` and a finger
+`.touch-active` (set by `app.js` for non-mouse pointers only) look the same.
+
+* **Text actions** (`.lnk`, `.ml-action`, `.payroll-report-link`,
+  `.shift-select-all`, `.period`) fade. They have no surface and never get
+  a background, a box or a lift.
+* **Rows** (`.sh`, `.point-row`, `.payout-summary`, …) and small tiles take
+  a soft tint in place.
+* **Surfaces** (`.btn`, `.manage-add`, calendar days, date cells) press in
+  slightly.
+* **Switches** (tabs, segmented control) press in and fade.
+
+There is deliberately no rule for "any button". The previous catch-all
+filled every pressed button with an inset grey, which on a text action
+looked like a stray focus box for a fraction of a second.
+`tests/visual-audit.test.js` fails if such a rule comes back.
+
+A focus ring is drawn only for keyboard use: `platform-shell.js` records
+the input modality on `<body>`, and `accessibility.css` hides the ring
+for pointer focus while keeping the 2px gold `:focus-visible` outline for
+the keyboard.
+
+Mass selection has one shape in both places. The registry shows a bar
+attached to the top of the list: a tri-state master checkbox in the same
+column as the row checkboxes, the count, and the only action. The calendar
+uses the same bar as the head of its panel, where "all" means every day
+that has shifts. Entry and exit are the same control, in the same place.
+
 ## Rules
 
 1. New database reads or writes go into the matching `src/api/*` module,

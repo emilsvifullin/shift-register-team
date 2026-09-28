@@ -770,12 +770,6 @@ nav.tabs button.on{
   line-height:1.45;
 }
 
-.manage-row.touch-active{
-  box-shadow:
-    inset 0 0 0 999px
-    var(--tint) !important;
-}
-
 .manage-loading,
 .employee-empty{
   padding:28px 18px;
@@ -847,11 +841,6 @@ nav.tabs button.on{
   transform:
     translate(-50%,-50%)
     rotate(90deg);
-}
-
-.manage-add.touch-active{
-  opacity:.68;
-  box-shadow:none !important;
 }
 
 .employee-row{
@@ -1144,10 +1133,6 @@ nav.tabs button.on{
 
   text-overflow:ellipsis;
   white-space:nowrap;
-}
-
-.employee-point.touch-active{
-  background:var(--tint);
 }
 
 .adjustment-list,
@@ -2383,29 +2368,6 @@ body.date-picker-open .sheet{
   cursor:pointer;
 }
 
-button.touch-active{
-  box-shadow:
-    inset 0 0 0 999px var(--tint2) !important;
-}
-
-nav.tabs button.touch-active,
-.seg button.touch-active{
-  box-shadow:none !important;
-  transform:scale(.97);
-  opacity:.72;
-}
-
-.sh.touch-active{
-  box-shadow:
-    inset 0 0 0 999px var(--tint) !important;
-}
-
-.period.touch-active,
-.lnk.touch-active{
-  opacity:.55;
-  box-shadow:none !important;
-}
-
 .date-day.outside{
   color:var(--ink3);
   opacity:.45;
@@ -2576,12 +2538,6 @@ body.month-picker-open{
   font-weight:600;
 }
 
-.picker-toolbar-btn.touch-active{
-  opacity:.55;
-  background:transparent !important;
-  box-shadow:none !important;
-}
-
 .month-picker-head{
   display:grid;
   grid-template-columns:42px 1fr 42px;
@@ -2722,13 +2678,6 @@ body.month-picker-open{
   color:var(--ink);
   font-weight:600;
   box-shadow:0 1px 3px rgba(0,0,0,.14);
-}
-
-.seg button.touch-active,
-.seg button.on.touch-active{
-  box-shadow:none !important;
-  transform:scale(.97);
-  opacity:.72;
 }
 
 .segbox{
@@ -3019,58 +2968,4 @@ button:disabled{
 
 .dot{width:7px;height:7px;border-radius:4px;background:var(--gold);flex:none;box-shadow:0 0 0 3px var(--gold-soft)}
 .dot.off{background:var(--rust);box-shadow:0 0 0 3px var(--rust-line)}
-@media (hover:hover) and (pointer:fine){
-
-  /*
-    Обычные кнопки приложения.
-  */
-  button:active{
-    box-shadow:
-      inset 0 0 0 999px var(--tint2) !important;
-  }
-
-  /*
-    Таббар и сегментированные
-    переключатели слегка прожимаются.
-  */
-  nav.tabs button:active,
-  .seg button:active{
-    box-shadow:none !important;
-    transform:scale(.97);
-    opacity:.72;
-  }
-
-  .seg button.on:active{
-    box-shadow:none !important;
-  }
-
-  /*
-    Строка существующей смены.
-  */
-  .sh:active{
-    box-shadow:
-      inset 0 0 0 999px var(--tint) !important;
-  }
-
-  /*
-    Верхний месяц и текстовые
-    Отмена / Готово.
-  */
-  .period:active,
-  .lnk:active{
-    opacity:.55;
-    box-shadow:none !important;
-  }
-
-  /*
-    Отмена / Готово внутри
-    календарей и выбора месяца.
-  */
-  .picker-toolbar-btn:active{
-    opacity:.55;
-    background:transparent !important;
-    box-shadow:none !important;
-  }
-
-}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}

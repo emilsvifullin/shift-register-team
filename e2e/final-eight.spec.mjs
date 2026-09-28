@@ -446,7 +446,7 @@ test(
     await page.locator("[data-select-all]").click();
 
     await expect(page.locator(".shift-select-count"))
-      .toHaveText("6 смен");
+      .toHaveText("Выбраны все 6");
 
     await page.locator("#shiftSelectDelete").click();
 

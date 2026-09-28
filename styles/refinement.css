@@ -597,10 +597,22 @@ nav.tabs button{
 
   .manage-add:hover,
   .btn:hover:not(:disabled),
-  .picker-toolbar-btn:hover,
-  .lnk:hover,
   .app-confirm-btn:hover{
     transform:translateY(-1px);
+  }
+
+  /*
+    Текст не подпрыгивает под курсором: кнопка с поверхностью
+    приподнимается, а слово — лишь чуть бледнеет. Раньше часть текстовых
+    действий поднималась на пиксель, часть не менялась вовсе, и соседние
+    «Выбрать все» и «Удалить» вели себя по-разному.
+  */
+  .lnk:not(:disabled):hover,
+  .picker-toolbar-btn:hover,
+  .ml-action:hover,
+  .payroll-report-link:hover,
+  .shift-select-all:hover{
+    opacity:.78;
   }
 
   .nav > button:not(:disabled):active,

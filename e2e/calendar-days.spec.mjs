@@ -349,8 +349,8 @@ test.describe("desktop",()=>{
       await expect(page.locator(".sv-day.on")).toHaveCount(0);
 
       await expect(
-        page.locator(".sv-panel-date")
-      ).toHaveText("Выбор дней");
+        page.locator(".sv-pick-bar .shift-select-count")
+      ).toHaveText("Ничего не выбрано");
 
       await cell(page,2).click();
       await cell(page,3).click();
@@ -360,8 +360,13 @@ test.describe("desktop",()=>{
 
       /* Пустой день выбрать можно, в смены он ничего не добавляет. */
       await expect(
-        page.locator(".sv-panel-date")
+        page.locator(".sv-pick-bar .shift-select-count")
       ).toHaveText("Выбрано 3 дня");
+
+      /* Выбраны не все дни со сменами — общий флажок частичный. */
+      await expect(
+        page.locator("[data-calendar-pick-all]")
+      ).toHaveAttribute("aria-pressed","mixed");
 
       /* Только смены выбранного ПВЗ: 2-го две, 3-го одна. */
       await expect(

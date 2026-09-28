@@ -1328,39 +1328,109 @@
   text-transform:uppercase;
 }
 
+/*
+  Панель выбора приставлена к списку сверху: её нижний край — верхний
+  край карточки списка, углы скруглены только снаружи. Вместе они
+  читаются одной вещью — «список в режиме выбора», — а тёплый оттенок
+  панели тот же, что у выбранных строк.
+
+  Флажок панели стоит в одном столбце с флажками строк: у обоих
+  одинаковый отступ слева.
+*/
 .shift-select-bar{
+  flex:none;
+
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:10px;
 
-  margin:0 4px 9px;
+  min-height:52px;
+  padding:8px 10px 8px var(--select-inline);
+
+  border:1px solid var(--line);
+  border-bottom-color:var(--line2);
+  border-radius:var(--r) var(--r) 0 0;
+
+  background:
+    linear-gradient(
+      color-mix(in srgb,var(--gold) 5%,transparent),
+      color-mix(in srgb,var(--gold) 5%,transparent)
+    ),
+    var(--surf);
+}
+
+/*
+  Левый отступ панели повторяет отступ строк списка по тем же ступеням
+  ширины (refinement.css, interaction-core.css): только так общий флажок
+  стоит точно над флажками строк на любом экране.
+*/
+.shift-select-bar{
+  --select-inline:14px;
+}
+
+@media (max-width:420px){
+  .shift-select-bar{
+    --select-inline:12px;
+  }
+}
+
+@media (max-width:370px){
+  .shift-select-bar{
+    --select-inline:10px;
+  }
+}
+
+.shift-select-bar + .shift-window{
+  border-top:0;
+  border-top-left-radius:0;
+  border-top-right-radius:0;
+}
+
+.shift-select-all{
+  flex:none;
+
+  display:flex;
+  align-items:center;
+  gap:10px;
+
+  min-height:36px;
+  padding:0;
+
+  border:0;
+  background:transparent;
+  color:var(--ink);
+
+  font-size:13.5px;
+  font-weight:550;
+  letter-spacing:-.1px;
 }
 
 .shift-select-count{
   flex:1;
   min-width:0;
 
-  color:var(--ink2);
-  font-size:12.5px;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
-}
 
-.shift-select-bar .lnk{
-  flex:none;
+  color:var(--ink3);
   font-size:12.5px;
+  font-variant-numeric:tabular-nums;
+  text-align:right;
 }
 
-.shift-select-delete{
+.shift-select-bar .shift-select-delete{
   flex:none;
   width:auto;
-  min-height:34px;
-  padding:0 14px;
-  font-size:12.5px;
+  min-height:36px;
+  margin:0;
+  padding:0 16px;
+
+  border-radius:11px;
+  font-size:13px;
 }
 
-.sh .sh-check{
+.sh-check{
   flex:none;
   display:flex;
   align-items:center;
@@ -1368,7 +1438,6 @@
 
   width:20px;
   height:20px;
-  margin-right:-2px;
 
   border:1.5px solid var(--line2);
   border-radius:6px;
@@ -1377,9 +1446,19 @@
   font-size:12px;
   font-weight:700;
   line-height:1;
+
+  transition:
+    background-color var(--ui-base) ease,
+    border-color var(--ui-base) ease;
 }
 
-.sh.chosen .sh-check{
+.sh .sh-check{
+  margin-right:-2px;
+}
+
+.sh.chosen .sh-check,
+.sh-check.all,
+.sh-check.some{
   border-color:var(--gold);
   background:var(--gold);
 }

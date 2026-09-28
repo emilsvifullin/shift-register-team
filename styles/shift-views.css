@@ -255,7 +255,8 @@ main.shifts-layout > .sv-switch{
   }
 }
 
-.sv-day:not(.outside):active{
+.sv-day:not(.outside):active,
+.sv-day.touch-active{
   transform:scale(.98);
 }
 
@@ -525,21 +526,25 @@ main.shifts-layout > .sv-switch{
 
 /* ===== выбор дней ===== */
 
-.sv-panel-pick .sv-panel-head{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  align-items:baseline;
-  column-gap:12px;
+/*
+  Шапка панели в режиме выбора — та же панель выбора, что над списком
+  реестра (workflow.css), только лежит внутри панели: от края до края,
+  со скруглением панели сверху.
+*/
+/*
+  Строки списка в панели сдвинуты на 6px наружу, а шапка — на все 14px
+  отступа панели; разницу в 8px шапка добирает к отступу строк, и её
+  флажок стоит ровно над их флажками.
+*/
+.sv-pick-bar{
+  margin:-14px -14px 12px;
+  padding-left:calc(var(--select-inline) + 8px);
+  border-width:0 0 1px;
+  border-radius:calc(var(--r) - 1px) calc(var(--r) - 1px) 0 0;
 }
 
 .sv-panel-pick .sv-panel-sub{
-  grid-column:1 / -1;
-}
-
-.sv-pick-clear{
-  grid-row:1;
-  grid-column:2;
-  font-size:12.5px;
+  margin-bottom:10px;
 }
 
 /* Shift-диапазон есть только у клавиатуры — пальцу подсказка ни к чему. */
@@ -552,13 +557,6 @@ main.shifts-layout > .sv-switch{
     display:block;
     margin-top:4px;
   }
-}
-
-.sv-pick-all{
-  align-self:flex-start;
-  margin-top:12px;
-  font-size:13px;
-  text-align:left;
 }
 
 .sv-panel-actions{

@@ -1,0 +1,2 @@
+# Снимки, превью, HTML и PDF собираются заново: node docs/manual/capture.mjs && node docs/manual/build.mjs
+out/

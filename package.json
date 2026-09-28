@@ -8,7 +8,8 @@
     "check:syntax": "node ./scripts/check-source.mjs",
     "stamp:sw": "node ./scripts/stamp-sw.mjs",
     "serve": "node ./scripts/serve.mjs",
-    "check": "npm run check:syntax && node --test"
+    "check": "npm run check:syntax && node --test",
+    "manual": "node ./docs/manual/capture.mjs && node ./docs/manual/build.mjs"
   },
   "engines": {
     "node": ">=22"

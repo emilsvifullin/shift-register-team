@@ -97,6 +97,15 @@ Because rendering is no longer destructive, background refreshes and
 Realtime updates can land at any moment, including mid-gesture. There are
 no partial "update just this list" helpers and no tap-replay guards.
 
+A different main section is a different screen. Reusing unkeyed nodes by
+tag is right within one screen and wrong between two: going from «Итоги»
+to «Смены» turned the payout row's button into the «Реестр» segment, and
+the CSS transition on its background played the class change as a second,
+late press. `render()` therefore empties `#app` when the section changes,
+and the section is built the way it is on first open — its first frame is
+final. `e2e/section-switch-first-frame.spec.mjs` checks every pair of
+sections for reused nodes and started transitions.
+
 Rendering during a tab, month or management transition is deferred, once,
 by animation frame, with an upper bound — so a paused animation in a
 backgrounded tab can never withhold fresh data. Navigation requested
@@ -375,13 +384,41 @@ invalidate it. When the recomputed fingerprint differs, the period reads
 
 **Who computes the snapshot.** All the rules — the advance cap, the carry
 to the final settlement, how bonuses and penalties fall between the two
-payments — live in `payouts()` in `src/domain.js`. Writing them a second
-time in SQL would create exactly the parallel financial model this
-codebase must not have, so the client builds the snapshot with the same
-function that draws «Итоги» and the server stores it verbatim, stamped
-with who and when. The application is admin-only and the server already
-trusts an admin with amounts (a manually set shift price); two
-implementations of one rule would not add trust, only drift.
+payments — live in `payouts()` in `src/domain.js`, and it stays the
+source: the client builds the snapshot with the same function that draws
+«Итоги» (`buildPeriodEntries` in `src/payroll-period.js` decides who is in
+the period).
+
+The server used to store that snapshot verbatim. That left every period
+rule to the interface: a direct RPC could close an unchecked period, store
+a forged snapshot or record a payout above what was owed. So the server
+now verifies instead of trusting. `private.payroll_period_figures`
+repeats the arithmetic of `payouts()` for one employee and one half, and
+`private.payroll_period_entries` repeats the selection — for exactly one
+purpose, checking. It never writes a figure of its own:
+
+* **check** is accepted only with the fingerprint of the figures as they
+  are now;
+* **close** needs a checked period whose figures have not changed since
+  the check, and a snapshot whose amounts are those figures;
+* **a payout** may not take the half-month above what is owed; an
+  overpayment remains possible as a consequence (the calculation went
+  down after the money was sent) but not as an action — it can only be
+  reduced;
+* **paid** needs recorded payouts when money is owed, as before.
+
+Two implementations can drift, and a drift here would refuse checks in
+production rather than store a wrong amount. `db-tests/` keeps them equal:
+the same random months — advance points, the carry, targeted and default
+fines, kopecks, the substitute card — go through both, and a one-kopeck
+difference fails CI.
+
+The selection matters on its own. At a point with an advance, earnings of
+the first half above the cap are paid on the 10th; someone who worked
+only the 1st–15th has no shifts in the second half but money there.
+Selecting by shifts and payouts dropped such a person from the «16–конец»
+period entirely — from its total, its snapshot and its report. The period
+now holds everyone with shifts, payouts or any money in it.
 
 Shifts belong to a period by date. Money does not always follow: at a
 point with an advance, part of what was earned in the first half is paid
@@ -408,6 +445,52 @@ Team figures are never computed separately: each employee's own
 `payouts()` result is summed (the advance cap is per person, so one call
 over all shifts would be wrong), and the period rows use the same
 `entries` and `periodDifferences` as closing and the report.
+
+**What a closed period protects.** Anything that changes the money of a
+closed or paid period is refused by default, whichever way it arrives:
+
+* a shift by its date (save, reprice, delete — as before), and now also by
+  its amount: a shift on the 10th at an advance point changes the payment
+  on the 10th of the next month, and a fine can be aimed at the other
+  payment. The server compares both halves of the month before and after
+  the change (`private.assert_month_effect`);
+* deleting a point, which takes its shifts with it — refused outright while
+  any of them sits in, or feeds, a closed period;
+* importing old shifts — refused outright; an import is not a correction;
+* deleting an employee — refused when there is any financial history:
+  shifts, payouts, snapshot rows or payroll events. The foreign keys from
+  `employee_payouts` and `payroll_period_entries` are `restrict`, so even a
+  direct delete cannot take payment facts with it. Before, shifts could be
+  deleted one by one and the employee — with every payout — went next.
+
+A single correction goes through with explicit consent and lands in the
+history, as it always did; bulk and destructive paths have no consent: the
+period is reopened first.
+
+## Money is kept in kopecks
+
+Every amount in the database is `numeric(12,2)`, input takes two decimals,
+and the server refuses a third instead of letting the column round it
+silently. Every layer rounds the same way — `roundMoney` in
+`src/format.js`: the report, the PDF, the period review and the recalc
+used to round to whole rubles each on its own, so a 1 500,50 ₽ payout was
+1 501 ₽ in the document. The one whole-ruble rule is a calculation rule,
+not a format: a partial shift is priced to the ruble, on the client and on
+the server alike. The history shows kopecks when there are any
+(`private.money_text`).
+
+## Reading growing tables
+
+PostgREST returns at most `max_rows` rows (1000 on Supabase) and drops the
+rest without an error. At about two hundred shifts a month that would have
+started to hide the oldest months after half a year. Shifts, payouts and
+snapshot rows are read in pages until the count the server reports on the
+first page is reached, so the page size does not have to match the
+project's limit.
+
+The payroll history used to be the latest 300 events of the whole
+database, and older periods would one day have shown an empty history. It
+is read per month — the month on screen — completely, and only that month.
 
 ## Reports and the PDF
 
@@ -467,9 +550,15 @@ line fails the suite rather than the production app.
 
 ## Releasing a schema change
 
-Static files and the database are two deploys, not one. A push to `main`
-publishes the shell through GitHub Pages within a minute; nothing in CI
-touches Supabase. Migrations under `supabase/migrations/` are applied
+Static files and the database are two deploys, not one. Nothing in CI
+touches Supabase.
+
+The shell reaches production only through CI. GitHub Pages used to build
+`main` on its own the moment it was pushed, in parallel with the checks,
+so a red build could be live before anyone saw it was red. Pages now takes
+the site from the `deploy` job of `.github/workflows/quality.yml`, which
+needs the Node checks, all three browsers and the database contract of
+the same commit. If any of them fails, production stays as it was. Migrations under `supabase/migrations/` are applied
 separately, and a file sitting in the repository has changed nothing.
 
 That gap is not symmetric. A write can ask the database what it supports:
@@ -501,6 +590,14 @@ until the migration was applied.
 
 - `npm run check` — syntax check plus the Node suite (pure logic,
   contracts, service-worker/module-graph consistency).
+- `npm run test:db` — the real migrations on a real Postgres (any server
+  the `PG*` environment variables point at; CI uses a `postgres:17`
+  service): the financial rules of the RPCs under the `authenticated` role
+  and the parity of the server's copy of `payouts()` with the original.
+  The e2e stub copies the server rules in JavaScript and would not notice
+  if they drifted from the SQL; these tests would. The stub itself takes
+  period figures from the application's own functions rather than a third
+  copy.
 - `npx playwright test e2e --browser=chromium|webkit|firefox` — browser
   suite; `playwright.config.mjs` starts `scripts/serve.mjs` on port 4173. `e2e/app-shell.spec.mjs` and
   `e2e/management-flows.spec.mjs` drive the real `index.html` and the real

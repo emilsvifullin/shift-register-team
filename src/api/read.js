@@ -58,10 +58,28 @@ const SHIFT_SELECT=`
 function loadShiftRows(
   employeeId=null
 ){
+  return allRows(
+    counted=>shiftQuery(
+      employeeId,
+      counted
+    ),
+    "Не удалось загрузить смены"
+  );
+}
+
+function shiftQuery(
+  employeeId,
+  counted
+){
   let query=
     supabaseClient
       .from("shifts")
-      .select(SHIFT_SELECT)
+      .select(
+        SHIFT_SELECT,
+        counted
+          ? {count:"exact"}
+          : undefined
+      )
       .order(
         "shift_date",
         {
@@ -85,6 +103,72 @@ function loadShiftRows(
   return query;
 }
 
+/*
+  Все строки, а не первая тысяча.
+
+  PostgREST отдаёт не больше max_rows строк на запрос (у Supabase это
+  1000) и молча обрезает остальное. Смен в месяц около двухсот, и через
+  полгода самые старые из них перестали бы приходить — вместе с деньгами
+  прошлых месяцев, закрытыми периодами и отчётами по ним, без единой
+  ошибки на экране. Поэтому растущие таблицы читаются страницами, пока
+  не придёт столько строк, сколько их есть: число сервер сообщает на
+  первой странице, и размер страницы тогда может быть любым — хоть
+  меньше, чем max_rows у проекта.
+
+  Строка, добавленная между страницами, может сдвинуть границу и прийти
+  дважды — повтор отбрасывается по id.
+*/
+const PAGE_SIZE=1000;
+
+async function allRows(
+  buildQuery,
+  message
+){
+  const rows=[];
+  const seen=new Set();
+  let total=null;
+
+  for(;;){
+    const result=
+      await buildQuery(
+        total===null
+      ).range(
+        rows.length,
+        rows.length+PAGE_SIZE-1
+      );
+
+    const page=
+      resultData(
+        result,
+        message
+      ) || [];
+
+    if(total===null){
+      total=Number.isFinite(result.count)
+        ? result.count
+        : null;
+    }
+
+    for(const row of page){
+      if(!seen.has(row.id)){
+        seen.add(row.id);
+        rows.push(row);
+      }
+    }
+
+    if(
+      !page.length ||
+      total===null ||
+      rows.length>=total
+    ){
+      return {
+        data:rows,
+        error:null
+      };
+    }
+  }
+}
+
 function mapShifts(
   rows
 ){
@@ -92,7 +176,46 @@ function mapShifts(
     .map(mapServerShift);
 }
 
-export async function loadAdminTeamData(){
+/*
+  История расчёта — за один месяц.
+
+  Раньше приходили последние 300 событий по всей базе. История растёт с
+  каждым действием, и однажды старые периоды молча остались бы без неё:
+  не «событий нет», а просто пусто. Показывается она по периоду, а
+  период — половина месяца, так что и читать её надо по месяцу: целиком,
+  сколько бы там ни было, и не больше.
+*/
+export function loadPayrollEvents(
+  periodMonth
+){
+  return allRows(
+    counted=>supabaseClient
+      .from("payroll_events")
+      .select(
+        "id, period_month, payout_kind, employee_id, kind, summary, reason, effect, period_status, details, occurred_at",
+        counted
+          ? {count:"exact"}
+          : undefined
+      )
+      .eq(
+        "period_month",
+        periodMonth
+      )
+      .order(
+        "occurred_at",
+        {ascending:false}
+      )
+      .order(
+        "id",
+        {ascending:true}
+      ),
+    "Не удалось загрузить историю расчётов"
+  );
+}
+
+export async function loadAdminTeamData({
+  periodMonth=null
+}={}){
   const [
     employeesResult,
     pointsResult,
@@ -174,15 +297,25 @@ export async function loadAdminTeamData(){
 
       loadShiftRows(),
 
-      supabaseClient
-        .from("employee_payouts")
-        .select(
-          "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at"
-        )
-        .order(
-          "paid_on",
-          {ascending:false}
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("employee_payouts")
+          .select(
+            "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at",
+            counted
+              ? {count:"exact"}
+              : undefined
+          )
+          .order(
+            "paid_on",
+            {ascending:false}
+          )
+          .order(
+            "id",
+            {ascending:true}
+          ),
+        "Не удалось загрузить выплаты"
+      ),
 
       supabaseClient
         .from("payroll_periods")
@@ -194,22 +327,25 @@ export async function loadAdminTeamData(){
           {ascending:false}
         ),
 
-      supabaseClient
-        .from("payroll_period_entries")
-        .select(
-          "id, period_id, employee_id, shifts, base, bonus, fine, due, paid, detail"
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("payroll_period_entries")
+          .select(
+            "id, period_id, employee_id, shifts, base, bonus, fine, due, paid, detail",
+            counted
+              ? {count:"exact"}
+              : undefined
+          )
+          .order(
+            "id",
+            {ascending:true}
+          ),
+        "Не удалось загрузить снимки периодов"
+      ),
 
-      supabaseClient
-        .from("payroll_events")
-        .select(
-          "id, period_month, payout_kind, employee_id, kind, summary, reason, effect, period_status, details, occurred_at"
-        )
-        .order(
-          "occurred_at",
-          {ascending:false}
-        )
-        .limit(300)
+      periodMonth
+        ? loadPayrollEvents(periodMonth)
+        : Promise.resolve({data:[],error:null})
     ]);
 
   const employees=
@@ -346,19 +482,29 @@ export async function loadEmployeeTeamData(
     payoutsResult
   ]=await Promise.all([
     loadShiftRows(employee.id),
-    supabaseClient
-      .from("employee_payouts")
-      .select(
-        "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at"
-      )
-      .eq(
-        "employee_id",
-        employee.id
-      )
-      .order(
-        "paid_on",
-        {ascending:false}
-      )
+    allRows(
+      counted=>supabaseClient
+        .from("employee_payouts")
+        .select(
+          "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at",
+          counted
+            ? {count:"exact"}
+            : undefined
+        )
+        .eq(
+          "employee_id",
+          employee.id
+        )
+        .order(
+          "paid_on",
+          {ascending:false}
+        )
+        .order(
+          "id",
+          {ascending:true}
+        ),
+      "Не удалось загрузить выплаты"
+    )
   ]);
 
   return {
@@ -396,10 +542,11 @@ export async function loadEmployeeTeamData(
 
 export function loadTeamData({
   role,
-  userId
+  userId,
+  periodMonth=null
 }){
   return role==="admin"
-    ? loadAdminTeamData()
+    ? loadAdminTeamData({periodMonth})
     : loadEmployeeTeamData(
         userId
       );

@@ -1,3 +1,7 @@
+import {
+  formatMoney
+} from "../format.js";
+
 const ERROR_MESSAGES=Object.freeze({
   forbidden:
     "Недостаточно прав для этой операции",
@@ -24,7 +28,9 @@ const ERROR_MESSAGES=Object.freeze({
   employee_account_required:
     "Выберите аккаунт с ролью сотрудника",
   employee_has_history:
-    "Сотрудника со сменами можно только перенести в архив",
+    "Сотрудника со сменами или выплатами можно только перенести в архив",
+  invalid_employee_payout:
+    "Проверьте выплату: сумма больше нуля, не больше двух знаков после запятой, и настоящая дата",
   shift_not_found:
     "Смена не найдена",
   invalid_partial_hours:
@@ -55,6 +61,22 @@ function readableError(
     result.error?.message ||
     ""
   );
+
+  /*
+    Сервер не принимает выплату сверх причитающегося и говорит, сколько
+    ещё можно выплатить, — то же, что интерфейс проверяет до отправки.
+  */
+  const exceeded=raw.match(
+    /payout_exceeds_due:(-?\d+(?:\.\d+)?)/
+  );
+
+  if(exceeded){
+    const remaining=Number(exceeded[1]);
+
+    return remaining>0
+      ? `Сумма больше остатка: осталось выплатить ${formatMoney(remaining)}`
+      : "По этому периоду выплачено всё, что причитается";
+  }
 
   const known=Object.entries(
     ERROR_MESSAGES

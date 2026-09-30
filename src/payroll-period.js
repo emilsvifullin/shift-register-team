@@ -14,6 +14,15 @@
   именно payouts(), а не сумма смен по датам.
 */
 
+import {
+  inMonth,
+  payouts
+} from "./domain.js?shell=7";
+
+import {
+  roundMoney
+} from "./format.js";
+
 export const PERIOD_KINDS=Object.freeze([
   "first_half",
   "second_half"
@@ -89,9 +98,7 @@ export function periodFingerprint(entries){
   return parts.join("|");
 }
 
-function round2(value){
-  return Math.round((Number(value) || 0)*100)/100;
-}
+const round2=roundMoney;
 
 /*
   Строка снимка на одного сотрудника.
@@ -261,4 +268,83 @@ export function periodDifferences({
       )
     )
   };
+}
+
+/*
+  Строки периода — кто в нём и на какие суммы.
+
+  Одна функция на всех, кто спрашивает: экран «Итогов», закрытие
+  периода, заглушка e2e и сверка с сервером. Сервер повторяет этот же
+  отбор в private.payroll_period_entries и сверяет с ним и проверку, и
+  закрытие; тест db-tests/ держит их совпадение.
+
+  В период попадает сотрудник, у которого в нём есть смены, выплаты или
+  хоть какие-то деньги. Последнее — не формальность: у ПВЗ с авансом
+  заработанное в первой половине сверх лимита переходит в окончательный
+  расчёт 10-го. Человек, отработавший только 1–15 число, во второй
+  половине смен не имеет, но деньги ему там причитаются. Раньше отбор
+  шёл по сменам и выплатам, и такой сотрудник выпадал из периода
+  16–конец целиком: из его итога, из снимка закрытия и из отчёта.
+
+  Подменная карточка — не человек, ей не платят: её в периоде нет.
+*/
+export function buildPeriodEntries({
+  ym,
+  kind,
+  employees,
+  shifts,
+  payoutRows
+}){
+  const month=periodMonthKey(ym);
+  const byEmployee=new Map();
+
+  for(const shift of shifts || []){
+    const list=byEmployee.get(shift.employeeId) || [];
+
+    list.push(shift);
+    byEmployee.set(shift.employeeId,list);
+  }
+
+  return (employees || [])
+    .filter(employee=>
+      employee?.is_system_substitute!==true
+    )
+    .map(employee=>{
+      const own=byEmployee.get(employee.id) || [];
+
+      const periodShifts=inMonth(own,ym).filter(shift=>
+        periodKindForDate(shift.date)===kind
+      );
+
+      const records=(payoutRows || []).filter(item=>
+        item.employee_id===employee.id &&
+        item.period_month===month &&
+        item.payout_kind===kind
+      );
+
+      const entry=periodEntry({
+        employeeId:employee.id,
+        employeeName:employee.full_name,
+        kind,
+        payout:payouts(ym,own),
+        shifts:periodShifts,
+        paid:records.reduce(
+          (sum,item)=>sum+(Number(item.amount) || 0),
+          0
+        )
+      });
+
+      return {
+        entry,
+        present:
+          entry.shifts>0 ||
+          records.length>0 ||
+          entry.base!==0 ||
+          entry.bonus!==0 ||
+          entry.fine!==0 ||
+          entry.due!==0
+      };
+    })
+    .filter(item=>item.present)
+    .map(item=>item.entry);
 }

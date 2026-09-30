@@ -84,6 +84,8 @@ jobs:
       - name: Run browser smoke
         run: npx playwright test e2e --browser=${{ matrix.browser }} --reporter=line
 
+      # Трасса упавшего теста — единственный способ разобрать редкий сбой
+      # после того, как он случился. Суток на это не хватало.
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v6
@@ -93,4 +95,101 @@ jobs:
             playwright-report
             test-results
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 7
+
+  # Финансовые правила сервера — на настоящем Postgres из тех же файлов
+  # supabase/migrations/, что уходят в Supabase. Заглушка e2e повторяет
+  # эти правила на JavaScript и сама по себе расхождения с базой не
+  # заметит; эти тесты заметят.
+  database:
+    name: Database contract (Postgres 17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: checks
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Run database contract
+        run: npm run test:db
+
+  # Production — только проверенная версия.
+  #
+  # Раньше GitHub Pages публиковал main сам, сразу после push, а CI шёл
+  # параллельно: красная сборка успевала стать production раньше, чем
+  # кто-то видел, что она красная. Теперь Pages берёт сайт только отсюда,
+  # и этот шаг ждёт все обязательные проверки этой же версии. Упала
+  # любая — production остаётся прежним.
+  deploy:
+    name: Deploy to production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - checks
+      - browser
+      - database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Две выкладки не идут одновременно; начатая не обрывается новой.
+    concurrency:
+      group: production-pages
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Сайт — ровно отслеживаемые файлы этой версии, как их отдавала
+      # публикация из ветки, без служебных файлов репозитория.
+      - name: Assemble site
+        run: |
+          mkdir _site
+          git archive HEAD | tar -x -C _site
+          rm -rf _site/.github _site/.gitignore _site/docs/manual/.gitignore
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

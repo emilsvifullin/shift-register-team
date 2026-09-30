@@ -178,12 +178,23 @@ export function stubScript(seed){
 
   function query(table){
     let rows=[...(db[table] || [])];
+    let total=null;
 
     const builder={
       select(){return builder;},
       order(){return builder;},
       limit(count){
         rows=rows.slice(0,count);
+        return builder;
+      },
+      /*
+        Страница, как у PostgREST: число строк до обрезки сообщается
+        всегда — приложение читает растущие таблицы, пока не соберёт
+        столько, сколько их есть.
+      */
+      range(from,to){
+        total=rows.length;
+        rows=rows.slice(from,to+1);
         return builder;
       },
       eq(column,value){
@@ -201,7 +212,11 @@ export function stubScript(seed){
           : fail("not_found");
       },
       then(resolve,reject){
-        return ok(rows).then(resolve,reject);
+        return Promise.resolve({
+          data:rows,
+          error:null,
+          count:total===null ? rows.length : total
+        }).then(resolve,reject);
       }
     };
 
@@ -409,6 +424,134 @@ export function stubScript(seed){
     return period;
   }
 
+  /*
+    Деньги периода заглушка не считает сама: берёт те же функции
+    приложения, что рисуют «Итоги» (payouts() через buildPeriodEntries).
+    Сервер сверяет с ними свою копию расчёта, а db-tests/ держат, что
+    копия с ними совпадает, — так заглушка и база не расходятся в
+    арифметике, как расходились бы две рукописные копии.
+  */
+  let finance=null;
+
+  const financeReady=Promise.all([
+    import("/src/team-domain.js?shell=7"),
+    import("/src/payroll-period.js")
+  ]).then(([team,period])=>{
+    finance={
+      mapServerShift:team.mapServerShift,
+      buildPeriodEntries:period.buildPeriodEntries,
+      periodFingerprint:period.periodFingerprint
+    };
+  });
+
+  function periodEntries(db,month,kind){
+    return finance.buildPeriodEntries({
+      ym:month.slice(0,7),
+      kind,
+      employees:db.employees || [],
+      shifts:(db.shifts || []).map(finance.mapServerShift),
+      payoutRows:db.employee_payouts || []
+    });
+  }
+
+  function periodPrint(db,month,kind){
+    return finance.periodFingerprint(
+      periodEntries(db,month,kind)
+    );
+  }
+
+  const KINDS=["first_half","second_half"];
+
+  function monthPrints(db,months){
+    const prints={};
+
+    for(const month of months){
+      for(const kind of KINDS){
+        prints[month+"|"+kind]=periodPrint(db,month,kind);
+      }
+    }
+
+    return prints;
+  }
+
+  function monthOf(date){
+    return date.slice(0,7)+"-01";
+  }
+
+  function kindOf(date){
+    return Number(date.slice(8,10))<=15
+      ? "first_half"
+      : "second_half";
+  }
+
+  /*
+    То же, что private.assert_month_effect: изменение, задевшее деньги
+    закрытого периода не по дате, а по сумме, требует согласия.
+  */
+  function assertMonthEffect(db,before,asserted,force){
+    for(const key of Object.keys(before)){
+      if(asserted.includes(key)){
+        continue;
+      }
+
+      const [month,kind]=key.split("|");
+
+      if(periodPrint(db,month,kind)===before[key]){
+        continue;
+      }
+
+      const period=findPeriod(db,{
+        p_period_month:month,
+        p_payout_kind:kind
+      });
+
+      if(!period || ["open","checked"].includes(period.status)){
+        continue;
+      }
+
+      if(!force){
+        throw new Error(
+          "payroll_period_closed:"+month+":"+kind+":"+period.status
+        );
+      }
+
+      recordEvent(db,{
+        period_month:month,
+        payout_kind:kind,
+        employee_id:null,
+        kind:"closed_period_change",
+        summary:"изменение в закрытом периоде",
+        period_status:period.status
+      });
+    }
+  }
+
+  /*
+    Сделать изменение смены и откатить его, если оно задело закрытый
+    период без согласия: сервер делает это транзакцией.
+  */
+  function guardedShiftChange(db,{dates,asserted,force},change){
+    const months=[...new Set(dates.map(monthOf))];
+    const snapshot=JSON.stringify(db.shifts);
+    const before=monthPrints(db,months);
+
+    const result=change();
+
+    try{
+      assertMonthEffect(
+        db,
+        before,
+        asserted.map(date=>monthOf(date)+"|"+kindOf(date)),
+        force
+      );
+    }catch(error){
+      db.shifts=JSON.parse(snapshot);
+      throw error;
+    }
+
+    return result;
+  }
+
   const rpc={
     admin_account_options_v2(){
       return db.accounts;
@@ -472,6 +615,25 @@ export function stubScript(seed){
 
       if(named(args.p_point_name)!==named(point.name)){
         throw new Error("point_name_mismatch");
+      }
+
+      /* Смены закрытого или выплаченного периода не стираются. */
+      for(const shift of db.shifts){
+        if(shift.point_id!==args.p_point_id){
+          continue;
+        }
+
+        const period=findPeriod(db,{
+          p_period_month:monthOf(shift.shift_date),
+          p_payout_kind:kindOf(shift.shift_date)
+        });
+
+        if(period && ["closed","paid"].includes(period.status)){
+          throw new Error(
+            "point_has_closed_period:"+period.period_month+":"+
+            period.payout_kind+":"+period.status
+          );
+        }
       }
 
       const doomed=db.shifts.filter(shift=>
@@ -575,13 +737,27 @@ export function stubScript(seed){
         item.id===args.p_shift_id
       );
 
-      if(existing && existing.shift_date!==args.p_shift_date){
+      const moved=existing && existing.shift_date!==args.p_shift_date;
+
+      if(moved){
         assertPeriodOpen(db,existing.shift_date,args.p_force);
       }
 
       assertPeriodOpen(db,args.p_shift_date,args.p_force);
 
-      return rpc.admin_save_shift_v3(args);
+      const dates=existing
+        ? [existing.shift_date,args.p_shift_date]
+        : [args.p_shift_date];
+
+      return guardedShiftChange(
+        db,
+        {
+          dates,
+          asserted:moved ? dates : [args.p_shift_date],
+          force:args.p_force
+        },
+        ()=>rpc.admin_save_shift_v3(args)
+      );
     },
     admin_delete_shift_v2(args){
       const shift=(db.shifts || []).find(item=>
@@ -594,7 +770,15 @@ export function stubScript(seed){
 
       assertPeriodOpen(db,shift.shift_date,args.p_force);
 
-      rpc.admin_delete_shift(args);
+      guardedShiftChange(
+        db,
+        {
+          dates:[shift.shift_date],
+          asserted:[shift.shift_date],
+          force:args.p_force
+        },
+        ()=>rpc.admin_delete_shift(args)
+      );
 
       /*
         В базе функция объявлена returns void, и PostgREST отдаёт на
@@ -616,15 +800,65 @@ export function stubScript(seed){
 
       assertPeriodOpen(db,shift.shift_date,args.p_force);
 
-      return rpc.admin_reprice_shift(args);
+      return guardedShiftChange(
+        db,
+        {
+          dates:[shift.shift_date],
+          asserted:[shift.shift_date],
+          force:args.p_force
+        },
+        ()=>rpc.admin_reprice_shift(args)
+      );
     },
     admin_save_employee_payout_v2(args){
+      const amount=Number(args.p_amount);
+
+      if(
+        !Number.isFinite(amount) ||
+        amount<=0 ||
+        amount>10000000 ||
+        Math.round(amount*100)!==Number((amount*100).toPrecision(15))
+      ){
+        throw new Error("invalid_employee_payout");
+      }
+
       const period=findPeriod(db,args);
 
       if(period && period.status==="paid" && !args.p_force){
         throw new Error(
           "payroll_period_closed:"+args.p_period_month+
           ":"+args.p_payout_kind+":paid"
+        );
+      }
+
+      /* Не больше причитающегося — как в admin_save_employee_payout_v2. */
+      const entry=periodEntries(
+        db,
+        args.p_period_month,
+        args.p_payout_kind
+      ).find(item=>item.employeeId===args.p_employee_id);
+
+      const records=(db.employee_payouts || []).filter(item=>
+        item.employee_id===args.p_employee_id &&
+        item.period_month===args.p_period_month &&
+        item.payout_kind===args.p_payout_kind
+      );
+
+      const cents=value=>Math.round(Number(value || 0)*100);
+
+      const other=records
+        .filter(item=>item.id!==args.p_payout_id)
+        .reduce((sum,item)=>sum+cents(item.amount),0);
+
+      const previous=cents(
+        records.find(item=>item.id===args.p_payout_id)?.amount
+      );
+
+      const due=cents(entry?.due);
+
+      if(other+cents(amount)>Math.max(due,other+previous)){
+        throw new Error(
+          "payout_exceeds_due:"+Math.max(due-other,0)/100
         );
       }
 
@@ -691,6 +925,13 @@ export function stubScript(seed){
         throw new Error("payroll_period_not_open");
       }
 
+      if(
+        args.p_fingerprint!==
+          periodPrint(db,args.p_period_month,args.p_payout_kind)
+      ){
+        throw new Error("payroll_period_figures_mismatch");
+      }
+
       period.status="checked";
       period.checked_fingerprint=args.p_fingerprint;
       period.checked_at=new Date().toISOString();
@@ -719,6 +960,24 @@ export function stubScript(seed){
 
       if(["closed","paid"].includes(period.status)){
         throw new Error("payroll_period_already_closed");
+      }
+
+      if(period.status!=="checked"){
+        throw new Error("payroll_period_not_checked");
+      }
+
+      if(
+        period.checked_fingerprint!==
+          periodPrint(db,args.p_period_month,args.p_payout_kind)
+      ){
+        throw new Error("payroll_period_changed_since_check");
+      }
+
+      if(
+        period.checked_fingerprint!==
+          finance.periodFingerprint(args.p_entries || [])
+      ){
+        throw new Error("payroll_period_figures_mismatch");
       }
 
       db.payroll_period_entries=(db.payroll_period_entries || [])
@@ -1132,11 +1391,13 @@ export function stubScript(seed){
         return fail("unknown_rpc:"+name);
       }
 
-      try{
-        return ok(handler(args));
-      }catch(error){
-        return fail(error.message);
-      }
+      return financeReady.then(()=>{
+        try{
+          return ok(handler(args));
+        }catch(error){
+          return fail(error.message);
+        }
+      });
     },
     realtime:{
       setAuth(){return Promise.resolve();}
@@ -1172,9 +1433,17 @@ export function stubScript(seed){
     }
 
     if(body.action==="delete"){
-      const hasHistory=db.shifts.some(shift=>
-        shift.employee_id===employee.id
-      );
+      /* Как в admin_begin_employee_deletion: смены, выплаты, снимки. */
+      const hasHistory=
+        db.shifts.some(shift=>
+          shift.employee_id===employee.id
+        ) ||
+        (db.employee_payouts || []).some(item=>
+          item.employee_id===employee.id
+        ) ||
+        (db.payroll_period_entries || []).some(item=>
+          item.employee_id===employee.id
+        );
 
       if(hasHistory){
         return {status:409,payload:{error:"employee_has_history"}};

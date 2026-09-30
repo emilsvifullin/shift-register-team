@@ -5,6 +5,7 @@ import {
 export {
   loadAdminTeamData,
   loadEmployeeTeamData,
+  loadPayrollEvents,
   loadTeamData
 } from "./api/read.js";
 

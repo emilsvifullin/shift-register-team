@@ -53,6 +53,7 @@ import {
   deleteAdminTariff,
   deleteAdminShift,
   importAdminLegacyShifts,
+  loadPayrollEvents,
   loadTeamData,
   markPayrollPeriodPaid,
   reopenPayrollPeriod,
@@ -139,6 +140,7 @@ import {
   formatDayList,
   formatMoney,
   formatNumber,
+  roundMoney,
   plural,
   pluralForm
 } from "./format.js";
@@ -188,9 +190,9 @@ import {
 
 import {
   PERIOD_KINDS,
+  buildPeriodEntries,
   findPeriod,
   periodKindForDate,
-  periodEntry,
   periodFingerprint,
   periodDifferences,
   periodMonthKey,
@@ -501,6 +503,48 @@ function monthOffset(from,to){
   return (toYear-fromYear)*12+(toMonth-fromMonth);
 }
 
+/*
+  История расчёта приходит по месяцу — тому, что открыт на экране. При
+  обновлении данных она читается вместе с ними; при переходе на другой
+  месяц — отдельно, один раз.
+*/
+let periodEventsMonth=null;
+let periodEventsLoading=null;
+
+function ensurePeriodEvents(){
+  const month=periodMonthKey(cursor);
+
+  if(
+    !isAdmin ||
+    !teamDataLoaded ||
+    periodEventsMonth===month ||
+    periodEventsLoading===month
+  ){
+    return;
+  }
+
+  periodEventsLoading=month;
+
+  loadPayrollEvents(month)
+    .then(result=>{
+      if(periodMonthKey(cursor)!==month){
+        return;
+      }
+
+      teamData.periodEvents=result.data || [];
+      periodEventsMonth=month;
+      renderWhenReady();
+    })
+    .catch(()=>{
+      /* Следующее обновление данных прочтёт историю вместе с ними. */
+    })
+    .finally(()=>{
+      if(periodEventsLoading===month){
+        periodEventsLoading=null;
+      }
+    });
+}
+
 async function refreshTeamData({
   renderAfter=true
 }={}){
@@ -515,12 +559,21 @@ async function refreshTeamData({
   teamDataError=null;
   serverDataError=null;
 
+  const eventsMonth=
+    periodMonthKey(cursor);
+
   try{
     teamData=
       await loadTeamData({
         role:currentProfile.role,
-        userId:currentUser.id
+        userId:currentUser.id,
+        periodMonth:eventsMonth
       });
+
+    periodEventsMonth=
+      teamData.periodEvents
+        ? eventsMonth
+        : null;
 
     shifts=teamData.shifts;
     employeeLinked=
@@ -1300,6 +1353,8 @@ const app = document.getElementById("app");
 
 initManageSwipe({app});
 
+let renderedTab=null;
+
 function render(){
   saveUIState();
 
@@ -1422,6 +1477,23 @@ function render(){
     tab==="shifts" &&
     shiftViewMode==="registry"
   );
+
+  /*
+    Другой раздел — другой экран, и узлы прежнего ему не достаются.
+
+    Реконсилятор переиспользует узел без ключа, если совпадает тег. Внутри
+    одного экрана это и нужно: фокус, прокрутка и нажатие переживают
+    перерисовку. Но между разделами совпадение тегов случайно: при
+    переходе из «Итогов» кнопкой «Реестр» становилась кнопка строки
+    выплаты — узел менял класс с «row payout-summary» на «on», и переход
+    фона и тени проигрывал это как второе, запоздалое нажатие. Раздел
+    строится заново, как при первом открытии: первый же кадр уже
+    окончательный.
+  */
+  if(renderedTab!==tab){
+    renderedTab=tab;
+    app.replaceChildren();
+  }
 
   setHTML(
     app,
@@ -2613,61 +2685,16 @@ function payoutPeriodNoteHTML(kind,employee){
 
 /*
   Снимок периода по всей команде — той же функцией, что считает «Итоги».
-
-  Строится по всем сотрудникам, у которых в этом месяце есть смены или
-  записанные выплаты: остальным в периоде делать нечего, и пустые строки
-  в снимке только мешали бы его читать.
+  Кто в него попадает, решает buildPeriodEntries: его же повторяет и
+  сверяет сервер.
 */
 function payrollPeriodEntries(kind){
-  const month=periodMonthKey(cursor);
-
-  /*
-    Смены периода — по дате: 1–15 или 16 и дальше. Деньги при этом
-    считает payouts(), и у ПВЗ с авансом часть заработанного в первой
-    половине уходит в окончательный расчёт — это правило расчёта, а не
-    повод переносить сам рабочий день в другой период.
-  */
-  const periodShifts=employeeId=>
-    inMonth(cursor,shifts).filter(shift=>
-      shift.employeeId===employeeId &&
-      periodKindForDate(shift.date)===kind
-    );
-
-  const people=statsEmployeeOptions().filter(employee=>{
-    const hasPayouts=(teamData.payouts || []).some(item=>
-      item.employee_id===employee.id &&
-      item.period_month===month &&
-      item.payout_kind===kind
-    );
-
-    return (
-      periodShifts(employee.id).length>0 ||
-      hasPayouts
-    );
-  });
-
-  return people.map(employee=>{
-    const own=shifts.filter(shift=>
-      shift.employeeId===employee.id
-    );
-
-    const payout=payouts(cursor,own);
-
-    const paid=payoutRecords(employee.id,kind)
-      .reduce(
-        (sum,item)=>
-          sum+(Number(item.amount) || 0),
-        0
-      );
-
-    return periodEntry({
-      employeeId:employee.id,
-      employeeName:employee.full_name,
-      kind,
-      payout,
-      shifts:periodShifts(employee.id),
-      paid
-    });
+  return buildPeriodEntries({
+    ym:cursor,
+    kind,
+    employees:teamData.employees,
+    shifts,
+    payoutRows:teamData.payouts || []
   });
 }
 
@@ -2875,6 +2902,11 @@ function eventDetail(event){
 
 function payrollPeriodEvents(kind){
   const month=periodMonthKey(cursor);
+
+  if(periodEventsMonth!==month){
+    ensurePeriodEvents();
+    return [];
+  }
 
   return (teamData.periodEvents || []).filter(event=>
     event.period_month===month &&
@@ -3716,6 +3748,19 @@ async function runPayrollPeriodAction(button){
       payrollPeriodError(error),
       4400
     );
+
+    /*
+      Сервер отказал, потому что цифры периода уже другие, — значит, и
+      экран показывает устаревшие. Обновляем, чтобы «Данные изменились»
+      появилось там, где человек будет проверять снова.
+    */
+    if(
+      /payroll_period_(changed_since_check|figures_mismatch)/.test(
+        error instanceof Error ? error.message : String(error || "")
+      )
+    ){
+      await refreshTeamData({renderAfter:false});
+    }
   }finally{
     payrollPeriodSaving="";
     render();
@@ -3742,6 +3787,17 @@ function payrollPeriodError(error){
 
   if(message.includes("payroll_period_not_closed")){
     return "Период ещё не закрыт";
+  }
+
+  if(message.includes("payroll_period_not_checked")){
+    return "Сначала отметьте период проверенным";
+  }
+
+  if(
+    message.includes("payroll_period_changed_since_check") ||
+    message.includes("payroll_period_figures_mismatch")
+  ){
+    return "Цифры периода изменились. Данные обновлены — проверьте период ещё раз";
   }
 
   return message || "Не удалось изменить состояние периода";
@@ -4186,9 +4242,14 @@ async function persistPayout(){
   if(!payoutEditor || payoutSaving) return;
   const context=currentStatsPayoutContext(payoutEditor.kind);
   if(!context) return;
-  const amount=Number(String(payoutEditor.amount).replace(",","."));
+  const amount=Number(String(payoutEditor.amount).trim().replace(",","."));
   if(!Number.isFinite(amount) || amount<=0){
     toast("Введите сумму выплаты больше 0");
+    return;
+  }
+  /* Деньги — в копейках: третий знак сервер не примет, а не округлит. */
+  if(roundMoney(amount)!==amount){
+    toast("Сумма выплаты — не больше двух знаков после запятой");
     return;
   }
   const progress=paymentProgress(
@@ -4198,7 +4259,7 @@ async function persistPayout(){
       payoutEditor.kind
     )
   );
-  if(amount>progress.remaining){
+  if(amount>roundMoney(progress.remaining)){
     toast(
       `Осталось выплатить ${money(progress.remaining)}`
     );
@@ -7643,6 +7704,30 @@ function pointDeleteError(error){
     return "Название не совпадает: ПВЗ не удалён";
   }
 
+  /*
+    Смены закрытого или выплаченного периода удаление ПВЗ не стирает: ни
+    те, что лежат в нём по дате, ни те, от которых зависят его деньги.
+  */
+  const closed=
+    message.match(
+      /point_has_closed_period:(\d{4}-\d{2}-\d{2}):(first_half|second_half):(\w+)/
+    ) ||
+    message.match(
+      /payroll_period_closed:(\d{4}-\d{2}-\d{2}):(first_half|second_half):(\w+)/
+    );
+
+  if(closed){
+    const [,month,kind,status]=closed;
+
+    return `У ПВЗ есть смены в ${
+      status==="paid" ? "выплаченном" : "закрытом"
+    } периоде ${
+      kind==="first_half" ? "1–15" : "16–конец месяца"
+    } за ${
+      ymLabel(month.slice(0,7)).toLowerCase()
+    }. Верните период в работу, чтобы удалить ПВЗ.`;
+  }
+
   if(
     message.includes("point_has_history") ||
     message.includes("shifts_point_id_fkey")
@@ -9859,11 +9944,20 @@ function employeeDeleteError(
       "employee_has_history"
     ) ||
     message.includes(
+      "Сотрудника со сменами"
+    ) ||
+    message.includes(
       "shifts_employee_id_fkey"
+    ) ||
+    message.includes(
+      "employee_payouts_employee_id_fkey"
+    ) ||
+    message.includes(
+      "payroll_period_entries_employee_id_fkey"
     )
   ){
     return (
-      "У сотрудника есть история смен. "+
+      "У сотрудника есть смены или выплаты. "+
       "Переведите его в архив."
     );
   }
@@ -17624,12 +17718,18 @@ app.addEventListener("click",async event=>{
     }catch(error){
       legacyMigrationProgress=
         "Импорт остановлен. Локальный источник не изменён; повторный запуск безопасен.";
+      const closed=closedPeriodInfo(error);
+
       toast(
-        navigator.onLine
-          ? error instanceof Error
-            ? error.message
-            : "Не удалось перенести смены"
-          : "Нет подключения. Локальные смены не удалены.",
+        closed
+          ? `Период ${closed.label} за ${closed.monthLabel} ${
+              closed.status==="paid" ? "выплачен" : "закрыт"
+            }: импорт туда не пишет. Верните период в работу и повторите.`
+          : navigator.onLine
+            ? error instanceof Error
+              ? error.message
+              : "Не удалось перенести смены"
+            : "Нет подключения. Локальные смены не удалены.",
         4600
       );
     }finally{

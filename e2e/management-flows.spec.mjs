@@ -1022,7 +1022,7 @@ test(
 
     await expect(
       page.locator("#toast")
-    ).toContainText("история смен");
+    ).toContainText("есть смены или выплаты");
 
     await expect(
       page.locator("#employeeName")
@@ -1034,6 +1034,53 @@ test(
     await expect(
       page.locator('[data-employee-id="employee-1"]')
     ).toHaveCount(1);
+  }
+);
+
+/*
+  Смены можно удалить по одной, и тогда сотрудник выглядел бы свободным
+  от истории. Но выплаты — тоже история: удаление каскадом стёрло бы
+  факты переведённых денег.
+*/
+test(
+  "an employee whose shifts are gone but payouts remain is kept",
+  async({page})=>{
+    const seed=structuredClone(ADMIN_SEED);
+
+    seed.employee_payouts=[{
+      id:"payout-1",
+      employee_id:"employee-2",
+      period_month:"2026-09-01",
+      payout_kind:"first_half",
+      amount:3000,
+      paid_on:"2026-09-25",
+      comment:null,
+      created_at:"2026-09-25T10:00:00Z",
+      updated_at:"2026-09-25T10:00:00Z"
+    }];
+
+    await openApp(page,{seed});
+    await openEmployees(page);
+
+    await page
+      .locator('[data-employee-id="employee-2"]')
+      .click();
+
+    await page.locator("#employeeSheetSave").click();
+    await page.locator("#employeeDelete").click();
+    await page.locator("#appConfirmOk").click();
+
+    await expect(
+      page.locator("#toast")
+    ).toContainText("есть смены или выплаты");
+
+    expect(
+      await page.evaluate(()=>
+        globalThis.__stubDb.employees.some(item=>
+          item.id==="employee-2"
+        )
+      )
+    ).toBe(true);
   }
 );
 

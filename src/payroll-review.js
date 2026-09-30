@@ -209,5 +209,5 @@ function reviewEmployee({
   те же деньги другим почерком.
 */
 function format(value){
-  return formatMoney(Math.round(Number(value) || 0));
+  return formatMoney(value);
 }

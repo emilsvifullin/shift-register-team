@@ -1,3 +1,7 @@
+import {
+  formatMoney
+} from "./format.js";
+
 /*
   Документ зарплатного отчёта.
 
@@ -203,10 +207,14 @@ const STYLES=`
   }
 `;
 
+/*
+  Сумма — тем же форматом, что на экране: копейки, если они есть.
+  Раньше документ округлял сам, до рубля, вопреки собственному
+  обещанию ничего не округлять заново.
+*/
 const money=value=>
-  `${Math.round(Number(value) || 0)
-    .toLocaleString("ru-RU")
-    .replace(/ /g," ")} ₽`;
+  formatMoney(Number(value) || 0)
+    .replace(/\u00a0/g," ");
 
 /* Корректировка бывает и в минус — знак у неё часть смысла. */
 const signed=value=>

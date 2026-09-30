@@ -1,3 +1,6 @@
+import {
+  roundMoney
+} from "./format.js";
 
 /*
   План перерасчёта.
@@ -106,8 +109,12 @@ export function resolvedAmount(row){
 
   const value=Number(raw);
 
-  return Number.isFinite(value) && value>=0
-    ? round(value)
+  /*
+    Сумма в копейках: третий знак после запятой — не округление, а
+    ошибка ввода, и применять её нельзя.
+  */
+  return Number.isFinite(value) && value>=0 && round(value)===value
+    ? value
     : null;
 }
 
@@ -119,6 +126,5 @@ export function invalidRows(rows){
   );
 }
 
-function round(value){
-  return Math.round(Number(value) || 0);
-}
+/* Деньги — до копейки, как везде (см. roundMoney). */
+const round=roundMoney;

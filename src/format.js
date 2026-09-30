@@ -27,6 +27,35 @@ function withNonBreakingSpaces(value){
   return value.replace(/\s/g,NBSP);
 }
 
+/*
+  Денежный контракт проекта — копейки.
+
+  В базе каждая сумма — numeric(12,2), ввод принимает два знака после
+  запятой, и сервер отказывает третьему. Значит, и всякое округление
+  денег — до копейки, одно на все слои: отчёт, PDF, проверка периода и
+  перерасчёт округляли до рубля каждый сам, и 1 500,50 ₽ выплаты
+  превращались в документе в 1 501 ₽.
+
+  Целый рубль остаётся там, где он — правило расчёта, а не формат:
+  стоимость неполной смены округляется до рубля при её расчёте (calc).
+
+  Сначала 15 значащих цифр, потом округление: 1,005 в двоичной записи
+  чуть меньше самого себя, и прямое Math.round(1.005*100) дало бы 1,00.
+*/
+export function roundMoney(value){
+  const number=Number(value);
+
+  if(!Number.isFinite(number)){
+    return 0;
+  }
+
+  const cents=Math.round(
+    Number((number*100).toPrecision(15))
+  );
+
+  return cents/100 || 0;
+}
+
 export function formatNumber(number){
   const value=Number(number);
 
@@ -46,7 +75,7 @@ export function formatAmount(number){
     return "";
   }
 
-  const cents=Math.round(value*100);
+  const cents=Math.round(roundMoney(value)*100);
 
   return withNonBreakingSpaces(
     (Math.abs(cents)%100===0 ? WHOLE : EXACT)

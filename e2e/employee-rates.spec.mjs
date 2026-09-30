@@ -9,6 +9,10 @@ import {
   openApp
 } from "./support/supabase-stub.mjs";
 
+import {
+  settleScreen
+} from "./support/settle.mjs";
+
 /*
   Индивидуальная ставка сотрудника на ПВЗ.
 
@@ -443,12 +447,19 @@ test(
   Ставка живёт в строке своего ПВЗ: отдельного списка ставок в карточке
   нет, и проходить по одним и тем же пунктам дважды не приходится.
 */
-async function openEmployeeCard(page,name){
+async function openEmployees(page){
   await page.locator("#tab-manage").click();
+  await settleScreen(page);
 
   await page
     .locator('#app [data-manage-section="employees"]')
     .click();
+
+  await settleScreen(page);
+}
+
+async function openEmployeeCard(page,name){
+  await openEmployees(page);
 
   await page
     .locator("[data-employee-id]")
@@ -459,6 +470,20 @@ async function openEmployeeCard(page,name){
   await expect(
     page.locator("#employeeSheet")
   ).toHaveClass(/\bon\b/);
+
+  await settleScreen(page);
+}
+
+async function openNewEmployee(page){
+  await openEmployees(page);
+
+  await page.locator("#employeeAdd").click();
+
+  await expect(
+    page.locator("#employeeSheet")
+  ).toHaveClass(/\bon\b/);
+
+  await settleScreen(page);
 }
 
 test(
@@ -545,13 +570,7 @@ test(
   async({page})=>{
     await openApp(page,{seed:seed()});
 
-    await page.locator("#tab-manage").click();
-
-    await page
-      .locator('#app [data-manage-section="employees"]')
-      .click();
-
-    await page.locator("#employeeAdd").click();
+    await openNewEmployee(page);
 
     await expect(
       page.locator("#employeeSheet")
@@ -574,7 +593,9 @@ test(
       "По тарифу ПВЗ"
     );
 
+    await settleScreen(page);
     await row.click();
+    await settleScreen(page);
 
     await page
       .locator("#employeeRateAmount")
@@ -617,13 +638,7 @@ test(
   async({page})=>{
     await openApp(page,{seed:seed()});
 
-    await page.locator("#tab-manage").click();
-
-    await page
-      .locator('#app [data-manage-section="employees"]')
-      .click();
-
-    await page.locator("#employeeAdd").click();
+    await openNewEmployee(page);
 
     await page
       .locator("#employeeName")
@@ -633,9 +648,17 @@ test(
       .locator('[data-employee-point="point-2"]')
       .click();
 
-    await page
-      .locator('[data-employee-rate-point="point-2"]')
-      .click();
+    const row=page.locator(
+      '[data-employee-rate-point="point-2"]'
+    );
+
+    await expect(row).toContainText(
+      "По тарифу ПВЗ"
+    );
+
+    await settleScreen(page);
+    await row.click();
+    await settleScreen(page);
 
     await page
       .locator("#employeeRateAmount")

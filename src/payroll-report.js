@@ -1,3 +1,7 @@
+import {
+  roundMoney
+} from "./format.js";
+
 /*
   Зарплатный отчёт за расчётный период.
 
@@ -159,6 +163,9 @@ export function reportFileName({
     .trim();
 }
 
-function round(value){
-  return Math.round(Number(value) || 0);
-}
+/*
+  Отчёт округляет до копейки, как и всё остальное: до рубля он округлял
+  сам, и выплата 1 500,50 ₽ выходила в документе 1 501 ₽, а итог
+  расходился с экраном.
+*/
+const round=roundMoney;

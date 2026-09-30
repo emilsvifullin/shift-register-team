@@ -1,3 +1,7 @@
+import {
+  roundMoney
+} from "./format.js";
+
 function text(value){
   return String(value ?? "")
     .trim()
@@ -189,14 +193,19 @@ export function paymentProgress(
   due,
   payments=[]
 ){
-  const paid=payments.reduce(
+  /*
+    Суммы — до копейки: 0,1 + 0,2 в двоичной арифметике не равно 0,3, и
+    полностью выплаченная половина показывалась бы с остатком в
+    стотысячную копейки.
+  */
+  const paid=roundMoney(payments.reduce(
     (sum,item)=>sum+Number(item.amount || 0),
     0
-  );
-  const remaining=Number(due || 0)-paid;
+  ));
+  const remaining=roundMoney(Number(due || 0)-paid);
 
   return {
-    due:Number(due || 0),
+    due:roundMoney(due),
     paid,
     remaining:Math.max(0,remaining),
     overpaid:Math.max(0,-remaining),

@@ -46,5 +46,16 @@ export function demoSeed({paidFirstHalf=null,firstHalfStatus=null}={}){
   s.payroll_periods=firstHalfStatus
     ? [{id:"period-1",period_month:"2026-09-01",payout_kind:"first_half",status:firstHalfStatus,checked_fingerprint:null,checked_at:"2026-09-17T09:00:00Z",closed_at:"2026-09-17T09:10:00Z",paid_at:firstHalfStatus==="paid"?"2026-09-25T12:00:00Z":null}]
     : [];
+  /*
+    История периода 1–15: записанные выплаты и одна правка после
+    закрытия — такой, какой её пишет сервер.
+  */
+  s.payroll_events=paidFirstHalf
+    ? [
+        {id:"ev-3",period_month:"2026-09-01",payout_kind:"first_half",employee_id:"emp-2",kind:"closed_period_change",summary:"смена удалена",reason:"Массовое удаление смен",effect:-3000,period_status:"paid",details:{date:"2026-09-08"},occurred_at:"2026-09-26T08:40:00Z"},
+        {id:"ev-2",period_month:"2026-09-01",payout_kind:"first_half",employee_id:"emp-1",kind:"payout_added",summary:"",reason:null,effect:paidFirstHalf["emp-1"] ?? null,period_status:"closed",details:{date:"2026-09-25"},occurred_at:"2026-09-25T10:05:00Z"},
+        {id:"ev-1",period_month:"2026-09-01",payout_kind:"first_half",employee_id:"emp-0",kind:"payout_added",summary:"аванс",reason:null,effect:paidFirstHalf["emp-0"] ?? null,period_status:"closed",details:{date:"2026-09-25"},occurred_at:"2026-09-25T10:00:00Z"}
+      ]
+    : [];
   return s;
 }

@@ -3,8 +3,9 @@
 
   Кадр строится по элементам, а не по координатам окна: край проходит по
   границе блока с отступом, а не посреди строки. Панели и диалоги
-  снимаются отдельно от фона — на прозрачной подложке, со своими
-  скруглениями и тенью.
+  снимаются отдельно от фона и без собственных углов, рамки и тени:
+  каждый снимок — прямоугольник, а одинаковое скругление и рамку всем
+  снимкам даёт build.mjs.
 
   Номера и рамки на снимок не рисуются. Их положение пишется рядом, в
   shots/<имя>.json, а build.mjs накладывает их при сборке — одного
@@ -36,9 +37,8 @@ const MAIN={x0:350,x1:1488};
   from     — верх кадра по верху этого элемента;
   until    — низ кадра по низу этого элемента;
   margin   — отступ от from/until/el: число или {t,r,b,l};
-  isolate  — оставить только el: фон, затемнение и остальное скрыть;
-  fade     — "top" / "bottom" / "both" / "bottom-right": край кадра
-             режет содержимое, в сборке он растворяется, а не обрывается.
+  isolate  — оставить только el: фон, затемнение и остальное скрыть.
+             Кадр при этом не выходит за границы el.
 */
 async function frameOf(page,frame){
   return page.evaluate(frame=>{
@@ -78,18 +78,20 @@ async function frameOf(page,frame){
     right=Math.min(innerWidth,Math.round(right));
     bottom=Math.min(innerHeight,Math.round(bottom));
 
-    let radius=0;
     if(el && frame.isolate){
       el.setAttribute("data-manual-keep","");
-      radius=parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+      left=Math.max(left,Math.ceil(box.left));
+      top=Math.max(top,Math.ceil(box.top));
+      right=Math.min(right,Math.floor(box.right));
+      bottom=Math.min(bottom,Math.floor(box.bottom));
     }
 
-    return {x:left,y:top,width:right-left,height:bottom-top,radius};
+    return {x:left,y:top,width:right-left,height:bottom-top};
   },frame);
 }
 
 /* Положение отметок относительно кадра. */
-async function marksOf(page,marks,clip,{clampX=false}={}){
+async function marksOf(page,marks,clip){
   const {found,lost}=await page.evaluate(({marks,clip})=>{
     const visible=el=>{
       const r=el.getBoundingClientRect();
@@ -143,20 +145,10 @@ async function marksOf(page,marks,clip,{clampX=false}={}){
     throw new Error("не найдено: "+lost.join(", "));
   }
 
-  /* Кадр намеренно уже элемента: рамка доходит до края и растворяется вместе с ним. */
-  if(clampX){
-    for(const m of found){
-      const right=Math.min(m.x+m.w,clip.width+m.pad);
-      m.x=Math.max(m.x,-m.pad);
-      m.w=right-m.x;
-    }
-  }
-
   /* Отмеченный элемент целиком в кадре — иначе номер повиснет над соседним текстом. */
-  const outside=found.filter(m=>{
-    const tx=clampX ? m.pad+1 : 1;
-    return m.x<-tx || m.y<-1 || m.x+m.w>clip.width+tx || m.y+m.h>clip.height+1;
-  });
+  const outside=found.filter(m=>
+    m.x<-1 || m.y<-1 || m.x+m.w>clip.width+1 || m.y+m.h>clip.height+1
+  );
   if(outside.length){
     throw new Error("вне кадра: "+outside.map(m=>m.n ?? "рамка").join(", "));
   }
@@ -165,67 +157,23 @@ async function marksOf(page,marks,clip,{clampX=false}={}){
 }
 
 /*
-  Собственная тень панели в кадр не попадает: на странице снимок лежит на
-  подложке, и тень там была бы чужой. Остаются только скругления элемента.
+  Панель или диалог снимается сам по себе: фон и затемнение скрыты, а
+  собственные углы, рамка и тень сняты. Иначе у панели, прижатой к низу
+  экрана, скруглён только верх, у диалога — свои углы и тень, и снимки
+  выглядели бы разными кусками. Одинаковое скругление и рамку всем даёт
+  сборка.
 */
 const ISOLATE_CSS=`
-  html,body{background:transparent!important}
   body *{visibility:hidden!important}
   [data-manual-keep],[data-manual-keep] *{visibility:visible!important}
-  [data-manual-keep]{box-shadow:none!important;filter:none!important}
+  [data-manual-keep]{box-shadow:none!important;filter:none!important;border-radius:0!important;border-color:transparent!important}
 `;
-
-/* Длина растворения края в CSS-пикселях окна. */
-const FADE_PX={top:70,bottom:110,right:150};
-
-/*
-  Растворение края пишется в прозрачность самого PNG. CSS-маска в PDF
-  превращается в полупрозрачную группу, и Просмотр на macOS рисует её
-  серым прямоугольником; прозрачность картинки он показывает верно.
-*/
-async function bakeFade(png,{fade,scale}){
-  const page=await context.newPage();
-  const out=await page.evaluate(async({src,fade,lengths})=>{
-    const image=new Image();
-    image.src=src;
-    await image.decode();
-    const canvas=document.createElement("canvas");
-    canvas.width=image.naturalWidth;
-    canvas.height=image.naturalHeight;
-    const g=canvas.getContext("2d");
-    g.drawImage(image,0,0);
-    g.globalCompositeOperation="destination-in";
-
-    const along=(x0,y0,x1,y1,edge)=>{
-      const ramp=g.createLinearGradient(x0,y0,x1,y1);
-      ramp.addColorStop(0,"rgba(0,0,0,1)");
-      ramp.addColorStop(1-edge,"rgba(0,0,0,1)");
-      ramp.addColorStop(1,"rgba(0,0,0,0)");
-      g.fillStyle=ramp;
-      g.fillRect(0,0,canvas.width,canvas.height);
-    };
-
-    const H=canvas.height;
-    const W=canvas.width;
-    if(/bottom|both/.test(fade)) along(0,0,0,H,Math.min(lengths.bottom/H,.35));
-    if(/top|both/.test(fade)) along(0,H,0,0,Math.min(lengths.top/H,.25));
-    if(/right/.test(fade)) along(0,0,W,0,Math.min(lengths.right/W,.35));
-
-    return canvas.toDataURL("image/png");
-  },{
-    src:"data:image/png;base64,"+png.toString("base64"),
-    fade,
-    lengths:{top:FADE_PX.top*scale,bottom:FADE_PX.bottom*scale,right:FADE_PX.right*scale}
-  });
-  await page.close();
-  return Buffer.from(out.split(",")[1],"base64");
-}
 
 async function shoot(page,name,{frame={},marks=[],wait=700}={}){
   await settle(page,wait);
 
   const clip=await frameOf(page,frame);
-  const found=await marksOf(page,marks,clip,{clampX:/right/.test(frame.fade || "")});
+  const found=await marksOf(page,marks,clip);
 
   let style=null;
   if(frame.isolate){
@@ -233,9 +181,8 @@ async function shoot(page,name,{frame={},marks=[],wait=700}={}){
     await page.waitForTimeout(60);
   }
 
-  let png=await page.screenshot({
-    clip:{x:clip.x,y:clip.y,width:clip.width,height:clip.height},
-    omitBackground:Boolean(frame.isolate)
+  const png=await page.screenshot({
+    clip:{x:clip.x,y:clip.y,width:clip.width,height:clip.height}
   });
 
   if(style){
@@ -243,17 +190,10 @@ async function shoot(page,name,{frame={},marks=[],wait=700}={}){
     await page.evaluate(()=>document.querySelectorAll("[data-manual-keep]").forEach(el=>el.removeAttribute("data-manual-keep")));
   }
 
-  if(frame.fade){
-    png=await bakeFade(png,{fade:frame.fade,scale:await page.evaluate(()=>devicePixelRatio)});
-  }
-
   writeFileSync(`${OUT}${name}.png`,png);
   writeFileSync(`${OUT}${name}.json`,JSON.stringify({
     width:clip.width,
     height:clip.height,
-    floating:Boolean(frame.isolate),
-    radius:clip.radius,
-    fade:frame.fade || null,
     device:frame.device || null,
     marks:found
   },null,1));
@@ -303,7 +243,7 @@ const scene=(name,run)=>scenes.push({name,run});
 
 scene("00-cover",async()=>{
   const page=await demo();
-  await shoot(page,"00-cover",{frame:{x0:MAIN.x0,x1:MAIN.x1,until:[".shift-scroll .sh","",8],fade:"bottom"}});
+  await shoot(page,"00-cover",{frame:{x0:MAIN.x0,x1:MAIN.x1,until:[".shift-scroll .sh","",8]}});
   await page.close();
 });
 
@@ -378,7 +318,7 @@ scene("04-registry",async()=>{
     marks:[
       {sel:"#shiftAdd",n:1,at:"left"},
       {sel:".sv-switch .seg",n:2,at:"left"},
-      {sel:"#shiftSearch",n:3,at:"left",pad:2},
+      {sel:"#shiftSearch",n:3,at:"left",pad:5},
       {sel:"#shiftFilterOpen",n:4,at:"left",pad:2},
       {sel:"#shiftSelectToggle",n:5,at:"left",radius:8},
       {sel:".shift-scroll .sh",n:6,at:"left",pad:1}
@@ -437,7 +377,7 @@ scene("06-dates",async()=>{
     await settle(page,250);
   }
   await shoot(page,"06-dates",{
-    frame:sheet("#sheet",".date-chosen",{fade:"bottom",margin:{b:120}}),
+    frame:sheet("#sheet",".date-chosen",{margin:{b:12}}),
     marks:[
       {sel:"#sheet .date-day.on",index:0,n:1,at:"left",radius:10,pad:3},
       {sel:"#sheet .date-day.on",index:1,radius:10,pad:3},
@@ -467,7 +407,7 @@ scene("07-extras",async()=>{
   await page.locator('[data-adjustment-kind="penalties"] [data-adjustment-amount]').fill("300");
   await page.locator('[data-adjustment-kind="penalties"] [data-adjustment-comment]').fill("Опоздание");
   await shoot(page,"07-extras",{
-    frame:{el:"#sheet",isolate:true,from:["#sheetBody .seg","",1],until:'[data-adjustment-kind="penalties"]',margin:{t:44,b:28},fade:"both"},
+    frame:{el:"#sheet",isolate:true,from:["#sheetBody .seg","",1],until:'[data-adjustment-add="penalties"]',margin:{t:44,b:16}},
     marks:[
       {sel:"#sheetBody .row:has(#f-hours)",n:1,at:"left",pad:2},
       {sel:"#sheetBody .row:has(#f-base-override)",n:2,at:"left",pad:2},
@@ -492,11 +432,32 @@ scene("08-card",async()=>{
   });
   await page.locator("#sheetSave").click();
   await settle(page,500);
-  /* Окно ниже: панель короче и прокручена к низу — видны и «Готово», и «Удалить смену». */
-  await page.setViewportSize({width:VIEWPORT.width,height:760});
-  await settle(page,400);
-  await page.locator("#f-del").evaluate(el=>el.scrollIntoView({block:"end"}));
-  await settle(page,300);
+  /*
+    Окно ниже: панель короче. Она прокручена так, что под шапкой сразу
+    начинается блок «Отработано», а внизу целиком видна «Удалить смену»;
+    высота окна подбирается под это расстояние.
+  */
+  const align=()=>page.evaluate(()=>{
+    const sheet=document.getElementById("sheet");
+    const scroller=[sheet,document.getElementById("sheetBody")].find(el=>el.scrollHeight>el.clientHeight+1);
+    const head=sheet.querySelector(".shead").getBoundingClientRect();
+    const label=[...sheet.querySelectorAll(".ml")].find(el=>/Отработано/i.test(el.textContent));
+    if(scroller){
+      scroller.scrollTop+=label.getBoundingClientRect().top-head.bottom-12;
+    }
+    return innerHeight-document.getElementById("f-del").getBoundingClientRect().bottom;
+  });
+  let height=820;
+  for(let i=0;i<3;i++){
+    await page.setViewportSize({width:VIEWPORT.width,height});
+    await settle(page,400);
+    const room=await align();
+    await settle(page,300);
+    if(Math.abs(room-22)<3){
+      break;
+    }
+    height+=Math.round(22-room);
+  }
   await shoot(page,"08b-edit",{
     frame:{el:"#sheet",isolate:true},
     marks:[
@@ -507,16 +468,23 @@ scene("08-card",async()=>{
   await page.close();
 });
 
+/* Фильтр длинный — два кадра одной панели: верх и низ. */
 scene("09-filter",async()=>{
   const page=await demo({viewport:TALL});
   await page.locator("#shiftFilterOpen").click();
-  await shoot(page,"09-filter",{
-    frame:sheet("#shiftFilterSheet",["#shiftFilterSheet .ml","Сотрудники"],{fade:"bottom",margin:{b:250}}),
+  await shoot(page,"09a-filter",{
+    frame:sheet("#shiftFilterSheet",["#shiftFilterSheet .card.employee-points","",0],{margin:{b:10}}),
     marks:[
-      {sel:"#shiftFilterSheet .seg, .sheet.on .seg",n:1,at:"left"},
-      {sel:".sheet.on .card",index:1,n:2,at:"left"},
-      {sel:".sheet.on .ml",text:"Сотрудники",n:3,at:"left",box:false},
-      {sel:".sheet.on button",text:"Готово",n:4,at:"left",radius:8}
+      {sel:"#shiftFilterSheet .seg",n:1,at:"left"},
+      {sel:"#shiftFilterSheet .card.employee-points",index:0,n:2,at:"left"},
+      {sel:"#shiftFilterSheet button",text:"Готово",n:4,at:"left",radius:8}
+    ]
+  });
+  await shoot(page,"09b-filter",{
+    frame:sheet("#shiftFilterSheet","#shiftFilterReset",{from:["#shiftFilterSheet .ml","Сотрудники"],margin:{t:24,b:24}}),
+    marks:[
+      {sel:"#shiftFilterSheet .card.employee-points",index:1,n:3,at:"left"},
+      {sel:"#shiftFilterReset",n:5,at:"left"}
     ]
   });
   await page.close();
@@ -547,7 +515,7 @@ scene("10-select",async()=>{
     frame:{el:".app-confirm-box",isolate:true},
     marks:[
       {sel:"#appConfirmInput",n:1,at:"left"},
-      {sel:"#appConfirmOk",n:2,at:"bottom"}
+      {sel:"#appConfirmOk",n:2,at:"bottom",pad:-4,radius:8}
     ]
   });
   await page.close();
@@ -583,16 +551,6 @@ scene("11-calendar",async()=>{
       {sel:".sv-calendar .sv-legend",n:5,at:"left",radius:8,pad:4},
       {sel:".sv-panel",n:6,at:"right",radius:16},
       {sel:"[data-calendar-add]",n:7,at:"left"}
-    ]
-  });
-  await page.locator("#calendarPointOpen").click();
-  await settle(page,600);
-  await page.locator("#calendarPointSearch").fill("пят");
-  await shoot(page,"11b-points",{
-    frame:{x0:MAIN.x0,x1:820,from:[".ml","Пункт выдачи"],until:".sv-point-card",margin:{t:14,b:40},fade:"bottom-right"},
-    marks:[
-      {sel:"#calendarPointSearch",n:1,at:"left",pad:10},
-      {sel:".sv-point-card [data-calendar-point]",index:0,n:2,at:"left",pad:0}
     ]
   });
   await page.close();
@@ -694,7 +652,7 @@ scene("16-person",async()=>{
       {sel:".payout-block.open .payout-summary",n:1,at:"left",box:false},
       {sel:".payout-block.open .payout-source-list",n:2,at:"left",pad:2},
       {sel:".payout-editor",n:3,at:"left",pad:4},
-      {sel:"[data-payout-save]",n:4,at:"left"},
+      {sel:"[data-payout-save]",n:4,at:"right"},
       {sel:".payout-block.open .payout-period-note",n:5,at:"left",pad:2}
     ]
   });
@@ -713,9 +671,30 @@ scene("17-report",async()=>{
   await report.waitForLoadState("domcontentloaded");
   await report.setViewportSize(VIEWPORT);
   await shoot(report,"17a-report",{
-    frame:{el:"body > *",until:["tbody tr","",10],margin:{t:36,r:40,l:40},fade:"bottom"}
+    frame:{el:"body > *",until:["tbody tr","",10],margin:{t:36,r:40,b:1,l:40}}
   });
   await report.close();
+  await page.close();
+});
+
+scene("18b-history",async()=>{
+  const page=await demo({viewport:{width:VIEWPORT.width,height:1900}});
+  await page.locator("#tab-stats").click();
+  await page.locator('[data-payout-toggle="first_half"]').click();
+  await settle(page,800);
+  const row=".payroll-period:nth-child(1)";
+  await page.locator(`${row} .payroll-history-toggle`).click();
+  await settle(page,800);
+  await shoot(page,"18b-history",{
+    frame:{el:row,from:`${row} .payroll-history-toggle`,until:`${row} .payroll-events`,margin:{t:16,b:8,l:-1,r:-1}},
+    marks:[
+      {sel:`${row} .payroll-history-toggle`,n:1,at:"left",radius:10,pad:3},
+      {sel:`${row} .payroll-event`,index:0,n:2,at:"left",pad:2},
+      {sel:`${row} .payroll-event-reason`,index:0,n:3,at:"right",box:false,content:true},
+      {sel:`${row} .payroll-event-after`,index:0,n:4,at:"right",box:false},
+      {sel:`${row} .payroll-event-effect`,index:0,n:5,at:"left",box:false}
+    ]
+  });
   await page.close();
 });
 
@@ -735,7 +714,7 @@ scene("18-closed",async()=>{
     frame:{el:".app-confirm-box",isolate:true},
     marks:[
       {sel:"#appConfirmDetail",n:1,at:"left",box:false},
-      {sel:"#appConfirmOk",n:2,at:"bottom"}
+      {sel:"#appConfirmOk",n:2,at:"bottom",pad:-4,radius:8}
     ]
   });
   await page.close();
@@ -752,19 +731,6 @@ async function openManage(page,section){
   }
 }
 
-scene("19-manage",async()=>{
-  const page=await demo();
-  await openManage(page);
-  await shoot(page,"19-manage",{
-    frame:{x0:MAIN.x0,x1:MAIN.x1,until:'#app [data-manage-section="points"]',margin:{b:36}},
-    marks:[
-      {sel:'#app [data-manage-section="employees"]',n:1,at:"left",pad:0},
-      {sel:'#app [data-manage-section="points"]',n:2,at:"left",pad:0}
-    ]
-  });
-  await page.close();
-});
-
 scene("20-employees",async()=>{
   const page=await demo();
   await openManage(page,"employees");
@@ -774,7 +740,7 @@ scene("20-employees",async()=>{
       {sel:"#manageBack",n:1,at:"right",radius:10},
       {sel:"#app .manage-add",n:2,at:"left"},
       {sel:"#app button",text:"Архив",n:3,at:"left"},
-      {sel:"#employeeSearch",n:4,at:"left",pad:2},
+      {sel:"#employeeSearch",n:4,at:"left",pad:5},
       {sel:'[data-employee-id="emp-0"]',n:5,at:"left",pad:0}
     ]
   });
@@ -786,7 +752,7 @@ scene("21-employee-new",async()=>{
   await openManage(page,"employees");
   await page.locator("#app .manage-add").click();
   await shoot(page,"21-employee-new",{
-    frame:sheet("#employeeSheet",["#employeeSheet .ml","Пункты выдачи"],{fade:"bottom",margin:{b:330}}),
+    frame:sheet("#employeeSheet","#employeeSheet .card.employee-points",{margin:{b:4}}),
     marks:[
       {sel:"#employeeSheet .card",index:0,n:1,at:"left"},
       {sel:"#employeeSheet .card",index:1,n:2,at:"left"},
@@ -816,7 +782,7 @@ scene("22-employee-card",async()=>{
   await settle(page,600);
   await page.locator('#employeeSheet .employee-point-rate input, #employeeSheet input[inputmode="decimal"]').first().fill("3200").catch(()=>{});
   await shoot(page,"22b-employee-rate",{
-    frame:sheet("#employeeSheet",["#employeeSheet button","Удалить сотрудника"],{from:"#employeeSheet .card:has(#employeeEmail)",margin:{t:44,b:28},fade:"top"}),
+    frame:sheet("#employeeSheet",["#employeeSheet button","Удалить сотрудника"],{from:"#employeeSheet .card:has(#employeeEmail)",margin:{t:44,b:28}}),
     marks:[
       {sel:"#employeeSheet .card:has(#employeeEmail)",n:1,at:"left"},
       {sel:"#employeeSheet button",text:"По тарифу ПВЗ",index:0,n:2,at:"left",radius:8},
@@ -831,7 +797,7 @@ scene("23-points",async()=>{
   const page=await demo();
   await openManage(page,"points");
   await shoot(page,"23-points",{
-    frame:{x0:MAIN.x0,x1:MAIN.x1,until:["[data-point-id]","",4],fade:"bottom"},
+    frame:{x0:MAIN.x0,x1:MAIN.x1,until:["[data-point-id]","",4],margin:{b:0}},
     marks:[
       {sel:"#app .manage-add",n:1,at:"left"},
       {sel:"#app button",text:"Архив",n:2,at:"left"},
@@ -856,7 +822,7 @@ scene("24-point-card",async()=>{
   await page.locator("#manageEditorSave").click();
   await settle(page,500);
   await shoot(page,"24b-point-edit",{
-    frame:sheet("#manageEditorSheet",["#manageEditorSheet button","Удалить ПВЗ"],{from:["#manageEditorSheet .seg","",0],margin:{t:44,b:28},fade:"top"}),
+    frame:sheet("#manageEditorSheet",["#manageEditorSheet button","Удалить ПВЗ"],{from:["#manageEditorSheet .seg","",0],margin:{t:44,b:28}}),
     marks:[
       {sel:"#manageEditorSheet .seg",index:0,n:1,at:"left"},
       {sel:"#manageEditorSheet .seg",index:1,n:2,at:"left"},
@@ -870,7 +836,7 @@ scene("24-point-card",async()=>{
   await page.locator('#manageEditorSheet button:has-text("По ШК")').click();
   await settle(page,500);
   await shoot(page,"24c-tariff-shk",{
-    frame:sheet("#manageEditorSheet",["#manageEditorSheet button","Добавить тариф"],{from:["#manageEditorSheet .seg","",2],margin:{t:44,b:4},fade:"top"}),
+    frame:sheet("#manageEditorSheet",["#manageEditorSheet button","Добавить тариф"],{from:["#manageEditorSheet .seg","",2],margin:{t:44,b:8}}),
     marks:[
       {sel:"#manageEditorSheet .seg",index:2,n:1,at:"left"},
       {sel:"#manageEditorSheet .row",text:"Действует с",n:2,at:"left",pad:2},
@@ -893,7 +859,7 @@ scene("25-recalc",async()=>{
   await page.locator("#recalcSheet.on").waitFor();
   await page.waitForTimeout(2600);
   await shoot(page,"25-recalc",{
-    frame:{el:"#recalcSheet",isolate:true,fade:"bottom"},
+    frame:{el:"#recalcSheet",isolate:true,until:["#recalcSheet .recalc-row","",5],margin:{b:0}},
     marks:[
       {sel:"#recalcSheet .recalc-summary",n:1,at:"left"},
       {sel:"#recalcSheet .seg",index:0,n:2,at:"left"},

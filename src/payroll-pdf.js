@@ -18,6 +18,13 @@ import {
 const STYLES=`
   *{box-sizing:border-box;}
 
+  /*
+    Системный шрифт macOS (SF) Chrome пишет в PDF так, что строчная «д»
+    выпадает из слова: в сохранённом отчёте поиск и копирование давали
+    «Перио д», «Сотру д ников». Helvetica Neue такой ошибки не даёт и по
+    виду к нему ближе всего. На Windows и Android её нет, и там отчёт
+    по-прежнему в Segoe UI и Roboto.
+  */
   body{
     margin:0;
     padding:32px 36px 40px;
@@ -25,7 +32,7 @@ const STYLES=`
     color:#16171A;
     background:#fff;
 
-    font:400 12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font:400 12px/1.45 "Helvetica Neue","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
   }

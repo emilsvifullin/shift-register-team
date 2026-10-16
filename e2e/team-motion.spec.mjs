@@ -37,15 +37,17 @@ test("team tab motion now uses the exact shift-register route timing",async({pag
     return {
       duration:timing.duration,
       easing:timing.easing,
-      firstLeft:frames[0].left,
-      lastLeft:frames.at(-1).left
+      firstTransform:frames[0].transform,
+      lastTransform:frames.at(-1).transform,
+      animatesLeft:frames.some(frame=>Object.hasOwn(frame,"left"))
     };
   });
 
   expect(result.duration).toBe(250);
   expect(result.easing).toBe("cubic-bezier(0.22, 0.72, 0.22, 1)");
-  expect(result.firstLeft).toBe("24px");
-  expect(result.lastLeft).toBe("0px");
+  expect(result.firstTransform).toBe("translate3d(24px, 0px, 0px)");
+  expect(result.lastTransform).toBe("translate3d(0px, 0px, 0px)");
+  expect(result.animatesLeft).toBe(false);
 });
 
 test("management navigation uses the same 320ms slide-fade language as shift-register month motion",async({page})=>{

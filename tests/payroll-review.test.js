@@ -162,3 +162,15 @@ test("сводка считает людей, а не находки",()=>{
   assert.equal(result.ready,2);
   assert.equal(result.findings.length,2);
 });
+
+
+test("an explicit advance balance is information, while ordinary excess stays a warning",()=>{
+  const advance=run({entries:[entry({due:3500,paid:10000})],payouts:[{amount:10000,is_advance:true}]});
+  const finding=advance.findings.find(item=>item.kind==="advance_balance");
+  assert.equal(finding.severity,"info");
+  assert.match(finding.detail,/Выдано вперёд 6\s500\s₽/);
+  assert.equal(advance.findings.some(item=>item.kind==="overpaid"),false);
+  const mixed=run({entries:[entry({due:5000,paid:12000})],payouts:[{amount:10000},{amount:2000,is_advance:true}]});
+  assert.equal(mixed.findings.find(item=>item.kind==="overpaid").severity,"warning");
+  assert.equal(mixed.findings.some(item=>item.kind==="advance_balance"),false);
+});

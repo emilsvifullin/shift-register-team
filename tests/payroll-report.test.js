@@ -389,3 +389,20 @@ test(
   }
 );
 
+
+
+test("the report distinguishes issued advances without hiding ordinary overpayments",()=>{
+  const built=report([row({due:3500,paid:10000,payoutRecords:[{amount:10000,is_advance:true}],detail:{payouts:[{label:"Аванс · 20 сентября",amount:10000}]}})]);
+  assert.equal(built.lines[0].advance,true);
+  assert.equal(built.totals.overpaid,6500);
+  assert.match(payrollReportDocument(built,{detailed:false}),/Сверх начисленного/);
+  const detailed=payrollReportDocument(built,{detailed:true});
+  assert.match(detailed,/Выдано вперёд/);
+  assert.match(detailed,/Аванс · 20 сентября/);
+  const mixed=report([row({due:5000,paid:12000,payoutRecords:[{amount:10000},{amount:2000,is_advance:true}]})]);
+  assert.equal(mixed.lines[0].advance,false);
+  assert.match(payrollReportDocument(mixed,{detailed:true}),/Переплата/);
+  const covered=report([row({due:12000,paid:10000,payoutRecords:[{amount:10000,is_advance:true}]})]);
+  assert.equal(covered.lines[0].advance,false);
+  assert.equal(covered.totals.unpaid,2000);
+});

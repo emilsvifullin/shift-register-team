@@ -824,10 +824,10 @@ export function stubScript(seed){
 
       const period=findPeriod(db,args);
 
-      if(period && period.status==="paid" && !args.p_force){
+      if(period && (period.status==="paid" || (period.status==="closed" && args.p_payout_id)) && !args.p_force){
         throw new Error(
           "payroll_period_closed:"+args.p_period_month+
-          ":"+args.p_payout_kind+":paid"
+          ":"+args.p_payout_kind+":"+period.status
         );
       }
 
@@ -850,19 +850,38 @@ export function stubScript(seed){
         .filter(item=>item.id!==args.p_payout_id)
         .reduce((sum,item)=>sum+cents(item.amount),0);
 
-      const previous=cents(
-        records.find(item=>item.id===args.p_payout_id)?.amount
-      );
+      const existing=records.find(item=>item.id===args.p_payout_id);
+      const previous=existing?.is_advance ? 0 : cents(existing?.amount);
 
       const due=cents(entry?.due);
 
-      if(other+cents(amount)>Math.max(due,other+previous)){
+      if(!args.p_is_advance && other+cents(amount)>Math.max(due,other+previous)){
         throw new Error(
           "payout_exceeds_due:"+Math.max(due-other,0)/100
         );
       }
 
-      const id=rpc.admin_save_employee_payout(args);
+      let record=(db.employee_payouts || []).find(item=>item.id===args.p_payout_id);
+      if(args.p_payout_id && (!record || record.employee_id!==args.p_employee_id || record.period_month!==args.p_period_month || record.payout_kind!==args.p_payout_kind)){
+        throw new Error("employee_payout_not_found");
+      }
+      if(!record){
+        record={
+          id:"payout-"+crypto.randomUUID(),
+          employee_id:args.p_employee_id,
+          period_month:args.p_period_month,
+          payout_kind:args.p_payout_kind,
+          created_at:new Date().toISOString()
+        };
+        (db.employee_payouts ||= []).push(record);
+      }
+      Object.assign(record,{
+        amount,paid_on:args.p_paid_on,
+        comment:String(args.p_comment || "").trim() || null,
+        is_advance:Boolean(args.p_is_advance),
+        updated_at:new Date().toISOString()
+      });
+      const id=record.id;
 
       recordEvent(db,{
         period_month:args.p_period_month,
@@ -871,7 +890,7 @@ export function stubScript(seed){
         kind:args.p_payout_id ? "payout_changed" : "payout_added",
         summary:String(args.p_comment || "").trim(),
         effect:args.p_amount,
-        details:{date:args.p_paid_on}
+        details:{date:args.p_paid_on,isAdvance:Boolean(args.p_is_advance)}
       });
 
       return id;

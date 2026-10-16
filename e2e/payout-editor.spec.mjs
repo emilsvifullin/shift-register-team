@@ -67,6 +67,7 @@ function payoutSeed(payouts=[]){
     amount:item.amount,
     paid_on:item.paidOn || "2026-09-20",
     comment:item.comment || null,
+    is_advance:Boolean(item.isAdvance),
     created_at:"2026-09-20T00:00:00Z",
     updated_at:"2026-09-20T00:00:00Z"
   }));
@@ -98,8 +99,8 @@ async function expandPayout(page,kind="first_half"){
     .toBe(0);
 }
 
-async function openStats(page,payouts=[]){
-  await openApp(page,{seed:payoutSeed(payouts)});
+async function openStats(page,payouts=[],source=null){
+  await openApp(page,{seed:source || payoutSeed(payouts)});
 
   await page.locator("#tab-stats").click();
 
@@ -177,7 +178,7 @@ test(
       .locator('[data-payout-toggle="first_half"]');
 
     await expect(tile.locator(".s"))
-      .toHaveText(/Остальные ПВЗ/);
+      .toHaveText(/ПВЗ без лимита первой выплаты/);
 
     await tile.click();
 
@@ -355,7 +356,7 @@ test(
   показывает дату в чужом для приложения формате.
 */
 test(
-  "the payout date uses the application date picker",
+  "the payout date uses the inline application calendar",
   async({page})=>{
     await openStats(page);
 
@@ -386,18 +387,18 @@ test(
 
     await dateField.click();
 
-    await expect(page.locator("#datePicker"))
-      .toHaveClass(/\bon\b/);
+    await expect(dateField).toHaveAttribute("aria-expanded","true");
+    await expect(page.locator("#datePicker")).not.toHaveClass(/\bon\b/);
+    await expect(page.locator(".payout-calendar-reveal")).toHaveClass(/\bon\b/);
 
     await page
-      .locator(".date-grid .date-day:not(.outside)")
+      .locator("#payoutDateCalendar .date-grid .date-day:not(.outside)")
       .nth(9)
       .click();
 
-    await page.locator("#dateDone").click();
-
     await expect(dateField)
       .toHaveText("10 сентября 2026");
+    await expect(dateField).toHaveAttribute("aria-expanded","false");
   }
 );
 
@@ -433,3 +434,253 @@ test(
     ).toHaveCount(0);
   }
 );
+
+
+/* Фактический аванс сверх заработанного — отдельное осознанное действие. */
+test("an explicit advance records issued money above earnings and can be corrected",async({page})=>{
+  const source=payoutSeed();
+  source.shifts=source.shifts.slice(0,1);
+  source.shifts[0].base_amount=3500;
+  await openStats(page,[],source);
+  await expandPayout(page);
+  await page.locator(".payout-block.open [data-payout-add]").click();
+  await page.locator("#payoutAmount").fill("10000");
+  await page.locator("[data-payout-save]").click();
+  await expect(page.locator("#toast")).toContainText("Для выдачи вперёд");
+  expect(await page.evaluate(()=>window.__stubDb.employee_payouts.length)).toBe(0);
+  await page.locator('[data-payout-mode="advance"]').click();
+  await expect(page.locator(".payout-advance-note")).toContainText("Остаток не переносится");
+  await page.locator("[data-payout-save]").click();
+  await expect(page.locator("#appConfirm")).toContainText("6 500 ₽");
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#toast")).toContainText("Аванс сохранён");
+  await expect(page.locator(".payout-record")).toContainText("Аванс");
+  await expect(page.locator(".payout-block.open .payout-status")).toHaveText("Выдано вперёд");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("6 500 ₽ · всего выдано 10 000 ₽");
+  const saved=await page.evaluate(()=>window.__stubDb.employee_payouts[0]);
+  expect(saved.is_advance).toBe(true);
+  expect(saved.amount).toBe(10000);
+  await page.locator("[data-payout-edit]").click();
+  await expect(page.locator('[data-payout-mode="advance"]')).toHaveAttribute("aria-pressed","true");
+  await page.locator("#payoutAmount").fill("9000");
+  await page.locator("#payoutComment").fill("Уточнили сумму фактической выдачи");
+  await page.locator("[data-payout-save]").click();
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#toast")).toContainText("Аванс сохранён");
+  expect(await page.evaluate(()=>window.__stubDb.employee_payouts.length)).toBe(1);
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("5 500 ₽ · всего выдано 9 000 ₽");
+  await page.locator("[data-payout-delete]").click();
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#toast")).toContainText("Запись выплаты удалена");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("3 500 ₽");
+});
+
+test("an advance before the first shift needs confirmation and stays in its chosen period",async({page})=>{
+  const source=payoutSeed();
+  source.shifts=[];
+  await openStats(page,[],source);
+  await expandPayout(page);
+  await page.locator(".payout-block.open [data-payout-add]").click();
+  await expect(page.locator('[data-payout-mode="regular"]')).toHaveAttribute("aria-pressed","true");
+  await page.locator('[data-payout-mode="advance"]').click();
+  await page.locator("#payoutAmount").fill("10000");
+  await page.locator("[data-payout-save]").click();
+  await page.locator("#appConfirmCancel").click();
+  await expect(page.locator("[data-payout-save]")).toBeEnabled();
+  expect(await page.evaluate(()=>window.__stubDb.employee_payouts.length)).toBe(0);
+  await page.locator("[data-payout-save]").click();
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#toast")).toContainText("Аванс сохранён");
+  await expect(page.locator(".payout-block.open .payout-status")).toHaveText("Выдано вперёд");
+  expect(await page.evaluate(()=>window.__stubDb.employee_payouts[0].period_month)).toBe("2026-09-01");
+  await expect(page.locator('[data-payout-toggle="second_half"] .payout-status')).toHaveText("Без выплаты");
+});
+
+
+test("new earnings cover an existing advance and leave only the true balance",async({page})=>{
+  const source=payoutSeed([{amount:10000,isAdvance:true}]);
+  source.shifts=source.shifts.slice(0,1);
+  source.shifts[0].base_amount=3500;
+  await openStats(page,[],source);
+  await expandPayout(page);
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("6 500 ₽ · всего выдано 10 000 ₽");
+  await page.evaluate(()=>{
+    const shift=structuredClone(window.__stubDb.shifts[0]);
+    shift.id="shift-after-advance";
+    shift.shift_date="2026-09-10";
+    shift.base_amount=8500;
+    window.__stubDb.shifts.push(shift);
+    window.dispatchEvent(new Event("online"));
+  });
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("2 000 ₽ из 12 000 ₽");
+  await expect(page.locator(".payout-record")).toContainText("Аванс");
+  expect(await page.evaluate(()=>window.__stubDb.employee_payouts[0].amount)).toBe(10000);
+});
+
+
+test("editing a payout cannot carry its record into another employee",async({page})=>{
+  await openStats(page,[{amount:5000}]);
+  await expandPayout(page);
+  await page.locator("[data-payout-edit]").click();
+  await expect(page.locator("#payoutAmount")).toHaveValue("5000");
+  await page.locator("#statsEmployeeOpen").click();
+  await page.locator('[data-stats-employee="employee-2"]').click();
+  await expect(page.locator(".payout-editor")).toHaveCount(0);
+  await page.locator(".payout-block.open [data-payout-add]").click();
+  await expect(page.locator("#payoutAmount")).toHaveValue("");
+  await page.locator('[data-payout-mode="advance"]').click();
+  await page.locator("#payoutAmount").fill("100");
+  await page.locator("[data-payout-save]").click();
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#toast")).toContainText("Аванс сохранён");
+  const records=await page.evaluate(()=>window.__stubDb.employee_payouts);
+  expect(records).toHaveLength(2);
+  expect(records.find(item=>item.id==="payout-1").amount).toBe(5000);
+  expect(records.find(item=>item.employee_id==="employee-2").amount).toBe(100);
+});
+
+test("editing a payout cannot carry its record into another month",async({page})=>{
+  await openStats(page,[{amount:5000}]);
+  await expandPayout(page);
+  await page.locator("[data-payout-edit]").click();
+  await page.locator("#nextM").click();
+  await expect(page.locator("#app .payout-editor")).toHaveCount(0);
+  await page.locator("#app .payout-block.open [data-payout-add]").click();
+  await expect(page.locator("#payoutAmount")).toHaveValue("");
+  await page.locator('[data-payout-mode="advance"]').click();
+  await page.locator("#payoutAmount").fill("100");
+  await page.locator("[data-payout-save]").click();
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#toast")).toContainText("Аванс сохранён");
+  const records=await page.evaluate(()=>window.__stubDb.employee_payouts);
+  expect(records).toHaveLength(2);
+  expect(records.find(item=>item.id==="payout-1").period_month).toBe("2026-09-01");
+  expect(records.find(item=>item.id!=="payout-1").period_month).toBe("2026-10-01");
+});
+
+
+test("the team period describes an intentional advance as information",async({page})=>{
+  const source=payoutSeed([{amount:10000,isAdvance:true}]);
+  source.shifts=source.shifts.slice(0,1);
+  source.shifts[0].base_amount=3500;
+  await openStats(page,[],source);
+  await page.locator("#statsEmployeeOpen").click();
+  await page.locator('[data-key="statsEmployeeReveal"] [data-stats-employee=""]').click();
+  await expandPayout(page);
+  const period=page.locator(".payroll-period.open");
+  await expect(period.locator(".payroll-gap.advance")).toContainText("Сверх начисленного 6 500 ₽");
+  await expect(period.locator(".payroll-person-meta")).toContainText("выдано вперёд 6 500 ₽");
+  await period.locator('[data-period-review="first_half"]').click();
+  const finding=period.locator('[data-review-payout="first_half"]');
+  await expect(finding).toContainText("Остаток выданного аванса");
+  await expect(finding).toHaveClass(/info/);
+});
+
+
+test("a small advance does not turn an ordinary overpayment into a neutral balance",async({page})=>{
+  const source=payoutSeed([{amount:10000},{amount:2000,isAdvance:true}]);
+  source.shifts=source.shifts.slice(0,1);
+  source.shifts[0].base_amount=5000;
+  await openStats(page,[],source);
+  await expandPayout(page);
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("12 000 ₽ · переплата 7 000 ₽");
+  await page.locator("#statsEmployeeOpen").click();
+  await page.locator('[data-key="statsEmployeeReveal"] [data-stats-employee=""]').click();
+  const period=page.locator(".payroll-period.open");
+  await expect(period.locator(".payroll-gap.overpaid")).toContainText("Переплата 7 000 ₽");
+  await period.locator('[data-period-review="first_half"]').click();
+  await expect(period.locator('.payroll-finding-warning[data-review-payout="first_half"]')).toContainText("Выплачено больше, чем начислено");
+});
+
+test("an advance for one employee does not hide another employee's overpayment",async({page})=>{
+  const source=payoutSeed([{amount:10000,isAdvance:true}]);
+  source.shifts=source.shifts.slice(0,1);
+  source.shifts[0].base_amount=3500;
+  source.employee_payouts.push({
+    ...source.employee_payouts[0],
+    id:"ordinary-overpayment-other-employee",
+    employee_id:"employee-2",
+    amount:1000,
+    is_advance:false
+  });
+  await openStats(page,[],source);
+  await page.locator("#statsEmployeeOpen").click();
+  await page.locator('[data-key="statsEmployeeReveal"] [data-stats-employee=""]').click();
+  await expandPayout(page);
+  const period=page.locator(".payroll-period.open");
+  await expect(period.locator(".payroll-gap.overpaid")).toContainText("Переплата 7 500 ₽");
+  await period.locator('[data-period-review="first_half"]').click();
+  await expect(period.locator('.payroll-finding-warning[data-review-payout="first_half"]')).toContainText("Роман Белов");
+  await expect(period.locator('.payroll-finding-info[data-review-payout="first_half"]')).toContainText("Остаток выданного аванса");
+});
+
+for(const width of [390,1440]){
+  test(`an advance uses the regular payout entry before any shift and compact history at ${width}px`,async({page},testInfo)=>{
+    await page.setViewportSize({width,height:940});
+    const source=payoutSeed();
+    source.shifts=[];
+    source.employee_points=[];
+    source.points.forEach(point=>{point.advance_enabled=false;});
+    await openStats(page,[],source);
+    await expandPayout(page,'second_half');
+    await page.locator('.payout-block.open [data-payout-add]').click();
+    await expect(page.locator('[data-payout-mode="regular"]')).toHaveAttribute('aria-pressed','true');
+    await page.locator('[data-payout-mode="advance"]').click();
+    await expect(page.locator('.payout-advance-note')).toContainText('Тип ПВЗ и наличие смен не ограничивают аванс');
+    await page.locator('#payoutAmount').fill('10000');
+    await page.locator('[data-payout-save]').click();
+    await expect(page.locator('#appConfirm')).toContainText('10 000 ₽');
+    await page.locator('#appConfirmOk').click();
+    await expect(page.locator('#toast')).toContainText('Аванс сохранён');
+    await expect(page.locator('.payout-record')).toContainText('Аванс');
+    const record=await page.evaluate(()=>window.__stubDb.employee_payouts[0]);
+    expect(record.is_advance).toBe(true);
+    expect(record.payout_kind).toBe('second_half');
+    const geometry=await page.locator('.payout-record').evaluate(row=>{
+      const amount=row.querySelector('b').getBoundingClientRect();
+      const actions=row.querySelector('.payout-record-actions').getBoundingClientRect();
+      return {height:row.getBoundingClientRect().height,sameRow:Math.abs((amount.top+amount.bottom)/2-(actions.top+actions.bottom)/2)<1};
+    });
+    expect(geometry.height).toBeLessThanOrEqual(80);
+    expect(geometry.sameRow).toBe(true);
+    await expect(page.locator('.payout-block.open .payout-progress strong')).toHaveText('10 000 ₽');
+    await expect(page.locator('.payout-block.open .payout-progress > span')).toHaveText('Остаток аванса');
+    await page.screenshot({path:testInfo.outputPath(`advance-history-${width}.png`)});
+  });
+}
+
+for(const width of [390,1440]){
+  test(`payout action and editor keep the original full width below shift details at ${width}px`,async({page})=>{
+    await page.setViewportSize({width,height:940});
+    await openStats(page);
+    await expandPayout(page);
+    const block=page.locator('.payout-block.open .payout-expanded');
+    const add=block.locator('[data-payout-add]');
+    await expect(add).toHaveText('Отметить выплату');
+    await expect(page.locator('[data-payout-advance]')).toHaveCount(0);
+    const positions=await block.evaluate(element=>{
+      const box=element.getBoundingClientRect();
+      const details=element.querySelector('.payout-breakdown').getBoundingClientRect();
+      const progress=element.querySelector('.payout-progress').getBoundingClientRect();
+      const action=element.querySelector('[data-payout-add]').getBoundingClientRect();
+      return {detailsBottom:details.bottom,progressTop:progress.top,progressBottom:progress.bottom,actionTop:action.top,left:action.left-box.left,right:box.right-action.right};
+    });
+    expect(positions.detailsBottom).toBeLessThanOrEqual(positions.progressTop);
+    expect(positions.progressBottom).toBeLessThanOrEqual(positions.actionTop);
+    expect(positions.left).toBeCloseTo(16,0);
+    expect(positions.right).toBeCloseTo(16,0);
+    await add.click();
+    await expect(block.locator('.payout-mode button')).toHaveCount(2);
+    await expect(block.locator('[data-payout-mode="regular"]')).toHaveAttribute('aria-pressed','true');
+    await expect(block.locator('[data-advance-period]')).toHaveCount(0);
+    const form=await block.evaluate(element=>{
+      const box=element.getBoundingClientRect();
+      const editor=element.querySelector('.payout-editor').getBoundingClientRect();
+      const details=element.querySelector('.payout-breakdown').getBoundingClientRect();
+      return {left:editor.left-box.left,right:box.right-editor.right,top:editor.top,detailsBottom:details.bottom};
+    });
+    expect(form.left).toBeCloseTo(16,0);
+    expect(form.right).toBeCloseTo(16,0);
+    expect(form.top).toBeGreaterThanOrEqual(form.detailsBottom);
+  });
+}

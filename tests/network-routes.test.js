@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import vm from "node:vm";
 
 import {
   createRouteFetch,
-  isReplayable
+  isReplayable,
+  WriteOutcomeUnknownError
 } from "../src/network-routes.js";
+
+import {resultData} from "../src/api/result.js";
 
 /*
   Сеть здесь поддельная, но ведёт себя как настоящие отказы: путь,
@@ -285,6 +290,149 @@ test(
     );
   }
 );
+
+/* Настоящее потоковое тело: заголовки пришли, JSON так и не закончился. */
+function stalledWrite(extra={}){
+  const calls=[];
+  let writeSignal;
+  let signalStarted;
+  const started=new Promise(resolve=>{signalStarted=resolve;});
+  const router=createRouteFetch({
+    routes:ROUTES,
+    readTimeout:20,
+    writeTimeout:40,
+    probeTimeout:20,
+    probeStagger:5,
+    async fetchImpl(url,init={}){
+      calls.push({url,method:init.method || "GET"});
+      if(url.endsWith("/auth/v1/health")){
+        return new Response("{}");
+      }
+      writeSignal=init.signal;
+      const stream=new ReadableStream({
+        start(controller){
+          controller.enqueue(new TextEncoder().encode('{"id":'));
+          init.signal.addEventListener("abort",()=>{
+            controller.error(init.signal.reason);
+          },{once:true});
+        }
+      });
+      signalStarted();
+      return new Response(stream,{headers:{"content-type":"application/json"}});
+    },
+    ...extra
+  });
+  return {router,calls,started,get signal(){return writeSignal;}};
+}
+
+test("a stalled write body times out with an unknown result and only one POST",async()=>{
+  const net=stalledWrite();
+  const pending=net.router.fetch(`${PROXY}/rest/v1/rpc/admin_save_shift_v4`,{
+    method:"POST",body:"{}"
+  });
+  await net.started;
+  await assert.rejects(pending,error=>{
+    assert.ok(error instanceof WriteOutcomeUnknownError);
+    assert.equal(error.code,"write_outcome_unknown");
+    assert.equal(error.message,"Результат сохранения неизвестен. Обновите данные перед повтором");
+    return true;
+  });
+  assert.equal(net.signal.aborted,true,"срок отменяет также чтение тела");
+  assert.equal(net.calls.filter(call=>call.method==="POST").length,1);
+  assert.equal(net.router.current,null,"зависший путь отложен");
+  assert.ok(net.calls.every(call=>call.url.startsWith(PROXY)));
+});
+
+test("cancelling a write after headers reports an unknown result without demoting the route",async()=>{
+  const net=stalledWrite({writeTimeout:1000});
+  const controller=new AbortController();
+  const pending=net.router.fetch(`${PROXY}/rest/v1/rpc/admin_save_shift_v4`,{
+    method:"POST",body:"{}",signal:controller.signal
+  });
+  await net.started;
+  controller.abort();
+  await assert.rejects(pending,error=>error.code==="write_outcome_unknown");
+  assert.equal(net.signal.aborted,true,"внешний сигнал действует до конца тела");
+  assert.equal(net.calls.filter(call=>call.method==="POST").length,1);
+  assert.equal(net.router.current.id,"proxy");
+});
+
+test("a Request keeps its cancellation signal while waiting for a write body",async()=>{
+  const net=stalledWrite({writeTimeout:1000});
+  const controller=new AbortController();
+  const request=new Request(`${PROXY}/rest/v1/rpc/admin_save_shift_v4`,{
+    method:"POST",body:"{}",signal:controller.signal
+  });
+  const pending=net.router.fetch(request);
+  await net.started;
+  controller.abort();
+  await assert.rejects(pending,error=>error.code==="write_outcome_unknown");
+  assert.equal(net.signal.aborted,true);
+  assert.equal(net.calls.filter(call=>call.method==="POST").length,1);
+});
+
+test("a write cancelled before sending has no unknown result and sends no POST",async()=>{
+  const net=stalledWrite();
+  const controller=new AbortController();
+  controller.abort();
+  await assert.rejects(net.router.fetch(`${PROXY}/rest/v1/rpc/admin_save_shift_v4`,{
+    method:"POST",body:"{}",signal:controller.signal
+  }),error=>error.name==="AbortError" && !error.code?.startsWith?.("write_"));
+  assert.equal(net.calls.filter(call=>call.method==="POST").length,0);
+});
+
+test("a write with no response headers also finishes within its deadline and is never retried",async()=>{
+  let posts=0;
+  const router=createRouteFetch({
+    routes:ROUTES,writeTimeout:30,probeTimeout:20,probeStagger:5,
+    async fetchImpl(url,init){
+      if(url.endsWith("/auth/v1/health")) return new Response("{}");
+      posts+=1;
+      return new Promise((_,reject)=>init.signal.addEventListener("abort",()=>reject(init.signal.reason),{once:true}));
+    }
+  });
+  await assert.rejects(router.fetch(`${PROXY}/rest/v1/rpc/admin_save_shift_v4`,{
+    method:"POST",body:"{}"
+  }),error=>error.code==="write_outcome_unknown");
+  assert.equal(posts,1);
+});
+
+test("a completed server rejection remains a known rejection, with status and JSON intact",async()=>{
+  const router=createRouteFetch({
+    routes:ROUTES,writeTimeout:30,probeTimeout:20,probeStagger:5,
+    async fetchImpl(url){
+      return url.endsWith("/auth/v1/health")
+        ? new Response("{}")
+        : new Response('{"code":"22023","message":"payout_exceeds_due:0"}',{status:400,headers:{"content-type":"application/json"}});
+    }
+  });
+  const response=await router.fetch(`${PROXY}/rest/v1/rpc/admin_save_employee_payout_v2`,{
+    method:"POST",body:"{}"
+  });
+  assert.equal(response.status,400);
+  assert.deepEqual(await response.json(),{code:"22023",message:"payout_exceeds_due:0"});
+});
+
+test("the pinned Supabase client carries an unknown write result to the app without retrying",async()=>{
+  const sdkContext={
+    fetch,Headers,Response,Request,AbortController,URL,URLSearchParams,WebSocket,
+    TextEncoder,TextDecoder,setTimeout,clearTimeout,setInterval,clearInterval,console
+  };
+  vm.runInNewContext(readFileSync(new URL("../vendor/supabase-js-2.112.3.js",import.meta.url),"utf8"),sdkContext);
+  const net=stalledWrite();
+  const client=sdkContext.supabase.createClient(PROXY,"test-anon-key",{
+    auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},
+    global:{fetch:net.router.fetch}
+  });
+  const result=await client.rpc("admin_save_shift_v4",{p_shift_id:"test"});
+  assert.match(result.error.message,/^WriteOutcomeUnknownError:/);
+  assert.throws(()=>resultData(result,"Не удалось сохранить смену"),error=>{
+    assert.equal(error.code,"write_outcome_unknown");
+    assert.equal(error.message,"Результат сохранения неизвестен. Обновите данные перед повтором");
+    return true;
+  });
+  assert.equal(net.calls.filter(call=>call.method==="POST").length,1);
+});
 
 test(
   "signing in with a password is retried over the other route",

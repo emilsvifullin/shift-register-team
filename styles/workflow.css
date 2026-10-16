@@ -1471,3 +1471,150 @@
     background:color-mix(in srgb,var(--gold) 8%,transparent);
   }
 }
+
+/* Явная фактическая выдача аванса и исправление истории выплат. */
+.payout-mode{
+  position:relative;
+  isolation:isolate;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:12px;
+}
+.payout-mode button{
+  position:relative;
+  z-index:1;
+  min-height:44px;
+  border:0;
+  border-radius:8px;
+  color:var(--ink2);
+  background:transparent;
+  font:inherit;
+  cursor:pointer;
+}
+.payout-mode button[aria-pressed="true"]{
+  color:var(--ink);
+  background:transparent;
+}
+.payout-advance-note,
+.payout-note-text{
+  margin:0;
+  color:var(--ink2);
+  font-size:12px;
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
+.payout-history .payout-record{
+  grid-template-columns:minmax(0,1fr) auto 88px;
+  min-height:60px;
+  padding:8px 0;
+  gap:10px;
+}
+.payout-history .payout-record > div:first-child strong{
+  font-size:13px;
+  font-weight:500;
+  line-height:1.4;
+}
+.payout-history .payout-record > .payout-record-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:0;
+}
+.payout-record-actions button{
+  display:grid;
+  place-items:center;
+  width:44px;
+  height:44px;
+  padding:0;
+  border:0;
+  border-radius:8px;
+  color:var(--ink2);
+  background:transparent;
+  cursor:pointer;
+}
+.payout-record-actions button:hover,
+.payout-record-actions button:focus-visible{
+  background:var(--line);
+}
+.payout-record-actions button:focus-visible{
+  outline:2px solid var(--gold);
+  outline-offset:-2px;
+}
+.payout-record-actions [data-payout-delete]{color:var(--rust);}
+.payout-expanded .payout-history{
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+@media(max-width:420px){
+  .payout-history .payout-record{
+    grid-template-columns:minmax(0,1fr) auto 80px;
+    gap:6px;
+  }
+  .payout-record-actions button{width:40px;min-height:44px;}
+}
+
+.payout-progress-advance strong{
+  min-width:0;
+  flex:0 1 auto;
+  white-space:normal;
+  text-align:right;
+  line-height:1.5;
+}
+
+
+/* Payout controls use the same in-card reveal as shift fields. */
+.payout-mode::before{
+  content:"";
+  position:absolute;
+  top:4px;
+  bottom:4px;
+  left:4px;
+  width:calc((100% - 12px)/2);
+  border-radius:8px;
+  background:var(--line);
+  transform:translateX(0);
+  transition:transform .24s cubic-bezier(.22,.72,.22,1);
+  pointer-events:none;
+}
+.payout-mode[data-mode="advance"]::before{
+  transform:translateX(calc(100% + 4px));
+}
+.payout-mode button{transition:color .16s ease;}
+.payout-motion-reveal > .field-reveal-body{
+  opacity:0;
+  transform:translateY(-5px);
+  transition:opacity .2s ease,transform .32s cubic-bezier(.32,.72,0,1);
+}
+.payout-motion-reveal.on > .field-reveal-body{
+  opacity:1;
+  transform:translateY(0);
+}
+.field-reveal.payout-motion-reveal:not(.on) .field-reveal-body > *{
+  visibility:visible;
+}
+.payout-help .payout-motion-reveal > .field-reveal-body{transform:none;}
+.payout-action-reveal .payout-add{
+  transition:transform .14s ease,background-color .16s ease,border-color .16s ease;
+}
+.payout-action-reveal .payout-add:active,
+.payout-action-reveal .payout-add.touch-active{transform:scale(.99);}
+.payout-date-field{min-width:0;}
+.payout-date-calendar{position:relative;}
+.payout-date-calendar .inline-calendar{margin-top:10px;}
+.payout-date[aria-expanded="true"]::after{
+  transform:translateY(-30%) rotate(-135deg);
+}
+.payout-date::after{transition:transform .24s cubic-bezier(.22,.72,.22,1);}
+.payout-date-calendar .date-grid{touch-action:pan-y;}
+@media(prefers-reduced-motion:reduce){
+  .payout-motion-reveal,
+  .payout-motion-reveal > .field-reveal-body,
+  .payout-mode::before,
+  .payout-mode button,
+  .payout-date::after,
+  .payout-action-reveal .payout-add{transition:none;}
+}

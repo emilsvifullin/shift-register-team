@@ -212,3 +212,13 @@ export function paymentProgress(
     complete:Number(due || 0)>0 && remaining<=0
   };
 }
+
+
+/* Выдача вперёд объясняет только сумму, явно записанную как аванс.
+   Небольшой аванс не маскирует обычную переплату после правки начислений. */
+export function hasAdvanceBalance(due,payments=[]){
+  const progress=paymentProgress(due,payments);
+  const advanced=roundMoney(payments.reduce((sum,payment)=>
+    sum+(payment.is_advance ? Number(payment.amount) || 0 : 0),0));
+  return progress.overpaid>0 && progress.overpaid<=advanced;
+}

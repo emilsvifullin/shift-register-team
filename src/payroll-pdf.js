@@ -255,7 +255,7 @@ function summaryHTML(report){
   }
 
   if(totals.overpaid){
-    cells.push(["Переплата",money(totals.overpaid)]);
+    cells.push([report.hasAdvanceOverpayment ? "Сверх начисленного" : "Переплата",money(totals.overpaid)]);
   }
 
   return `
@@ -406,7 +406,7 @@ function personHTML(line){
         <span>Начислено <b>${money(line.accrued)}</b></span>
         <span>Выплачено <b>${money(line.paid)}</b></span>
         ${line.unpaid ? `<span>Не выплачено <b>${money(line.unpaid)}</b></span>` : ""}
-        ${line.overpaid ? `<span>Переплата <b>${money(line.overpaid)}</b></span>` : ""}
+        ${line.overpaid ? `<span>${line.advance ? "Выдано вперёд" : "Переплата"} <b>${money(line.overpaid)}</b></span>` : ""}
       </div>
 
       ${shiftRows ? `

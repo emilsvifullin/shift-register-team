@@ -20,6 +20,8 @@ import {
 } from "./format.js";
 
 
+import {hasAdvanceBalance} from "./workflow.js?shell=7";
+
 /* Насколько ручная сумма должна разойтись с тарифной, чтобы спросить. */
 const MANUAL_GAP_SHARE=0.2;
 
@@ -98,6 +100,20 @@ function reviewEmployee({
     }
 
     /*
+      Снимок сохраняет начисленную сумму. Невозможность расчёта по текущим
+      условиям — отдельный вопрос, даже если старая ставка была положительной.
+    */
+    if(shift.currentTariffError){
+      add({
+        kind:"current_tariff_unavailable",
+        severity:"warning",
+        title:"Не удаётся рассчитать по текущему тарифу",
+        detail:`${shift.dateLabel} · ${shift.point}. ${shift.currentTariffError} Сохранённая сумма не изменена.`,
+        target:{type:"shift",id:shift.id,date:shift.date}
+      });
+    }
+
+    /*
       Ручная сумма — решение человека, и спорить с ним незачем. Но если
       она сильно расходится с тарифной, проверить стоит: чаще всего это
       опечатка в поле, а не договорённость.
@@ -154,11 +170,12 @@ function reviewEmployee({
     нельзя.
   */
   if(entry.paid-entry.due>0.005){
+    const advance=hasAdvanceBalance(entry.due,payouts);
     add({
-      kind:"overpaid",
-      severity:"warning",
-      title:"Выплачено больше, чем начислено",
-      detail:`Переплата ${format(entry.paid-entry.due)}`,
+      kind:advance ? "advance_balance" : "overpaid",
+      severity:advance ? "info" : "warning",
+      title:advance ? "Остаток выданного аванса" : "Выплачено больше, чем начислено",
+      detail:`${advance ? "Выдано вперёд" : "Переплата"} ${format(entry.paid-entry.due)}`,
       target:{
         type:"employee",
         id:entry.employeeId,

@@ -115,26 +115,14 @@ Element.prototype.animate=function(
       options
     )
   ){
-    const frames=
-      keyframeArray(keyframes);
-
-    const direction=
-      frames[0].transform.includes(
-        "-24px"
-      )
-        ? -1
-        : 1;
-
+    /*
+      Сдвиг остаётся transform-анимацией: left заставлял браузер заново
+      компоновать и рисовать экран на каждом кадре. В «Контроле» это
+      тысячи узлов таблицы, хотя их геометрия вообще не меняется.
+    */
     return nativeAnimate.call(
       this,
-      [
-        {
-          left:`${direction*24}px`
-        },
-        {
-          left:"0px"
-        }
-      ],
+      keyframes,
       {
         ...options,
         duration:250,

@@ -7,6 +7,7 @@ import {
   filterOptionSelected,
   filterMonthShifts,
   paymentProgress,
+  hasAdvanceBalance,
   toggleFilterSelection
 } from "../src/workflow.js";
 
@@ -186,4 +187,14 @@ test("partial payout progress preserves remaining and overpayment",()=>{
     paymentProgress(5000,[{amount:5200}]).overpaid,
     200
   );
+});
+
+
+test("an intentional advance cannot hide an ordinary overpayment",()=>{
+  assert.equal(hasAdvanceBalance(3500,[{amount:10000,is_advance:true}]),true);
+  assert.equal(hasAdvanceBalance(12000,[{amount:10000,is_advance:true}]),false);
+  assert.equal(hasAdvanceBalance(5000,[{amount:10000},{amount:2000,is_advance:true}]),false);
+  assert.equal(hasAdvanceBalance(10000,[{amount:10000},{amount:2000,is_advance:true}]),true);
+  assert.equal(hasAdvanceBalance(0.1,[{amount:0.1},{amount:0.2,is_advance:true}]),true);
+  assert.equal(hasAdvanceBalance(0,[{amount:10000},{amount:1,is_advance:true}]),false);
 });

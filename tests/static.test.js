@@ -2017,7 +2017,13 @@ test(
     /* Каждая запись получает свой идентификатор — и смена, и её премии. */
     assert.match(
       app,
-      /id:created \? createTeamId\(\) : draft\.id[\s\S]*?bonuses:draft\.bonuses\.map\([\s\S]*?id:createTeamId\(\)/
+      /const prepared=chosen\.map\(\(date,index\)=>normalizedDraft\(\{[\s\S]*?id:index \? createTeamId\(\) : snapshot\.id[\s\S]*?bonuses:snapshot\.bonuses\.map\([\s\S]*?id:createTeamId\(\)[\s\S]*?penalties:snapshot\.penalties\.map\([\s\S]*?id:createTeamId\(\)/
+    );
+
+    /* Пачка отделяется от формы до подтверждения занятых дат. */
+    assert.match(
+      app,
+      /const snapshot=cloneShiftDraft\(draft\);[\s\S]*?const prepared=chosen\.map[\s\S]*?await datesToCreate\(chosen,snapshot\)/
     );
 
     /* Каждая дата проверяется отдельно: тариф у них может отличаться. */
@@ -2029,13 +2035,19 @@ test(
     /* Занятые даты по умолчанию пропускаются, а не задваиваются. */
     assert.match(
       app,
-      /async function datesToCreate\(chosen\)[\s\S]*?item\.type===draft\.type[\s\S]*?item\.date===date/
+      /async function datesToCreate\(chosen,value=draft\)[\s\S]*?item\.employeeId===value\.employeeId[\s\S]*?item\.type===value\.type[\s\S]*?item\.date===date[\s\S]*?item\.id!==value\.id/
+    );
+
+    /* Повтор содержит только оставшиеся даты и их собственный ID. */
+    assert.match(
+      app,
+      /const remaining=payloads\.slice\(created\);[\s\S]*?draft\.id=remaining\[0\]\.id;[\s\S]*?draft\.dates=remaining\.map\(item=>item\.date\)/
     );
 
     /* Частичный отказ называет число созданных: иначе повтор задвоит. */
     assert.match(
       app,
-      /Создано \$\{created\} из \$\{dates\.length\}/
+      /Сохранено \$\{created\} из \$\{payloads\.length\}/
     );
   }
 );

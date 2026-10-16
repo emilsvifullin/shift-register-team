@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {spawn} from "node:child_process";
 import {after,before,describe,test} from "node:test";
 
 import {
@@ -358,7 +359,8 @@ function payout(employee,kind,amount,extra={}){
     p_paid_on:literal("2026-09-25"),
     p_comment:"null",
     p_force:String(extra.force===true),
-    p_reason:"null"
+    p_reason:"null",
+    ...(extra.isAdvance!==undefined ? {p_is_advance:String(extra.isAdvance)} : {})
   });
 }
 
@@ -427,6 +429,33 @@ describe("переходы периода",()=>{
   });
 });
 
+/* Отдельные настоящие соединения держат блокировки, как два менеджера. */
+function databaseSession(name,sql,{keepOpen=false}={}){
+  const child=spawn("psql",["-X","-q","-A","-t","-v","ON_ERROR_STOP=1","-d",db.name],{
+    env:{...process.env,PGAPPNAME:name,PGOPTIONS:"--client-min-messages=warning"},
+    stdio:["pipe","pipe","pipe"]
+  });
+  let output="";
+  let error="";
+  child.stdout.on("data",chunk=>{output+=chunk;});
+  child.stderr.on("data",chunk=>{error+=chunk;});
+  const result=new Promise((resolve,reject)=>{
+    child.once("error",reject);
+    child.once("close",code=>resolve({code,output,error}));
+  });
+  child.stdin.write(sql+"\n");
+  if(!keepOpen) child.stdin.end();
+  return {child,result};
+}
+
+async function waitForDatabase(predicate){
+  const deadline=Date.now()+5000;
+  while(!predicate()){
+    assert.ok(Date.now()<deadline,"Ожидалась подтверждённая блокировка PostgreSQL");
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
+}
+
 describe("выплаты",()=>{
   test("полная, частичная и сверх остатка",()=>{
     scene();
@@ -491,9 +520,273 @@ describe("выплаты",()=>{
     assert.equal(edit(2000).error,null);
     assert.match(payout(MARINA,"first_half",1).error,/payout_exceeds_due:0/);
   });
+
+  test("явный аванс сверх начисленного хранится, обычная выплата ограничена",()=>{
+    scene();
+    assert.match(payout(MARINA,"first_half",10000).error,/payout_exceeds_due:3000/);
+    const saved=payout(MARINA,"first_half",10000,{isAdvance:true});
+    assert.equal(saved.error,null);
+    assert.equal(db.query(`select to_jsonb(is_advance) from public.employee_payouts where id=${literal(saved.data)};`),true);
+    assert.equal(db.query(`select to_jsonb(details->'isAdvance') from public.payroll_events where details->>'payoutId'=${literal(saved.data)};`),true);
+    assert.match(payout(MARINA,"first_half",1).error,/payout_exceeds_due:0/);
+  });
+
+  test("аванс до первой смены, редактирование и снятие признака",()=>{
+    scene();
+    db.query(`delete from public.shifts where employee_id=${literal(MARINA)}; select 1;`);
+    assert.match(payout(MARINA,"first_half",10000).error,/payout_exceeds_due:0/);
+    const saved=payout(MARINA,"first_half",10000,{isAdvance:true});
+    assert.equal(saved.error,null);
+    const edit=(amount,isAdvance)=>db.rpc(ADMIN,"admin_save_employee_payout_v2",{
+      p_payout_id:literal(saved.data),p_employee_id:literal(MARINA),
+      p_period_month:literal(PERIOD),p_payout_kind:literal("first_half"),
+      p_amount:String(amount),p_paid_on:literal("2026-09-24"),p_comment:literal("Исправление аванса"),
+      p_is_advance:String(isAdvance)
+    });
+    assert.equal(edit(12000,true).error,null);
+    assert.equal(edit(9000,true).error,null);
+    assert.match(edit(9000,false).error,/payout_exceeds_due:0/);
+    assert.equal(db.query(`select to_jsonb(amount) from public.employee_payouts where id=${literal(saved.data)};`),9000);
+    assert.equal(db.rpc(ADMIN,"admin_delete_employee_payout_v2",{p_payout_id:literal(saved.data)}).error,null);
+    assert.equal(db.query("select count(*) from public.employee_payouts;"),0);
+  });
+
+  test("начисления покрывают выданный аванс без изменения факта выдачи",()=>{
+    scene();
+    const first=uuid("30000000",1);
+    db.query(`update public.shifts set base_amount=3500 where id=${literal(first)}; select 1;`);
+    const saved=payout(MARINA,"first_half",10000,{isAdvance:true});
+    assert.equal(saved.error,null);
+    addShift({id:uuid("30000000",4),employee:MARINA,point:POINT,date:"2026-09-10",base:8500,advance:false});
+    const figures=db.query(`select to_jsonb(f) from private.payroll_period_figures(${literal(MARINA)},${literal(PERIOD)},'first_half') f;`);
+    assert.equal(figures.due,12000);
+    assert.equal(db.query(`select to_jsonb(sum(amount)) from public.employee_payouts where employee_id=${literal(MARINA)} and period_month=${literal(PERIOD)} and payout_kind='first_half';`),10000);
+    assert.match(payout(MARINA,"first_half",2000.01).error,/payout_exceeds_due:2000/);
+    assert.equal(payout(MARINA,"first_half",2000).error,null);
+    assert.equal(db.query(`select to_jsonb(is_advance) from public.employee_payouts where id=${literal(saved.data)};`),true);
+  });
+
+  test("редактирование и удаление аванса из закрытого периода требуют подтверждения",()=>{
+    scene();
+    const saved=payout(MARINA,"first_half",10000,{isAdvance:true});
+    assert.equal(saved.error,null);
+    closePeriod("first_half");
+    const edit=force=>db.rpc(ADMIN,"admin_save_employee_payout_v2",{
+      p_payout_id:literal(saved.data),p_employee_id:literal(MARINA),
+      p_period_month:literal(PERIOD),p_payout_kind:literal("first_half"),
+      p_amount:"9000",p_paid_on:literal("2026-09-25"),p_is_advance:"true",p_force:String(force),p_reason:literal("Исправлена фактическая сумма")
+    });
+    assert.match(edit(false).error,/payroll_period_closed:2026-09-01:first_half:closed/);
+    assert.equal(edit(true).error,null);
+    assert.match(db.rpc(ADMIN,"admin_delete_employee_payout_v2",{p_payout_id:literal(saved.data)}).error,/payroll_period_closed/);
+    assert.equal(db.rpc(ADMIN,"admin_delete_employee_payout_v2",{p_payout_id:literal(saved.data),p_force:"true",p_reason:literal("Ошибочная запись")}).error,null);
+  });
+
+  test("закрытие периода во время ожидания записи не обходит подтверждение",async()=>{
+    scene();
+    const saved=payout(MARINA,"first_half",10000,{isAdvance:true});
+    assert.equal(saved.error,null);
+    assert.equal(check("first_half").error,null);
+    const lockerName=`advance-lock-${process.pid}`;
+    const editorName=`advance-edit-${process.pid}`;
+    const locker=databaseSession(lockerName,`begin;
+      set local role authenticated;
+      set local request.jwt.claim.sub=${literal(ADMIN)};
+      select public.admin_close_payroll_period(${literal(PERIOD)},'first_half',${jsonLiteral(clientEntries('first_half'))});`,{keepOpen:true});
+    let editing;
+    try{
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_locks l join pg_stat_activity a on a.pid=l.pid where a.application_name=${literal(lockerName)} and l.locktype='advisory' and l.granted));`));
+      editing=databaseSession(editorName,`begin;
+        set local statement_timeout='10s';
+        set local role authenticated;
+        set local request.jwt.claim.sub=${literal(ADMIN)};
+        select public.admin_save_employee_payout_v2(${literal(saved.data)},${literal(MARINA)},${literal(PERIOD)},'first_half',9000,'2026-09-25',null,false,null,true);
+        commit;`);
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(editorName)} and wait_event='advisory'));`));
+      locker.child.stdin.end("commit;\n");
+      const result=await editing.result;
+      assert.notEqual(result.code,0);
+      assert.match(result.error,/payroll_period_closed:2026-09-01:first_half:closed/);
+      assert.equal(db.query(`select to_jsonb(amount) from public.employee_payouts where id=${literal(saved.data)};`),10000);
+      assert.equal(db.query("select count(*) from public.payroll_events where kind='payout_changed';"),0);
+    }finally{
+      if(!locker.child.stdin.destroyed) locker.child.stdin.end("rollback;\n");
+      await locker.result;
+      if(editing) await editing.result;
+    }
+  });
+
+  test("аванс не обходит права и защиту выплаченного периода",()=>{
+    scene();
+    const user="00000000-0000-4000-8000-000000000099";
+    db.query(`insert into auth.users(id,email) values (${literal(user)},'employee@example.test') on conflict do nothing; select 1;`);
+    assert.match(db.rpc(user,"admin_save_employee_payout_v2",{
+      p_payout_id:"null",p_employee_id:literal(MARINA),p_period_month:literal(PERIOD),
+      p_payout_kind:literal("first_half"),p_amount:"10000",p_paid_on:literal("2026-09-25"),p_is_advance:"true"
+    }).error,/forbidden/);
+    closePeriod("first_half");
+    assert.equal(payout(MARINA,"first_half",1000).error,null);
+    assert.equal(db.rpc(ADMIN,"admin_mark_payroll_period_paid",{p_period_month:literal(PERIOD),p_payout_kind:literal("first_half")}).error,null);
+    assert.match(payout(MARINA,"first_half",10000,{isAdvance:true}).error,/payroll_period_closed/);
+    assert.equal(payout(MARINA,"first_half",10000,{isAdvance:true,force:true}).error,null);
+  });
+
 });
 
 describe("закрытый период не меняется в обход",()=>{
+  test("запись, задержанная строкой смены, не оставляет устаревший снимок закрытия",async()=>{
+    scene();
+    assert.equal(check("first_half").error,null);
+    const shift=uuid("30000000",1);
+    const rowName=`shift-row-${process.pid}`;
+    const saveName=`shift-save-${process.pid}`;
+    const closeName=`shift-close-${process.pid}`;
+    const row=databaseSession(rowName,`begin;
+      select id from public.shifts where id=${literal(shift)} for update;`,{keepOpen:true});
+    let save;
+    let closing;
+    try{
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(rowName)} and state='idle in transaction'));`));
+      save=databaseSession(saveName,`begin;
+        set local statement_timeout='10s';
+        set local role authenticated;
+        set local request.jwt.claim.sub=${literal(ADMIN)};
+        select public.admin_save_shift_v4(${literal(shift)},${literal(MARINA)},'2026-09-03',${literal(POINT)},'main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);
+        commit;`);
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(saveName)} and wait_event_type='Lock'));`));
+      closing=databaseSession(closeName,`begin;
+        set local statement_timeout='10s';
+        set local role authenticated;
+        set local request.jwt.claim.sub=${literal(ADMIN)};
+        select public.admin_close_payroll_period(${literal(PERIOD)},'first_half',${jsonLiteral(clientEntries('first_half'))});
+        commit;`);
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(closeName)} and wait_event='advisory'));`));
+      row.child.stdin.end("commit;\n");
+      assert.equal((await save.result).code,0);
+      const result=await closing.result;
+      assert.notEqual(result.code,0);
+      assert.match(result.error,/payroll_period_changed_since_check/);
+      assert.equal(status("first_half"),"checked");
+      assert.equal(db.query(`select to_jsonb(base_amount) from public.shifts where id=${literal(shift)};`),4000);
+      assert.equal(db.query("select count(*) from public.payroll_period_entries;"),0);
+      closePeriod("first_half");
+      assert.equal(db.query(`select to_jsonb(base) from public.payroll_period_entries where employee_id=${literal(MARINA)};`),4000);
+    }finally{
+      if(!row.child.stdin.destroyed) row.child.stdin.end("rollback;\n");
+      await row.result;
+      if(save) await save.result;
+      if(closing) await closing.result;
+    }
+  });
+
+  for(const [name,statement,error] of [
+    ["сохранение",()=>`public.admin_save_shift_v4('${uuid("30000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null)`,/payroll_period_closed/],
+    ["удаление",()=>`public.admin_delete_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
+    ["пересчёт",()=>`public.admin_reprice_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
+    ["импорт",()=>`public.admin_import_legacy_shift('race-import','${MARINA}','${POINT}','2026-09-07','main',null,false,null,12,3000,'{"rate":3000,"fixed":true,"fullHours":12}','[]','[]')`,/payroll_period_closed/],
+    ["каскад ПВЗ",()=>`public.admin_delete_point_cascade('${POINT}','Корабельная 1')`,/point_has_closed_period/]
+  ]){
+    test(`конкурентное закрытие раньше записи: ${name} видит закрытый период`,async()=>{
+      scene();
+      assert.equal(check("first_half").error,null);
+      const closeName=`first-close-${process.pid}`;
+      const writeName=`next-write-${process.pid}`;
+      const closing=databaseSession(closeName,`begin;
+        set local role authenticated;
+        set local request.jwt.claim.sub=${literal(ADMIN)};
+        select public.admin_close_payroll_period(${literal(PERIOD)},'first_half',${jsonLiteral(clientEntries('first_half'))});`,{keepOpen:true});
+      let write;
+      try{
+        await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(closeName)} and state='idle in transaction'));`));
+        write=databaseSession(writeName,`begin;
+          set local statement_timeout='10s';
+          set local role authenticated;
+          set local request.jwt.claim.sub=${literal(ADMIN)};
+          select ${statement()};
+          commit;`);
+        await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(writeName)} and wait_event='advisory'));`));
+        closing.child.stdin.end("commit;\n");
+        const result=await write.result;
+        assert.notEqual(result.code,0);
+        assert.match(result.error,error);
+        assert.equal(status("first_half"),"closed");
+        assert.equal(db.query("select count(*) from public.shifts;"),3);
+        assert.equal(db.query("select sum(base_amount) from public.shifts;"),9000);
+        assert.equal(db.query("select count(*) from public.payroll_events where kind='closed_period_change';"),0);
+      }finally{
+        if(!closing.child.stdin.destroyed) closing.child.stdin.end("rollback;\n");
+        await closing.result;
+        if(write) await write.result;
+      }
+    });
+  }
+
+  test("встречный перенос смен между месяцами не создаёт взаимную блокировку",async()=>{
+    scene();
+    db.query(`update public.shifts set shift_date='2026-10-05' where id='${uuid("30000000",3)}'; select 1;`);
+    const lockerName=`transfer-lock-${process.pid}`;
+    const locker=databaseSession(lockerName,"begin; select private.lock_financial_write();",{keepOpen:true});
+    const writers=[];
+    try{
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(lockerName)} and state='idle in transaction'));`));
+      for(const [index,employee,date] of [[1,MARINA,"2026-10-03"],[3,ROMAN,"2026-09-05"]]){
+        const name=`transfer-${index}-${process.pid}`;
+        writers.push({name,...databaseSession(name,`begin;
+          set local statement_timeout='10s';
+          set local role authenticated;
+          set local request.jwt.claim.sub=${literal(ADMIN)};
+          select public.admin_save_shift_v4('${uuid("30000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
+          commit;`)});
+      }
+      for(const writer of writers){
+        await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(writer.name)} and wait_event='advisory'));`));
+      }
+      locker.child.stdin.end("commit;\n");
+      for(const writer of writers){
+        const result=await writer.result;
+        assert.equal(result.code,0,result.error);
+      }
+      assert.equal(db.query(`select to_jsonb(shift_date) from public.shifts where id='${uuid("30000000",1)}';`),"2026-10-03");
+      assert.equal(db.query(`select to_jsonb(shift_date) from public.shifts where id='${uuid("30000000",3)}';`),"2026-09-05");
+    }finally{
+      if(!locker.child.stdin.destroyed) locker.child.stdin.end("rollback;\n");
+      await locker.result;
+      for(const writer of writers) await writer.result;
+    }
+  });
+
+  test("ошибка финансовой транзакции освобождает очередь и откатывает запись",async()=>{
+    scene();
+    assert.equal(check("first_half").error,null);
+    const editName=`rollback-edit-${process.pid}`;
+    const closeName=`rollback-close-${process.pid}`;
+    const editing=databaseSession(editName,`begin;
+      set local role authenticated;
+      set local request.jwt.claim.sub=${literal(ADMIN)};
+      select public.admin_save_shift_v4('${uuid("30000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);`,{keepOpen:true});
+    let closing;
+    try{
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(editName)} and state='idle in transaction'));`));
+      closing=databaseSession(closeName,`begin;
+        set local statement_timeout='10s';
+        set local role authenticated;
+        set local request.jwt.claim.sub=${literal(ADMIN)};
+        select public.admin_close_payroll_period(${literal(PERIOD)},'first_half',${jsonLiteral(clientEntries('first_half'))});
+        commit;`);
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(closeName)} and wait_event='advisory'));`));
+      editing.child.stdin.end("select 1/0;\n");
+      assert.notEqual((await editing.result).code,0);
+      assert.equal((await closing.result).code,0);
+      assert.equal(status("first_half"),"closed");
+      assert.equal(db.query("select sum(base_amount) from public.shifts;"),9000);
+      assert.equal(db.query("select sum(base) from public.payroll_period_entries;"),6000);
+    }finally{
+      if(!editing.child.stdin.destroyed) editing.child.stdin.end("rollback;\n");
+      await editing.result;
+      if(closing) await closing.result;
+    }
+  });
+
   test("удаление смены — только с согласием, и оно в истории",()=>{
     scene();
     closePeriod("first_half");
@@ -632,6 +925,35 @@ describe("удаление сотрудника не уносит финансо
 });
 
 describe("деньги и права",()=>{
+  test("все доступные admin-записи проходят общую блокировку, приватные тела не имеют клиентских прав",()=>{
+    const gateways=db.query(`select json_agg(json_build_object(
+        'name',p.oid::regprocedure::text,
+        'locked',p.prosrc like '%perform private.lock_financial_write();%',
+        'admin',p.prosrc like '%if not private.is_admin()%',
+        'searchPath',p.proconfig
+      )) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname like 'admin_%'
+        and p.proname<>'admin_account_options_v2'
+        and has_function_privilege('authenticated',p.oid,'EXECUTE');`);
+    assert.equal(gateways.length,26);
+    for(const gateway of gateways){
+      assert.equal(gateway.locked,true,gateway.name);
+      assert.equal(gateway.admin,true,gateway.name);
+      assert.deepEqual(gateway.searchPath,['search_path=""'],gateway.name);
+    }
+    const internals=db.query(`select json_agg(json_build_object(
+        'name',p.oid::regprocedure::text,
+        'authenticated',has_function_privilege('authenticated',p.oid,'EXECUTE'),
+        'anon',has_function_privilege('anon',p.oid,'EXECUTE')
+      )) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='private' and (p.proname like 'admin_%' or p.proname='lock_financial_write');`);
+    assert.equal(internals.length,27);
+    for(const internal of internals){
+      assert.equal(internal.authenticated,false,internal.name);
+      assert.equal(internal.anon,false,internal.name);
+    }
+  });
+
   test("история пишет копейки, а целые — без них",()=>{
     assert.equal(db.query(`select to_jsonb(private.money_text(1500));`),"1 500");
     assert.equal(db.query(`select to_jsonb(private.money_text(1500.5));`),"1 500,50");

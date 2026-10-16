@@ -14,6 +14,7 @@ export async function saveAdminPayout({
   amount,
   paidOn,
   comment=null,
+  isAdvance=false,
   force=false,
   reason=null
 }){
@@ -28,6 +29,7 @@ export async function saveAdminPayout({
         p_amount:Number(amount),
         p_paid_on:paidOn,
         p_comment:comment || null,
+        p_is_advance:isAdvance,
         p_force:force,
         p_reason:reason
       }

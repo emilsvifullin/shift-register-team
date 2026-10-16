@@ -3,6 +3,8 @@ import {
 } from "../format.js";
 
 const ERROR_MESSAGES=Object.freeze({
+  write_outcome_unknown:
+    "Результат сохранения неизвестен. Обновите данные перед повтором",
   forbidden:
     "Недостаточно прав для этой операции",
   employee_not_found:
@@ -53,6 +55,12 @@ const ERROR_MESSAGES=Object.freeze({
     "Удаление сотрудника уже выполняется"
 });
 
+function writeOutcomeUnknown(error){
+  /* Закреплённый PostgREST сохраняет имя ошибки в message, но теряет code. */
+  return error?.code==="write_outcome_unknown" ||
+    String(error?.message || "").startsWith("WriteOutcomeUnknownError:");
+}
+
 function readableError(
   result,
   fallback
@@ -61,6 +69,10 @@ function readableError(
     result.error?.message ||
     ""
   );
+
+  if(writeOutcomeUnknown(result.error)){
+    return ERROR_MESSAGES.write_outcome_unknown;
+  }
 
   /*
     Сервер не принимает выплату сверх причитающегося и говорит, сколько
@@ -101,8 +113,9 @@ export function resultData(
       )
     );
 
-    error.code=
-      result.error.code;
+    error.code=writeOutcomeUnknown(result.error)
+      ? "write_outcome_unknown"
+      : result.error.code;
 
     error.details=
       result.error.details;

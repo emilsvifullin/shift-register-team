@@ -122,19 +122,21 @@ const PAGE_SIZE=1000;
 
 async function allRows(
   buildQuery,
-  message
+  message,
+  keyOf=row=>row.id
 ){
   const rows=[];
   const seen=new Set();
   let total=null;
+  let offset=0;
 
   for(;;){
     const result=
       await buildQuery(
         total===null
       ).range(
-        rows.length,
-        rows.length+PAGE_SIZE-1
+        offset,
+        offset+PAGE_SIZE-1
       );
 
     const page=
@@ -149,9 +151,12 @@ async function allRows(
         : null;
     }
 
+    offset+=page.length;
+
     for(const row of page){
-      if(!seen.has(row.id)){
-        seen.add(row.id);
+      const key=keyOf(row);
+      if(!seen.has(key)){
+        seen.add(key);
         rows.push(row);
       }
     }
@@ -230,70 +235,69 @@ export async function loadAdminTeamData({
     periodEventsResult
   ]=
     await Promise.all([
-      supabaseClient
-        .from("employees")
-        .select(
-          "id, user_id, full_name, status, hired_at, is_system_substitute, phone, transfer_phone, transfer_bank, transfer_recipient"
-        )
-        .order(
-          "status",
-          {
-            ascending:true
-          }
-        )
-        .order(
-          "full_name",
-          {
-            ascending:true
-          }
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("employees")
+          .select(
+            "id, user_id, full_name, status, hired_at, is_system_substitute, phone, transfer_phone, transfer_bank, transfer_recipient",
+            counted ? {count:"exact"} : undefined
+          )
+          .order("status",{ascending:true})
+          .order("full_name",{ascending:true})
+          .order("id",{ascending:true}),
+        "Не удалось загрузить сотрудников"
+      ),
 
-      supabaseClient
-        .from("points")
-        .select(
-          "id, code, name, active, pricing_type, fixed_rate, advance_enabled, sort_order"
-        )
-        .order(
-          "name",
-          {
-            ascending:true
-          }
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("points")
+          .select(
+            "id, code, name, active, pricing_type, fixed_rate, advance_enabled, sort_order",
+            counted ? {count:"exact"} : undefined
+          )
+          .order("name",{ascending:true})
+          .order("id",{ascending:true}),
+        "Не удалось загрузить пункты"
+      ),
 
-      supabaseClient
-        .from("employee_points")
-        .select(
-          "employee_id, point_id, active"
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("employee_points")
+          .select("employee_id, point_id, active",counted ? {count:"exact"} : undefined)
+          .order("employee_id",{ascending:true})
+          .order("point_id",{ascending:true}),
+        "Не удалось загрузить назначения",
+        row=>JSON.stringify([row.employee_id,row.point_id])
+      ),
 
       supabaseClient
         .rpc(
           "admin_account_options_v2"
         ),
 
-      supabaseClient
-        .from("point_tariffs")
-        .select(
-          "id, point_id, effective_from, pricing_type, fixed_rate, shk_tiers, created_at"
-        )
-        .order(
-          "effective_from",
-          {
-            ascending:false
-          }
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("point_tariffs")
+          .select(
+            "id, point_id, effective_from, pricing_type, fixed_rate, shk_tiers, created_at",
+            counted ? {count:"exact"} : undefined
+          )
+          .order("effective_from",{ascending:false})
+          .order("id",{ascending:true}),
+        "Не удалось загрузить тарифы"
+      ),
 
-      supabaseClient
-        .from("employee_point_rates")
-        .select(
-          "id, employee_id, point_id, effective_from, pricing_type, fixed_rate, shk_tiers, created_at"
-        )
-        .order(
-          "effective_from",
-          {
-            ascending:false
-          }
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("employee_point_rates")
+          .select(
+            "id, employee_id, point_id, effective_from, pricing_type, fixed_rate, shk_tiers, created_at",
+            counted ? {count:"exact"} : undefined
+          )
+          .order("effective_from",{ascending:false})
+          .order("id",{ascending:true}),
+        "Не удалось загрузить индивидуальные ставки"
+      ),
 
       loadShiftRows(),
 
@@ -301,7 +305,7 @@ export async function loadAdminTeamData({
         counted=>supabaseClient
           .from("employee_payouts")
           .select(
-            "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at",
+            "id, employee_id, period_month, payout_kind, amount, paid_on, comment, is_advance, created_at, updated_at",
             counted
               ? {count:"exact"}
               : undefined
@@ -317,15 +321,17 @@ export async function loadAdminTeamData({
         "Не удалось загрузить выплаты"
       ),
 
-      supabaseClient
-        .from("payroll_periods")
-        .select(
-          "id, period_month, payout_kind, status, checked_fingerprint, checked_at, closed_at, paid_at"
-        )
-        .order(
-          "period_month",
-          {ascending:false}
-        ),
+      allRows(
+        counted=>supabaseClient
+          .from("payroll_periods")
+          .select(
+            "id, period_month, payout_kind, status, checked_fingerprint, checked_at, closed_at, paid_at",
+            counted ? {count:"exact"} : undefined
+          )
+          .order("period_month",{ascending:false})
+          .order("id",{ascending:true}),
+        "Не удалось загрузить расчётные периоды"
+      ),
 
       allRows(
         counted=>supabaseClient
@@ -486,7 +492,7 @@ export async function loadEmployeeTeamData(
       counted=>supabaseClient
         .from("employee_payouts")
         .select(
-          "id, employee_id, period_month, payout_kind, amount, paid_on, comment, created_at, updated_at",
+          "id, employee_id, period_month, payout_kind, amount, paid_on, comment, is_advance, created_at, updated_at",
           counted
             ? {count:"exact"}
             : undefined

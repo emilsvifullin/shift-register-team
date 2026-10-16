@@ -294,6 +294,15 @@ A path that neither Vercel nor Cloudflare fronts — a relay under
 `shiftregister.ru` on Russian hosting — would close the remaining gap for
 networks that cut both. It is one more entry in the route list.
 
+## Calendar layout and motion
+
+Calendar panel rows never shrink inside their scrolling list: a long name
+or a partial-shift badge determines the row height rather than spilling
+into the next shift. Tab motion keeps `transform`, not `left`, so opening
+a populated control table does not lay it out on every animation frame.
+`e2e/control-motion-performance.spec.mjs` checks the layout count with a
+full 80-point month instead of asserting machine-dependent FPS.
+
 ## What a shift costs
 
 A shift's price has one rule and one place where it is frozen.
@@ -401,10 +410,15 @@ purpose, checking. It never writes a figure of its own:
   are now;
 * **close** needs a checked period whose figures have not changed since
   the check, and a snapshot whose amounts are those figures;
-* **a payout** may not take the half-month above what is owed; an
-  overpayment remains possible as a consequence (the calculation went
-  down after the money was sent) but not as an action — it can only be
-  reduced;
+* **a regular payout** may not take the half-month above what is owed;
+  an existing unexpected overpayment can be reduced but not increased.
+  An explicit advance (`employee_payouts.is_advance`) records money
+  actually issued ahead of earnings, including before the first shift.
+  `p_is_advance` defaults to false, so older clients retain the regular
+  limit. The client asks for confirmation when an advance exceeds the
+  outstanding amount. It belongs to the selected month and half; no
+  balance moves into another period automatically. Advance entries can
+  be corrected or deleted under the same period guards as other payouts;
 * **paid** needs recorded payouts when money is owed, as before.
 
 Two implementations can drift, and a drift here would refuse checks in
@@ -466,6 +480,21 @@ closed or paid period is refused by default, whichever way it arrives:
 A single correction goes through with explicit consent and lands in the
 history, as it always did; bulk and destructive paths have no consent: the
 period is reopened first.
+
+## Recording an advance
+
+`hasAdvanceBalance` in `workflow.js` classifies an overpayment as an
+intentional advance only when the explicitly flagged advances cover that
+excess. A small advance must not hide an unrelated overpayment caused by
+a later reduction in earnings. Personal balances, team review and reports
+share that classifier; the amount paid and the amount owed use the same
+existing calculations. Payout editors belong to one employee and one
+month/half and are discarded on a context change.
+
+Payout writes acquire their employee/period advisory lock, then the period
+row lock also used by closing, before reading status and calculating the
+remaining amount. This serializes the new advance/edit path with closing;
+the corresponding regression uses independent Postgres connections.
 
 ## Money is kept in kopecks
 
@@ -606,3 +635,34 @@ until the migration was applied.
 - `node ./scripts/screenshots.mjs capture|diff` — before/after pixel
   comparison of every main screen in both themes and two viewports. Use it
   for any non-trivial CSS change.
+
+
+## Financial write serialization and audit regressions
+
+Migration `20261016042559_serialize_financial_admin_writes.sql` moves the
+existing financial admin implementations to `private`, revokes client
+EXECUTE, and keeps the public signatures as checked gateways. Each gateway
+acquires the same transaction advisory lock before reading financial state
+or locking any domain row. This deliberately serializes admin writes across
+periods while keeping reads concurrent. Future function migrations must
+preserve the gateway; the database catalogue regression checks exposed admin
+writers and private privileges. Concurrent close/write, rollback and cross-month
+moves are tested with independent PostgreSQL connections.
+
+Batch saves prepare immutable payloads before any asynchronous work, retain
+only unsaved dates on partial completion, and cannot close while pending.
+Refresh requests during an active read schedule a subsequent read. Current
+tariff review distinguishes unavailable, matching and changed rates without
+rewriting saved prices; current tariffs are only inspected for administrators.
+
+`payroll-report-data.js` assigns existing `payouts()` amounts to report details,
+including the first-payment cap, carried penalties and corrections. Historical
+snapshot-only employees remain in reports with their current zero amount.
+Growing reference data is paginated with stable ordering and composite keys
+where needed. A network write waits at most 30 seconds for the complete reply;
+a lost result is explicitly unknown and is never automatically replayed.
+
+Month movement temporarily disables descendant CSS transitions during its
+existing slide, preventing hundreds of reconciled control cells from animating
+colours at once. Normal interaction feedback resumes when motion settles.
+The original upper month picker and lower section navigation are retained.

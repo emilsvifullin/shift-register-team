@@ -24,7 +24,7 @@
 
 const VERSION="7.0.0";
 
-const SHELL_FINGERPRINT="0cb80cc098b9015c0fddd842e918044ca812ed955e34535fc04b0209071c904e";
+const SHELL_FINGERPRINT="3b2c1a8f70ca96d4f2f2da572cb078e5b02d13f6585742c11199a80402d9f80b";
 
 const CACHE_PREFIX="sr-shell-";
 
@@ -87,6 +87,7 @@ const SCRIPTS=[
   "./src/payroll-pdf.js",
   "./src/payroll-recalc.js",
   "./src/payroll-report.js",
+  "./src/payroll-report-data.js",
   "./src/payroll-review.js",
   "./src/phone.js",
   "./src/picker-motion.js",

@@ -2,6 +2,8 @@ import {
   roundMoney
 } from "./format.js";
 
+import {hasAdvanceBalance} from "./workflow.js?shell=7";
+
 /*
   Зарплатный отчёт за расчётный период.
 
@@ -82,6 +84,7 @@ export function buildPayrollReport({
       paid,
       unpaid:gap>0 ? gap : 0,
       overpaid:gap<0 ? -gap : 0,
+      advance:hasAdvanceBalance(row.due,row.payoutRecords || []),
       detail:row.detail || null
     };
   });
@@ -132,6 +135,7 @@ export function buildPayrollReport({
       frozen===null || round(frozen)===totals.accrued
         ? null
         : round(frozen),
+    hasAdvanceOverpayment:lines.some(line=>line.advance),
     lines,
     totals
   };

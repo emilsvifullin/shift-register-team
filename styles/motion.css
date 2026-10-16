@@ -233,3 +233,13 @@ html[data-month-motion="prev"]::view-transition-new(month-period){
 #dateJumpMonths{
   touch-action:pan-y;
 }
+
+/*
+  Месяц меняется целиком. Переиспользованные строки и ячейки не должны
+  параллельно проигрывать переходы своих цветов: сотни таких переходов
+  заставляют заново рисовать таблицу, пока движется снимок месяца.
+*/
+html[data-month-motion] #app *,
+html[data-month-motion] body > main[aria-hidden="true"][inert] *{
+  transition:none !important;
+}

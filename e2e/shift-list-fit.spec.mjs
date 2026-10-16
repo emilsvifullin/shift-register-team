@@ -81,6 +81,14 @@ function listMetrics(){
   const dock=
     document.querySelector(".bottom-controls");
 
+  const main=document.querySelector("main");
+  const mainBox=main.getBoundingClientRect();
+  const dockBox=dock.getBoundingClientRect();
+  const contentBottom=Math.min(
+    mainBox.bottom-parseFloat(getComputedStyle(main).paddingBottom),
+    dockBox.top>mainBox.top ? dockBox.top : Number.POSITIVE_INFINITY
+  );
+
   const box=
     scroller.getBoundingClientRect();
 
@@ -107,9 +115,9 @@ function listMetrics(){
     frameBottom:Math.round(
       frame.getBoundingClientRect().bottom
     ),
-    dockTop:Math.round(
-      dock.getBoundingClientRect().top
-    )
+    contentBottom:Math.round(contentBottom),
+    frameTop:Math.round(frame.getBoundingClientRect().top),
+    toolbarBottom:Math.round(document.querySelector("header").getBoundingClientRect().bottom)
   };
 }
 
@@ -117,11 +125,12 @@ test.use({
   colorScheme:"dark"
 });
 
+for(const width of [390,1280]){
 test(
-  "the shift list follows the height the window actually offers",
+  `the shift list follows the height the window actually offers at ${width}px`,
   async({page})=>{
     await page.setViewportSize({
-      width:1280,
+      width,
       height:700
     });
 
@@ -133,12 +142,13 @@ test(
 
     const small=await page.evaluate(listMetrics);
 
-    /* Целые строки и никакого захода под нижнюю панель. */
+    /* Целые строки в рабочей области: между toolbar и нижним краем. */
+    expect(small.frameTop).toBeGreaterThanOrEqual(small.toolbarBottom);
     expect(small.frameBottom)
-      .toBeLessThanOrEqual(small.dockTop+1);
+      .toBeLessThanOrEqual(small.contentBottom+1);
 
     await page.setViewportSize({
-      width:1280,
+      width,
       height:1000
     });
 
@@ -154,14 +164,14 @@ test(
       .toBeGreaterThan(small.visibleRows);
 
     expect(tall.frameBottom)
-      .toBeLessThanOrEqual(tall.dockTop+1);
+      .toBeLessThanOrEqual(tall.contentBottom+1);
 
     expect(
-      tall.dockTop-tall.frameBottom
+      tall.contentBottom-tall.frameBottom
     ).toBeLessThan(tall.rowHeight);
 
     await page.setViewportSize({
-      width:1280,
+      width,
       height:640
     });
 
@@ -177,7 +187,7 @@ test(
 
     /* И в обратную сторону список не вылезает под панель. */
     expect(shrunk.frameBottom)
-      .toBeLessThanOrEqual(shrunk.dockTop+1);
+      .toBeLessThanOrEqual(shrunk.contentBottom+1);
 
     /*
       Без перерисовки: ни один экран приложения между замерами не
@@ -186,3 +196,4 @@ test(
     expect(shrunk.rowHeight).toBe(small.rowHeight);
   }
 );
+}

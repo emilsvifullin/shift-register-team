@@ -164,6 +164,7 @@ import {
   filterOptionSelected,
   filterMonthShifts,
   paymentProgress,
+  hasAdvanceBalance,
   toggleFilterSelection
 } from "./workflow.js?shell=7";
 
@@ -176,6 +177,12 @@ import {
   buildPayrollReport,
   reportFileName
 } from "./payroll-report.js";
+
+import {
+  periodReportDetail,
+  reportCorrections,
+  reportEntries
+} from "./payroll-report-data.js";
 
 import {
   buildRecalcPlan,
@@ -545,78 +552,99 @@ function ensurePeriodEvents(){
     });
 }
 
+let teamDataRefresh=null;
+let teamDataRefreshRequested=false;
+let teamDataRefreshRender=false;
+
 async function refreshTeamData({
   renderAfter=true
 }={}){
-  if(
-    !currentUser ||
-    teamDataLoading
-  ){
+  if(!currentUser){
     return false;
+  }
+
+  /*
+    После записи нужно новое чтение, даже если прежнее ещё не завершено.
+    Несколько запросов во время одного чтения объединяются в следующий проход.
+  */
+  teamDataRefreshRequested=true;
+  teamDataRefreshRender ||= renderAfter;
+
+  if(teamDataRefresh){
+    return teamDataRefresh;
   }
 
   teamDataLoading=true;
-  teamDataError=null;
-  serverDataError=null;
+  teamDataRefresh=Promise.resolve().then(async()=>{
+    let refreshed=false;
 
-  const eventsMonth=
-    periodMonthKey(cursor);
+    try{
+      while(teamDataRefreshRequested && currentUser){
+        teamDataRefreshRequested=false;
+        teamDataError=null;
+        serverDataError=null;
 
-  try{
-    teamData=
-      await loadTeamData({
-        role:currentProfile.role,
-        userId:currentUser.id,
-        periodMonth:eventsMonth
-      });
+        const eventsMonth=periodMonthKey(cursor);
 
-    periodEventsMonth=
-      teamData.periodEvents
-        ? eventsMonth
-        : null;
+        try{
+          teamData=
+            await loadTeamData({
+              role:currentProfile.role,
+              userId:currentUser.id,
+              periodMonth:eventsMonth
+            });
 
-    shifts=teamData.shifts;
-    employeeLinked=
-      teamData.linked!==false;
-    employeeArchived=
-      teamData.archived===true;
-    serverConnected=true;
+          periodEventsMonth=
+            teamData.periodEvents
+              ? eventsMonth
+              : null;
 
-    teamDataLoaded=true;
+          shifts=teamData.shifts;
+          employeeLinked=
+            teamData.linked!==false;
+          employeeArchived=
+            teamData.archived===true;
+          serverConnected=true;
 
-    if(
-      statsEmployeeId &&
-      !statsEmployeeOptions()
-        .some(
-          employee=>
-            employee.id===
-            statsEmployeeId
-        )
-    ){
-      statsEmployeeId="";
+          teamDataLoaded=true;
+
+          if(
+            statsEmployeeId &&
+            !statsEmployeeOptions()
+              .some(
+                employee=>
+                  employee.id===
+                  statsEmployeeId
+              )
+          ){
+            statsEmployeeId="";
+          }
+          refreshed=true;
+        }catch(error){
+          teamDataError=
+            error instanceof Error
+              ? error.message
+              : "Не удалось загрузить данные";
+          serverDataError=teamDataError;
+          serverConnected=false;
+          refreshed=false;
+        }
+      }
+
+      return refreshed;
+    }finally{
+      teamDataLoading=false;
+      teamDataRefresh=null;
+      const shouldRender=teamDataRefreshRender;
+      teamDataRefreshRender=false;
+
+      if(shouldRender){
+        renderWhenReady();
+      }
     }
+  });
 
-    return true;
-  }catch(error){
-    teamDataError=
-      error instanceof Error
-        ? error.message
-        : "Не удалось загрузить данные";
-
-    serverDataError=
-      teamDataError;
-    serverConnected=false;
-
-    return false;
-  }finally{
-    teamDataLoading=false;
-
-    if(
-      renderAfter
-    ){
-      renderWhenReady();
-    }
-  }
+  return teamDataRefresh;
 }
 
 async function startAutomaticSync(){
@@ -1136,6 +1164,18 @@ document.getElementById("appConfirm").addEventListener("click",event=>{
 
 document.addEventListener("keydown",event=>{
   const modal=activeModal();
+  if(!modal && event.key==="Escape" && payoutEditor?.calendarOpen && !payoutSaving){
+    event.preventDefault();
+    if(payoutEditor.calendarJumpOpen){
+      updatePayoutCalendar(editor=>{editor.calendarJumpOpen=false;});
+      app.querySelector('[data-payout-date-jump]')?.focus({preventScroll:true});
+    }else{
+      payoutEditor.calendarOpen=false;
+      render();
+      app.querySelector('[data-payout-date-open]')?.focus({preventScroll:true});
+    }
+    return;
+  }
   if(!modal) return;
 
   if(event.key==="Tab"){
@@ -1159,7 +1199,7 @@ document.addEventListener("keydown",event=>{
   if(document.getElementById("employeeFilterSheet").classList.contains("on")) return closeEmployeeFilterSheet();
   if(document.getElementById("shiftFilterSheet").classList.contains("on")) return closeShiftFilterSheet();
   if(document.getElementById("employeeSheet").classList.contains("on")) return closeEmployeeEditor();
-  if(document.getElementById("sheet").classList.contains("on")) return closeSheet();
+  if(document.getElementById("sheet").classList.contains("on")) return void requestCloseShiftSheet();
 });
 
 function isRecoverableDraft(value){
@@ -2451,7 +2491,13 @@ function payoutRecords(employeeId,kind){
   смены (например, вместе с удалённым ПВЗ), и выплата, записанная раньше
   смен. Сама запись о выплате остаётся: деньги действительно отданы.
 */
+function payoutDisplayProgress(due,records){
+  const progress=paymentProgress(due,records);
+  return {...progress,advance:hasAdvanceBalance(due,records)};
+}
+
 function payoutStateLabel(progress){
+  if(progress.advance) return "Выдано вперёд";
   if(progress.complete) return "Выплачено";
   if(progress.due<=0 && progress.paid>0) return "Переплата";
   if(progress.paid>0) return "Частично выплачено";
@@ -2466,6 +2512,7 @@ function payoutStateLabel(progress){
   невыплаченными оставались все 15 000 ₽.
 */
 function payoutRemainderLabel(progress){
+  if(progress.advance) return "Остаток аванса";
   if(progress.complete) return "Выплачено";
   if(progress.due<=0 && progress.paid>0) return "Выплачено сверх начисленного";
   if(progress.paid>0) return "Осталось выплатить";
@@ -2474,6 +2521,9 @@ function payoutRemainderLabel(progress){
 }
 
 function payoutRemainderValue(progress){
+  if(progress.advance) return progress.overpaid===progress.paid
+    ? money(progress.overpaid)
+    : `${money(progress.overpaid)} · всего выдано ${money(progress.paid)}`;
   if(progress.complete){
     return progress.overpaid>0
       ? `${money(progress.paid)} · переплата ${money(progress.overpaid)}`
@@ -2588,15 +2638,84 @@ function payoutSourceRows(shiftsList,kind){
 */
 function payoutExpandedHTML({kind,due,employee,statsShifts}){
   const records=payoutRecords(employee?.id,kind);
-  const progress=paymentProgress(due,records);
-  const editor=payoutEditor?.kind===kind ? payoutEditor : null;
+  const progress=payoutDisplayProgress(due,records);
+  const editor=payoutEditor?.kind===kind && payoutEditor.employeeId===employee?.id && payoutEditor.periodMonth===`${cursor}-01` ? payoutEditor : null;
+  const form=editor ? `
+          <div class="payout-editor" aria-busy="${payoutSaving}">
+            <div class="payout-mode" data-mode="${editor.isAdvance ? "advance" : "regular"}" role="group" aria-label="Вид выплаты">
+              <button type="button" data-payout-mode="regular" aria-pressed="${!editor.isAdvance}" ${payoutSaving ? "disabled" : ""}>Выплата</button>
+              <button type="button" data-payout-mode="advance" aria-pressed="${editor.isAdvance}" ${payoutSaving ? "disabled" : ""}>Аванс</button>
+            </div>
+            <div class="payout-help">
+              ${fieldRevealHTML({
+                key:"payoutRegularHelp",
+                open:!editor.isAdvance,
+                className:"payout-help-reveal payout-motion-reveal",
+                body:`<p class="payout-note-text${!editor.isAdvance ? " payout-advance-note" : ""}">Запишите фактически выданную сумму в пределах остатка. Для выдачи вперёд выберите «Аванс».</p>`
+              })}
+              ${fieldRevealHTML({
+                key:"payoutAdvanceHelp",
+                open:editor.isAdvance,
+                className:"payout-help-reveal payout-motion-reveal",
+                body:`<p class="payout-note-text${editor.isAdvance ? " payout-advance-note" : ""}">Укажите деньги, уже выданные сотруднику вперёд. Тип ПВЗ и наличие смен не ограничивают аванс. Он уменьшит остаток выплаты за ${kind==="first_half" ? "1–15" : "16–конец"} ${esc(monthGen(cursor))}. Остаток не переносится в другие периоды автоматически.</p>`
+              })}
+            </div>
+            <label class="payout-field">
+              <span>Сумма</span>
+              <input id="payoutAmount" class="payout-field-input amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="${esc(editor.amount)}" ${payoutSaving ? "disabled" : ""}>
+            </label>
+            <div class="payout-date-field">
+              <div class="payout-field">
+                <span>Дата выплаты</span>
+                <button type="button" class="payout-field-input payout-date" data-payout-date-open aria-expanded="${Boolean(editor.calendarOpen)}" aria-controls="payoutDateCalendar" ${payoutSaving ? "disabled" : ""}>${esc(dateLabel(editor.paidOn))}</button>
+              </div>
+              ${fieldRevealHTML({
+                key:`payoutDateReveal-${kind}`,
+                open:Boolean(editor.calendarOpen),
+                className:"payout-calendar-reveal payout-motion-reveal",
+                body:`<div class="payout-date-calendar" id="payoutDateCalendar" role="region" aria-label="Выбор даты выплаты">${inlineCalendarHTML({
+                  cursor:editor.calendarCursor || editor.paidOn.slice(0,7),
+                  selected:editor.paidOn,
+                  jumpOpen:Boolean(editor.calendarJumpOpen),
+                  jumpYear:editor.calendarJumpYear || Number(editor.paidOn.slice(0,4)),
+                  prefix:"payout-date"
+                })}</div>`
+              })}
+            </div>
+            <label class="payout-field">
+              <span>Комментарий</span>
+              <input id="payoutComment" class="payout-field-input" type="text" maxlength="500" autocomplete="off" enterkeyhint="done" value="${esc(editor.comment)}" placeholder="Необязательно" ${payoutSaving ? "disabled" : ""}>
+            </label>
+            <div class="payout-editor-actions">
+              <button type="button" class="btn" data-payout-cancel ${payoutSaving ? "disabled" : ""}>Отмена</button>
+              <button type="button" class="btn primary" data-payout-save ${payoutSaving ? "disabled" : ""}>${payoutSaving ? "Сохраняется…" : "Сохранить"}</button>
+            </div>
+          </div>
+  ` : "";
+  const actions=isAdmin && employee ? `
+    ${fieldRevealHTML({
+      key:`payoutActionReveal-${kind}`,
+      open:!editor || editor.open===false,
+      className:"payout-action-reveal payout-motion-reveal",
+      body:`<button type="button" class="btn payout-add" data-payout-add="${kind}" aria-expanded="${Boolean(editor && editor.open!==false)}" ${payoutSaving ? "disabled" : ""}>
+        ${progress.paid ? "Добавить часть выплаты" : "Отметить выплату"}
+      </button>`
+    })}
+    ${fieldRevealHTML({
+      key:`payoutEditorReveal-${kind}`,
+      open:Boolean(editor && editor.open!==false),
+      body:form,
+      className:"payout-editor-reveal payout-motion-reveal"
+    })}
+    ${payoutPeriodNoteHTML(kind,employee)}
+  ` : "";
   return `
     <div class="payout-expanded">
       <div class="payout-breakdown">
         <div class="payout-detail-title">Из чего сформирована сумма</div>
         <div class="payout-source-list">${payoutSourceRows(statsShifts,kind)}</div>
       </div>
-      <div class="payout-progress">
+      <div class="payout-progress ${progress.advance ? "payout-progress-advance" : ""}">
         <span>${payoutRemainderLabel(progress)}</span>
         <strong>${payoutRemainderValue(progress)}</strong>
       </div>
@@ -2604,40 +2723,14 @@ function payoutExpandedHTML({kind,due,employee,statsShifts}){
         <div class="payout-history">
           ${records.map(record=>`
             <div class="payout-record">
-              <div><strong>${esc(dateLabel(record.paid_on))}</strong>${record.comment ? `<small>${esc(record.comment)}</small>` : ""}</div>
+              <div><strong>${record.is_advance ? "Аванс · " : ""}${esc(dateLabel(record.paid_on))}</strong>${record.comment ? `<small>${esc(record.comment)}</small>` : ""}</div>
               <b>${money(record.amount)}</b>
-              ${isAdmin ? `<button type="button" data-payout-delete="${esc(record.id)}" aria-label="Удалить запись выплаты">×</button>` : ""}
+              ${isAdmin ? `<div class="payout-record-actions"><button type="button" data-payout-edit="${esc(record.id)}" aria-label="Изменить запись выплаты" title="Изменить запись"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg></button><button type="button" data-payout-delete="${esc(record.id)}" aria-label="Удалить запись выплаты" title="Удалить запись"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/></svg></button></div>` : ""}
             </div>
           `).join("")}
         </div>
       ` : ""}
-      ${isAdmin && employee ? `
-        ${editor ? `
-          <div class="payout-editor">
-            <label class="payout-field">
-              <span>Сумма</span>
-              <input id="payoutAmount" class="payout-field-input amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="${esc(editor.amount)}">
-            </label>
-            <div class="payout-field">
-              <span>Дата выплаты</span>
-              <button type="button" class="payout-field-input payout-date" data-payout-date-open>${esc(dateLabel(editor.paidOn))}</button>
-            </div>
-            <label class="payout-field">
-              <span>Комментарий</span>
-              <input id="payoutComment" class="payout-field-input" type="text" maxlength="500" autocomplete="off" enterkeyhint="done" value="${esc(editor.comment)}" placeholder="Необязательно">
-            </label>
-            <div class="payout-editor-actions">
-              <button type="button" class="btn" data-payout-cancel>Отмена</button>
-              <button type="button" class="btn primary" data-payout-save ${payoutSaving ? "disabled" : ""}>Сохранить</button>
-            </div>
-          </div>
-        ` : `
-          <button type="button" class="btn payout-add" data-payout-add="${kind}" ${progress.remaining<=0 ? "disabled" : ""}>
-            ${progress.paid ? "Добавить часть выплаты" : "Отметить выплату"}
-          </button>
-        `}
-        ${payoutPeriodNoteHTML(kind,employee)}
-      ` : ""}
+      ${actions}
     </div>
   `;
 }
@@ -2783,6 +2876,7 @@ function payrollReviewShifts(kind){
     )
     .map(shift=>{
       const result=calc(shift);
+      const current=currentTariffState(shift);
 
       return {
         id:shift.id,
@@ -2794,8 +2888,9 @@ function payrollReviewShifts(kind){
         base:result.base,
         tariffBase:result.calculatedBase,
         manual:Boolean(shift.baseOverrideReason),
+        currentTariffError:current.error,
         diverged:Boolean(
-          tariffDivergesFromSnapshot(shift)
+          tariffDivergesFromSnapshot(shift,current)
         )
       };
     });
@@ -3029,16 +3124,22 @@ function eventMoment(value){
   нет: смены перенесли, а выплата осталась.
 */
 function payrollReportRows(kind,state){
-  return state.entries.map(entry=>({
+  return reportEntries({
+    entries:state.entries,
+    snapshot:state.snapshot,
+    closed:state.closed
+  }).map(entry=>({
     ...entry,
+    employeeName:entry.employeeName || teamData.employees.find(employee=>employee.id===entry.employeeId)?.full_name || "Сотрудник",
+    paid:payoutRecords(entry.employeeId,kind).reduce((sum,item)=>sum+(Number(item.amount) || 0),0),
+    payoutRecords:payoutRecords(entry.employeeId,kind).map(({amount,is_advance})=>({amount,is_advance})),
     /* Сколько за этого человека было заморожено закрытием. */
     snapshotDue:state.closed
       ? snapshotDueFor(state,entry.employeeId)
       : null,
     detail:reportDetail(
       entry.employeeId,
-      kind,
-      entry.detail?.shifts || []
+      kind
     ),
     corrections:correctionsFor(entry.employeeId,kind)
   }));
@@ -3055,92 +3156,30 @@ function snapshotDueFor(state,employeeId){
 
 /* Ручные корректировки смен периода — тем же признаком, что и везде. */
 function correctionsFor(employeeId,kind){
-  return inMonth(cursor,shifts)
-    .filter(shift=>
-      shift.employeeId===employeeId &&
-      periodKindForDate(shift.date)===kind &&
-      shift.baseOverrideReason
-    )
-    .reduce((sum,shift)=>{
-      const result=calc(shift);
-
-      return sum+(
-        result.base-result.calculatedBase
-      );
-    },0);
+  return reportCorrections({
+    ym:cursor,
+    kind,
+    shifts:shifts.filter(shift=>shift.employeeId===employeeId)
+  });
 }
 
 /*
   Подробности для одного сотрудника: смены с источником ставки, премии,
   штрафы и настоящие записи выплат, а не одна свёрнутая цифра.
 */
-function reportDetail(employeeId,kind,snapshotShifts){
-  const own=inMonth(cursor,shifts).filter(shift=>
-    shift.employeeId===employeeId &&
-    periodKindForDate(shift.date)===kind
-  );
-
-  const rows=own.length
-    ? own.map(shift=>{
-        const result=calc(shift);
-
-        return {
-          dateLabel:shortDateLabel(shift.date),
-          point:shift.point,
-          typeLabel:
-            shift.type==="extra"
-              ? "Доп"
-              : shift.partial
-                ? hoursWord(result.hours)
-                : "Основная",
-          rate:Number(shift.pricing?.rate) || 0,
-          rateSource:
-            shift.pricing?.rateSource==="employee"
-              ? "employee"
-              : "point",
-          base:result.base,
-          manual:Boolean(shift.baseOverrideReason)
-        };
-      })
-    : snapshotShifts.map(shift=>({
-        dateLabel:shortDateLabel(shift.date),
-        point:shift.point,
-        typeLabel:shift.type==="extra" ? "Доп" : "Основная",
-        rate:shift.rate,
-        rateSource:shift.rateSource,
-        base:shift.base,
-        manual:shift.manual
-      }));
-
-  const bonuses=[];
-  const fines=[];
-
-  for(const shift of own){
-    for(const item of shift.bonuses || []){
-      bonuses.push({
-        label:`${shortDateLabel(shift.date)} · ${
-          item.comment || "премия"
-        }`,
-        amount:Number(item.amount) || 0
-      });
-    }
-
-    for(const item of shift.penalties || []){
-      fines.push({
-        label:`${shortDateLabel(shift.date)} · ${
-          item.comment || "штраф"
-        }`,
-        amount:Number(item.amount) || 0
-      });
-    }
-  }
+function reportDetail(employeeId,kind){
+  const detail=periodReportDetail({
+    ym:cursor,
+    kind,
+    shifts:shifts.filter(shift=>shift.employeeId===employeeId),
+    shortDateLabel,
+    hoursWord
+  });
 
   return {
-    shifts:rows,
-    bonuses,
-    fines,
+    ...detail,
     payouts:payoutRecords(employeeId,kind).map(item=>({
-      label:`${dateLabel(item.paid_on)}${
+      label:`${item.is_advance ? "Аванс · " : ""}${dateLabel(item.paid_on)}${
         item.comment ? ` · ${item.comment}` : ""
       }`,
       amount:Number(item.amount) || 0
@@ -3221,6 +3260,14 @@ function payrollPeriodRowHTML(kind){
   const historyOpen=payrollHistoryOpen===kind;
   const events=payrollPeriodEvents(kind);
   const closed=state.closed;
+  const advancedEmployees=new Set(state.entries
+    .filter(entry=>payoutDisplayProgress(entry.due,payoutRecords(entry.employeeId,kind)).advance)
+    .map(entry=>entry.employeeId));
+  const unexpectedExcess=state.differences.rows.some(row=>
+    row.overpaid && !advancedEmployees.has(row.employeeId)
+  );
+  const advanceOnly=advancedEmployees.size>0 && !unexpectedExcess;
+  const excessLabel=advanceOnly ? "Сверх начисленного" : "Переплата";
 
   /*
     Период отметили выплаченным, а потом расчёт или сами выплаты
@@ -3236,7 +3283,7 @@ function payrollPeriodRowHTML(kind){
     state.status==="paid" &&
     Boolean(
       state.differences.underpaid ||
-      state.differences.overpaid
+      unexpectedExcess
     );
 
   const actions=[];
@@ -3356,7 +3403,7 @@ function payrollPeriodRowHTML(kind){
                 gap?.underpaid
                   ? ` · <span class="neg">недоплата ${money(gap.underpaid)}</span>`
                   : gap?.overpaid
-                    ? ` · <span class="over">переплата ${money(gap.overpaid)}</span>`
+                    ? ` · <span class="over">${advancedEmployees.has(entry.employeeId) ? "выдано вперёд" : "переплата"} ${money(gap.overpaid)}</span>`
                     : ""
               }
             </span>
@@ -3406,8 +3453,8 @@ function payrollPeriodRowHTML(kind){
                     </span>
                   ` : ""}
                   ${state.differences.overpaid ? `
-                    <span class="payroll-gap overpaid">
-                      Переплата ${money(state.differences.overpaid)}
+                    <span class="payroll-gap ${advanceOnly ? "advance" : "overpaid"}">
+                      ${excessLabel} ${money(state.differences.overpaid)}
                     </span>
                   ` : ""}
                 </div>
@@ -3497,7 +3544,7 @@ function payrollPeriodRowHTML(kind){
                 </div>
               ` : ""}
 
-              ${state.totals.employees ? `
+              ${state.totals.employees || (state.closed && state.snapshot.length) ? `
                 <div class="payroll-report-actions">
                   <button
                     type="button"
@@ -4190,6 +4237,7 @@ async function applyRecalc(){
   самом деле.
 */
 function payoutSummaryAmount(progress,due){
+  if(progress.advance) return money(progress.paid);
   if(progress.paid>0 && !progress.complete){
     return progress.due>0
       ? `${nf(progress.paid)} из ${money(progress.due)}`
@@ -4200,7 +4248,7 @@ function payoutSummaryAmount(progress,due){
 }
 
 function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
-  const progress=paymentProgress(due,payoutRecords(employee?.id,kind));
+  const progress=payoutDisplayProgress(due,payoutRecords(employee?.id,kind));
   const open=expandedPayoutKind===kind;
   return `
     <div class="payout-block ${open ? "open" : ""}">
@@ -4238,67 +4286,136 @@ function currentStatsPayoutContext(kind){
   };
 }
 
+function closePayoutEditor({restoreFocus=false}={}){
+  const closing=payoutEditor;
+  if(!closing || closing.open===false) return;
+  const finish=()=>{
+    if(payoutEditor!==closing || closing.open!==false) return;
+    payoutEditor=null;
+    render();
+    if(restoreFocus && tab==="stats" && expandedPayoutKind===closing.kind &&
+       statsEmployeeId===closing.employeeId && `${cursor}-01`===closing.periodMonth &&
+       !typingTarget(document.activeElement)){
+      app.querySelector(`[data-payout-add="${closing.kind}"]`)?.focus({preventScroll:true});
+    }
+  };
+  closing.open=false;
+  closing.calendarOpen=false;
+  if(prefersReducedMotion()){
+    finish();
+  }else{
+    render();
+    window.setTimeout(finish,REVEAL_DURATION);
+  }
+}
+
+function updatePayoutCalendar(change,direction=0){
+  if(!payoutEditor || payoutEditor.open===false || payoutSaving) return;
+  change(payoutEditor);
+  render();
+  if(!prefersReducedMotion()){
+    const grid=app.querySelector('.payout-date-calendar .date-grid, .payout-date-calendar .date-jump-months');
+    if(grid && typeof grid.animate==="function"){
+      grid.getAnimations().forEach(animation=>animation.cancel());
+      grid.animate([
+        {opacity:0,transform:`translate3d(${direction*10}px,0,0)`},
+        {opacity:1,transform:"translate3d(0,0,0)"}
+      ],{duration:180,easing:"cubic-bezier(.22,.72,.22,1)"});
+    }
+  }
+}
+
+function stepPayoutCalendar(direction){
+  if(!payoutEditor?.calendarOpen) return;
+  updatePayoutCalendar(editor=>{
+    if(editor.calendarJumpOpen){
+      editor.calendarJumpYear=Math.max(MIN_YEAR,Math.min(MAX_YEAR,(editor.calendarJumpYear || Number(editor.paidOn.slice(0,4)))+direction));
+    }else{
+      editor.calendarCursor=shiftMonth(editor.calendarCursor || editor.paidOn.slice(0,7),direction);
+    }
+  },direction);
+}
+
+function selectPayoutDate(value){
+  if(!payoutEditor || payoutEditor.open===false || payoutSaving || !isValidDateString(value)) return;
+  payoutEditor.paidOn=value;
+  payoutEditor.calendarOpen=false;
+  payoutEditor.calendarJumpOpen=false;
+  render();
+  app.querySelector('[data-payout-date-open]')?.focus({preventScroll:true});
+}
+
 async function persistPayout(){
-  if(!payoutEditor || payoutSaving) return;
-  const context=currentStatsPayoutContext(payoutEditor.kind);
-  if(!context) return;
-  const amount=Number(String(payoutEditor.amount).trim().replace(",","."));
+  if(!payoutEditor || payoutEditor.open===false || payoutSaving) return;
+  // Данные фиксируются до первого ожидания: выбор человека или месяца
+  // во время подтверждения не меняет адрес уже начатой записи.
+  const editing=payoutEditor;
+  const editor={...editing};
+  const periodMonth=editor.periodMonth;
+  const context=currentStatsPayoutContext(editor.kind);
+  if(!context || editor.employeeId!==context.employee.id || periodMonth!==`${cursor}-01`){
+    payoutEditor=null;
+    render();
+    return;
+  }
+  const amount=Number(String(editor.amount).trim().replace(",","."));
   if(!Number.isFinite(amount) || amount<=0){
     toast("Введите сумму выплаты больше 0");
     return;
   }
-  /* Деньги — в копейках: третий знак сервер не примет, а не округлит. */
   if(roundMoney(amount)!==amount){
     toast("Сумма выплаты — не больше двух знаков после запятой");
     return;
   }
-  const progress=paymentProgress(
-    context.due,
-    payoutRecords(
-      context.employee.id,
-      payoutEditor.kind
-    )
-  );
-  if(amount>roundMoney(progress.remaining)){
-    toast(
-      `Осталось выплатить ${money(progress.remaining)}`
-    );
+  const records=payoutRecords(context.employee.id,editor.kind);
+  const previous=records.find(record=>record.id===editor.id);
+  const otherPaid=paymentProgress(0,records.filter(record=>record.id!==editor.id)).paid;
+  const remaining=roundMoney(Math.max(0,context.due-otherPaid));
+  const allowed=previous && !previous.is_advance
+    ? Math.max(remaining,Number(previous.amount))
+    : remaining;
+  if(!editor.isAdvance && amount>allowed){
+    toast(`Осталось выплатить ${money(remaining)}. Для выдачи вперёд выберите «Аванс».`);
     return;
   }
-  if(!isValidDateString(payoutEditor.paidOn)){
+  if(!isValidDateString(editor.paidOn)){
     toast("Выберите дату выплаты");
     return;
   }
   payoutSaving=true;
+  editing.calendarOpen=false;
   render();
   try{
+    if(editor.isAdvance && amount>remaining){
+      const confirmed=await appConfirm("Записать выданный аванс?",{
+        detail:`${context.employee.full_name}: выдано ${money(amount)}. Сверх начисленного за выбранный период — ${money(roundMoney(amount-remaining))}. Записывайте только деньги, которые уже выдали.`,
+        okText:"Записать аванс"
+      });
+      if(!confirmed) return;
+    }
     const stored=await withClosedPeriodConfirm(
-      "Записать выплату",
+      editor.isAdvance ? "Записать аванс" : "Записать выплату",
       force=>saveAdminPayout({
+        id:editor.id || null,
         employeeId:context.employee.id,
-        periodMonth:`${cursor}-01`,
-        payoutKind:payoutEditor.kind,
+        periodMonth,
+        payoutKind:editor.kind,
         amount,
-        paidOn:payoutEditor.paidOn,
-        comment:payoutEditor.comment,
+        paidOn:editor.paidOn,
+        comment:editor.comment,
+        isAdvance:editor.isAdvance,
         force
       })
     );
-
-    if(stored===PERIOD_CHANGE_DECLINED){
-      payoutSaving=false;
-      render();
-      return;
-    }
-    payoutEditor=null;
+    if(stored===PERIOD_CHANGE_DECLINED) return;
+    if(payoutEditor===editing) closePayoutEditor();
     await refreshTeamData({renderAfter:false});
-    render();
-    toast("Выплата сохранена");
+    toast(editor.isAdvance ? "Аванс сохранён" : "Выплата сохранена");
   }catch(error){
     toast(error instanceof Error ? error.message : "Не удалось сохранить выплату",4200);
-    render();
   }finally{
     payoutSaving=false;
+    render();
   }
 }
 
@@ -4515,6 +4632,13 @@ function viewStats(){
         ) || null
       : teamData.employee;
 
+  if(payoutEditor && (
+    payoutEditor.employeeId!==selectedEmployee?.id ||
+    payoutEditor.periodMonth!==`${cursor}-01`
+  )){
+    payoutEditor=null;
+  }
+
   const statsShifts=
     selectedEmployee
       ? shifts.filter(
@@ -4703,12 +4827,12 @@ function viewStats(){
 
   const payment25Lines=[
     paymentBaseLine(
-      "Авансные ПВЗ",
+      "ПВЗ с лимитом первой выплаты",
       payout.specialAdvance
     ),
 
     paymentBaseLine(
-      "Остальные ПВЗ",
+      "ПВЗ без лимита первой выплаты",
       payout.regularFirstBase
     ),
 
@@ -4723,17 +4847,17 @@ function viewStats(){
 
   const payment10Lines=[
     paymentBaseLine(
-      "Авансные ПВЗ",
+      "ПВЗ с лимитом первой выплаты",
       payout.specialSecondHalfBase
     ),
 
     paymentBaseLine(
-      "Перенос сверх лимита аванса",
+      "Начисления сверх лимита первой выплаты",
       payout.specialCarry
     ),
 
     paymentBaseLine(
-      "Остальные ПВЗ",
+      "ПВЗ без лимита первой выплаты",
       payout.regularSecondBase
     ),
 
@@ -10541,6 +10665,10 @@ function shiftDraftChanged(){
 }
 
 async function requestCloseShiftSheet(){
+  if(shiftSaveInProgress){
+    return;
+  }
+
   if(!draft){
     closeSheet();
     return;
@@ -12148,32 +12276,47 @@ function currentTariffFor(value){
   }
 }
 
+/* Снимок сохраняет деньги, а текущий тариф может оказаться неприменимым. */
+function currentTariffState(value){
+  const tariff=currentTariffFor(value);
+
+  if(!tariff){
+    return {
+      tariff:null,
+      error:"На дату смены нет применимого тарифа. Проверьте тариф ПВЗ и индивидуальную ставку сотрудника."
+    };
+  }
+
+  try{
+    return {
+      tariff,
+      rate:Number(rateForTariff(tariff,value.shk)),
+      error:null
+    };
+  }catch(error){
+    return {
+      tariff,
+      error:error instanceof Error
+        ? error.message
+        : "Проверьте условия тарифа ПВЗ."
+    };
+  }
+}
+
 /*
   Расхождение считается по ставке, а не только по идентификатору тарифа:
   администратор может изменить ставку существующего тарифа на месте —
   идентификатор тогда прежний, а деньги другие.
 */
-function tariffDivergesFromSnapshot(value){
+function tariffDivergesFromSnapshot(value,current=currentTariffState(value)){
   const pricing=value?.pricing;
-  const current=currentTariffFor(value);
 
-  if(!pricing?.rate || !current){
+  if(!pricing?.rate || current.error){
     return null;
   }
 
-  let rate;
-
-  try{
-    /* Та же функция, что считает ставку при сохранении смены. */
-    rate=Number(
-      rateForTariff(current,value.shk)
-    );
-  }catch{
-    return null;
-  }
-
-  return rate!==Number(pricing.rate)
-    ? current
+  return current.rate!==Number(pricing.rate)
+    ? current.tariff
     : null;
 }
 
@@ -12190,7 +12333,23 @@ function canRepriceShift(value){
 }
 
 function tariffDivergenceHTML(value){
-  const current=tariffDivergesFromSnapshot(value);
+  /* Сотрудник получает сохранённый снимок, а текущие тарифы ему не читаются. */
+  if(!isAdmin){
+    return "";
+  }
+
+  const state=currentTariffState(value);
+
+  if(state.error){
+    return `
+      <div class="note shift-tariff-note">
+        Не удаётся рассчитать по текущему тарифу. ${esc(state.error)}
+        Сохранённая сумма не изменена.
+      </div>
+    `;
+  }
+
+  const current=tariffDivergesFromSnapshot(value,state);
 
   if(!current){
     return "";
@@ -12986,7 +13145,14 @@ function changeMonth(
   }
 
   monthTransitionRunning=true;
+  document.documentElement.dataset.monthMotion=
+    direction>0 ? "next" : "prev";
 
+  /*
+    Внутренние переходы цветов отключены только на время движения месяца:
+    переиспользованные ячейки «Контроля» иначе перерисовываются сотнями
+    отдельных анимаций одновременно со сдвигом всего экрана.
+  */
   const oldApp=
     makeMonthTransitionGhost(
       app,
@@ -13131,6 +13297,7 @@ function changeMonth(
           "opacity"
         );
 
+        delete document.documentElement.dataset.monthMotion;
         monthTransitionRunning=false;
         flushPendingMonthWheel();
         runPendingNavigation();
@@ -13153,6 +13320,7 @@ function changeMonth(
       "opacity"
     );
 
+    delete document.documentElement.dataset.monthMotion;
     monthTransitionRunning=false;
     flushPendingMonthWheel();
     runPendingNavigation();
@@ -13733,7 +13901,7 @@ function monthSwipeStartBlocked(target){
 
   return Boolean(
     target.closest(
-      "input,textarea,select,a,button:not(.sh)"
+      "input,textarea,select,a,button:not(.sh),.payout-date-calendar"
     )
   );
 }
@@ -14145,7 +14313,8 @@ monthSwipeArea.addEventListener(
   event=>{
     if(
       !["shifts","stats"].includes(tab) ||
-      activeModal()
+      activeModal() ||
+      event.target.closest?.('.payout-date-calendar')
     ){
       /*
         Экран сменился посреди жеста — жест на этом и заканчивается, а не
@@ -15716,8 +15885,10 @@ bindBottomSheetDismiss({
   }
 });
 
+let shiftSaveInProgress=false;
+
 document.getElementById("sheetSave").onclick=async()=>{
-  if(!isAdmin){
+  if(!isAdmin || shiftSaveInProgress){
     return;
   }
 
@@ -15734,69 +15905,70 @@ document.getElementById("sheetSave").onclick=async()=>{
 
   readForm();
 
-  const chosen=
-    multiDateMode()
-      ? draftDates(draft)
-      : [draft.date];
+  const snapshot=cloneShiftDraft(draft);
+  const chosen=multiDateMode()
+    ? draftDates(snapshot)
+    : [snapshot.date];
 
-  /*
-    Каждая дата проверяется отдельно: тариф ПВЗ у них может быть разным,
-    и дата без тарифа должна остановить сохранение до того, как часть
-    смен уже создана.
-  */
   for(const date of chosen){
-    const error=validateDraft({
-      ...draft,
-      date
-    });
+    const error=validateDraft({...snapshot,date});
 
     if(error){
       showValidationError(
         chosen.length>1
-          ? {
-              ...error,
-              message:`${dateLabel(date)}: ${error.message}`
-            }
+          ? {...error,message:`${dateLabel(date)}: ${error.message}`}
           : error
       );
-
       return;
     }
   }
 
-  const dates=
-    await datesToCreate(chosen);
+  /*
+    Вся операция, включая идентификаторы, премии и штрафы, отделяется от
+    формы до первого ожидания подтверждения или ответа сервера.
+  */
+  const prepared=chosen.map((date,index)=>normalizedDraft({
+    ...snapshot,
+    id:index ? createTeamId() : snapshot.id,
+    date,
+    bonuses:snapshot.bonuses.map(item=>({...item,id:createTeamId()})),
+    penalties:snapshot.penalties.map(item=>({...item,id:createTeamId()}))
+  }));
+  const body=document.getElementById("sheetBody");
+  const cancel=document.getElementById("sheetCancel");
+  shiftSaveInProgress=true;
+  button.disabled=true;
+  cancel.disabled=true;
+  body.inert=true;
 
-  if(!dates.length){
-    return;
+  let payloads=[];
+  let created=0;
+
+  function keepRemaining(){
+    const remaining=payloads.slice(created);
+    if(!remaining.length){
+      return;
+    }
+
+    draft=cloneShiftDraft(snapshot);
+    draft.id=remaining[0].id;
+    draft.date=remaining[0].date;
+    draft.dates=remaining.map(item=>item.date);
+    resetShiftInline();
+    drawSheet(shiftSheetMode==="edit");
+    saveUIState();
   }
 
-  button.disabled=true;
-
-  let created=0;
-  let declined=false;
-
   try{
-    for(const date of dates){
-      /*
-        Каждая смена получает свой идентификатор — и сама, и её премии
-        со штрафами: общий идентификатор на две записи сервер принял бы
-        за одну и ту же.
-      */
-      const payload=normalizedDraft({
-        ...draft,
-        id:created ? createTeamId() : draft.id,
-        date,
-        bonuses:draft.bonuses.map(item=>({
-          ...item,
-          id:createTeamId()
-        })),
-        penalties:draft.penalties.map(item=>({
-          ...item,
-          id:createTeamId()
-        }))
-      });
+    const dates=await datesToCreate(chosen,snapshot);
+    payloads=prepared.filter(item=>dates.includes(item.date));
 
+    if(!payloads.length){
+      return;
+    }
+
+    let declined=false;
+    for(const payload of payloads){
       const saved=await withClosedPeriodConfirm(
         "Сохранить смену",
         force=>saveAdminShift(payload,{force})
@@ -15810,69 +15982,49 @@ document.getElementById("sheetSave").onclick=async()=>{
       created+=1;
     }
 
-    /*
-      Человек отказался менять закрытый период: лист остаётся открытым с
-      набранным, кнопка снова доступна. Уже сохранённое из пачки при
-      этом никуда не девается.
-    */
-    if(declined && !created){
-      button.disabled=false;
+    if(created){
+      await refreshTeamData({renderAfter:false});
+    }
+
+    if(declined){
+      keepRemaining();
+      render();
+      toast(
+        `Сохранено ${created} из ${payloads.length}. Остальные даты оставлены в форме.`,
+        4400
+      );
       return;
     }
 
-    await refreshTeamData({
-      renderAfter:false
-    });
-
-    cursor=dates[0].slice(0,7);
-
-    /*
-      Смены заведены — выбор дней, из которого их, возможно, заводили,
-      своё отработал. Оставленный, он висел бы над уже другими днями.
-    */
+    cursor=payloads[0].date.slice(0,7);
     resetCalendarPick();
     closeSheet();
     render();
-
-    toast(
-      dates.length>1
-        ? `Создано ${shiftsWord(dates.length)}`
-        : "Смена сохранена"
-    );
+    toast(created>1 ? `Создано ${shiftsWord(created)}` : "Смена сохранена");
   }catch(error){
-    console.error(
-      "Не удалось сохранить смену:",
-      error
-    );
+    console.error("Не удалось сохранить смену:",error);
 
-    /*
-      Часть смен могла уже сохраниться: человеку нужно знать сколько,
-      иначе он повторит целиком и заведёт дубли.
-    */
     if(created){
-      await refreshTeamData({
-        renderAfter:false
-      });
-
+      await refreshTeamData({renderAfter:false});
+      keepRemaining();
       render();
     }
 
     toast(
       created
-        ? `Создано ${created} из ${dates.length}. ${
-            error instanceof Error
-              ? error.message
-              : "Остальные не сохранены"
+        ? `Сохранено ${created} из ${payloads.length}. Остальные даты оставлены в форме. ${
+            error instanceof Error ? error.message : "Остальные не сохранены"
           }`
         : navigator.onLine
-          ? error instanceof Error
-            ? error.message
-            : "Не удалось сохранить смену"
+          ? error instanceof Error ? error.message : "Не удалось сохранить смену"
           : "Нет подключения. Смена не сохранена.",
       4400
     );
   }finally{
+    shiftSaveInProgress=false;
     button.disabled=false;
+    cancel.disabled=false;
+    body.inert=false;
   }
 };
 
@@ -15882,13 +16034,13 @@ document.getElementById("sheetSave").onclick=async()=>{
   Но основная и дополнительная смена в один день — обычное дело, поэтому
   осознанный дубль остаётся возможным, когда свободных дат не осталось.
 */
-async function datesToCreate(chosen){
+async function datesToCreate(chosen,value=draft){
   const taken=chosen.filter(date=>
     shifts.some(item=>
-      item.employeeId===draft.employeeId &&
-      item.type===draft.type &&
+      item.employeeId===value.employeeId &&
+      item.type===value.type &&
       item.date===date &&
-      item.id!==draft.id
+      item.id!==value.id
     )
   );
 
@@ -16643,6 +16795,77 @@ document
 */
 const inlineDateWheel=
   createWheelGesture({distance:42});
+
+/* Жесты даты выплаты не должны перелистывать расчётный месяц под формой. */
+const payoutDateWheel=createWheelGesture({distance:42});
+let payoutDateTouch=null;
+let suppressPayoutDateClickUntil=0;
+
+function payoutCalendarGrid(target){
+  return target?.closest?.('.payout-date-calendar .date-grid');
+}
+
+function payoutCalendarInteractive(){
+  return payoutEditor?.calendarOpen && payoutEditor.open!==false && !payoutSaving;
+}
+
+app.addEventListener('wheel',event=>{
+  if(!payoutCalendarGrid(event.target) || !payoutCalendarInteractive()){
+    payoutDateWheel.cancel();
+    return;
+  }
+  const {direction,claim}=payoutDateWheel.push({
+    deltaX:event.deltaX,deltaY:event.deltaY,now:performance.now()
+  });
+  event.stopPropagation();
+  if(!claim) return;
+  if(event.cancelable) event.preventDefault();
+  if(direction) stepPayoutCalendar(direction);
+},{passive:false});
+
+app.addEventListener('touchstart',event=>{
+  payoutDateTouch=null;
+  if(event.touches.length!==1 || !payoutCalendarGrid(event.target) || !payoutCalendarInteractive()) return;
+  const touch=event.touches[0];
+  payoutDateTouch={id:touch.identifier,x:touch.clientX,y:touch.clientY,axis:null,editor:payoutEditor};
+},{passive:true});
+
+app.addEventListener('touchmove',event=>{
+  const gesture=payoutDateTouch;
+  if(!gesture || gesture.editor!==payoutEditor || !payoutCalendarInteractive() || event.touches.length!==1){
+    payoutDateTouch=null;
+    return;
+  }
+  const touch=findTouch(event.touches,gesture.id);
+  if(!touch) return;
+  const dx=touch.clientX-gesture.x,dy=touch.clientY-gesture.y;
+  if(gesture.axis===null){
+    if(Math.abs(dy)>=14 && Math.abs(dy)>Math.abs(dx)*1.2) gesture.axis='y';
+    else if(Math.abs(dx)>=44 && Math.abs(dx)>Math.abs(dy)*1.2){
+      gesture.axis='x';
+      suppressPayoutDateClickUntil=performance.now()+500;
+      stepPayoutCalendar(dx>0 ? -1 : 1);
+    }
+  }
+  if(gesture.axis==='x'){
+    if(event.cancelable) event.preventDefault();
+    event.stopPropagation();
+  }
+},{passive:false});
+
+for(const type of ['touchend','touchcancel']){
+  app.addEventListener(type,()=>{
+    if(payoutDateTouch?.axis==='x') suppressPayoutDateClickUntil=performance.now()+500;
+    payoutDateTouch=null;
+  },{passive:true});
+}
+
+app.addEventListener('click',event=>{
+  if(payoutCalendarGrid(event.target) && performance.now()<suppressPayoutDateClickUntil && event.detail!==0){
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+},true);
 
 function stepInlineDate(direction){
   if(!draft || shiftInlineField!=="date"){
@@ -17416,11 +17639,16 @@ app.addEventListener("click",async event=>{
   }
 
   if(button.dataset.payoutAdd){
+    if(payoutSaving || (payoutEditor && payoutEditor.open!==false)) return;
     const context=currentStatsPayoutContext(button.dataset.payoutAdd);
     if(context){
       const progress=paymentProgress(context.due,payoutRecords(context.employee.id,button.dataset.payoutAdd));
       payoutEditor={
         kind:button.dataset.payoutAdd,
+        employeeId:context.employee.id,
+        periodMonth:`${cursor}-01`,
+        open:true,
+        isAdvance:false,
         amount:String(progress.remaining || ""),
         paidOn:localYMD(),
         comment:""
@@ -17430,14 +17658,74 @@ app.addEventListener("click",async event=>{
     return;
   }
 
+  if(button.dataset.payoutEdit){
+    if(payoutSaving) return;
+    const record=(teamData.payouts || []).find(item=>item.id===button.dataset.payoutEdit);
+    if(record){
+      payoutEditor={
+        id:record.id,
+        employeeId:record.employee_id,
+        periodMonth:record.period_month,
+        kind:record.payout_kind,
+        open:true,
+        isAdvance:Boolean(record.is_advance),
+        amount:String(record.amount),
+        paidOn:record.paid_on,
+        comment:record.comment || ""
+      };
+      render();
+    }
+    return;
+  }
+
+  if(button.dataset.payoutMode){
+    if(!payoutEditor || payoutEditor.open===false || payoutSaving) return;
+    payoutEditor.isAdvance=button.dataset.payoutMode==="advance";
+    render();
+    return;
+  }
+
   if(button.hasAttribute("data-payout-date-open")){
-    openDatePicker("payout");
+    if(!payoutEditor || payoutEditor.open===false || payoutSaving) return;
+    payoutEditor.calendarOpen=!payoutEditor.calendarOpen;
+    if(payoutEditor.calendarOpen){
+      payoutEditor.calendarCursor=payoutEditor.paidOn.slice(0,7);
+      payoutEditor.calendarJumpOpen=false;
+    }
+    render();
+    return;
+  }
+
+  if(button.closest('.payout-date-calendar')){
+    if(!payoutEditor?.calendarOpen || payoutEditor.open===false || payoutSaving) return;
+    if(button.dataset.date){
+      selectPayoutDate(button.dataset.date);
+    }else if(button.dataset.payoutDateStep){
+      stepPayoutCalendar(Number(button.dataset.payoutDateStep));
+    }else if(button.dataset.payoutDateJump){
+      updatePayoutCalendar(editor=>{
+        editor.calendarJumpOpen=!editor.calendarJumpOpen;
+        editor.calendarJumpYear=Number((editor.calendarCursor || editor.paidOn).slice(0,4));
+      });
+    }else if(button.dataset.payoutDateMonth){
+      updatePayoutCalendar(editor=>{
+        editor.calendarCursor=button.dataset.payoutDateMonth;
+        editor.calendarJumpOpen=false;
+      });
+    }else if(button.dataset.payoutDateCurrent){
+      updatePayoutCalendar(editor=>{
+        editor.calendarCursor=localYMD().slice(0,7);
+        editor.calendarJumpOpen=false;
+      });
+    }else if(button.dataset.payoutDateToday){
+      selectPayoutDate(localYMD());
+    }
     return;
   }
 
   if(button.hasAttribute("data-payout-cancel")){
-    payoutEditor=null;
-    render();
+    if(payoutSaving) return;
+    closePayoutEditor({restoreFocus:true});
     return;
   }
 

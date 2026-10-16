@@ -24,7 +24,7 @@
   — отказ при записи откладывает маршрут, и следующая попытка — уже самого
     человека — идёт другим путём.
 
-  Чтение буферизуется целиком внутри срока. Так замирание посреди тела
+  Ответы буферизуются целиком внутри срока. Так замирание посреди тела
   ответа, характерное для фильтрации Cloudflare, видно здесь, а не
   зависает где-то в разборе JSON.
 */
@@ -32,6 +32,8 @@
 const DEFAULTS=Object.freeze({
   /* Сколько ждать чтение целиком, прежде чем идти другим путём. */
   readTimeout:15000,
+  /* Включает получение всего ответа записи; повторять её нельзя. */
+  writeTimeout:30000,
   /* Сколько ждать ответа на проверку пути. */
   probeTimeout:6000,
   /* Фора первому пути при проверке, прежде чем стартует следующий. */
@@ -53,6 +55,15 @@ class NetworkRouteError extends TypeError{
   constructor(message="Failed to fetch"){
     super(message);
     this.name="NetworkRouteError";
+  }
+}
+
+export class WriteOutcomeUnknownError extends NetworkRouteError{
+  constructor(cause){
+    super("Результат сохранения неизвестен. Обновите данные перед повтором");
+    this.name="WriteOutcomeUnknownError";
+    this.code="write_outcome_unknown";
+    this.cause=cause;
   }
 }
 
@@ -348,6 +359,7 @@ export function createRouteFetch(options){
     if(typeof input==="object" && !(input instanceof URL)){
       requestInit={
         headers:input.headers,
+        signal:input.signal,
         body:method==="GET" || method==="HEAD"
           ? undefined
           : await input.clone().text(),
@@ -410,19 +422,36 @@ export function createRouteFetch(options){
     */
     const route=await ensureRoute();
 
-    const {response,failure}=await attempt(
-      rewrite(url,route),
-      requestInit,
-      0,
-      {buffer:false}
-    );
+    /* До отправки записи результат ещё не может быть неизвестным. */
+    requestInit.signal?.throwIfAborted();
 
-    if(response){
-      return response;
+    try{
+      const {response,failure}=await attempt(
+        rewrite(url,route),
+        requestInit,
+        Number.isFinite(settings.writeTimeout) && settings.writeTimeout>0
+          ? settings.writeTimeout
+          : DEFAULTS.writeTimeout,
+        {buffer:true}
+      );
+
+      if(response){
+        return response;
+      }
+
+      throw failure;
+    }catch(error){
+      /*
+        После отправки даже отмена не доказывает откат серверной записи.
+        Откладываем отказавший путь, но сам POST здесь не повторяем.
+        Отмена вызывающего не считается неисправностью маршрута.
+      */
+      if(!requestInit.signal?.aborted){
+        demote(route);
+      }
+
+      throw new WriteOutcomeUnknownError(error);
     }
-
-    demote(route);
-    throw failure;
   }
 
   return {

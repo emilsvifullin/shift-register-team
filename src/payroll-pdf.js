@@ -141,6 +141,9 @@ const STYLES=`
     font-weight:700;
   }
 
+  .balance-total{white-space:normal;}
+  .balance-total b{white-space:nowrap;}
+
   .person{
     margin-top:22px;
     padding-top:14px;
@@ -338,12 +341,14 @@ function tableHTML(report){
           <td>${totals.fine ? money(totals.fine) : "—"}</td>
           <td>${money(totals.accrued)}</td>
           <td>${money(totals.paid)}</td>
-          <td>${
-            totals.overpaid
-              ? `+${money(totals.overpaid)}`
-              : totals.unpaid
-                ? money(totals.unpaid)
-                : "—"
+          <td class="balance-total">${
+            totals.unpaid && totals.overpaid
+              ? `<span class="neg">Не выплачено <b>${money(totals.unpaid)}</b></span><br><span class="own">${report.hasAdvanceOverpayment ? "Сверх начисленного" : "Переплата"} <b>${money(totals.overpaid)}</b></span>`
+              : totals.overpaid
+                ? `+${money(totals.overpaid)}`
+                : totals.unpaid
+                  ? money(totals.unpaid)
+                  : "—"
           }</td>
         </tr>
       </tfoot>

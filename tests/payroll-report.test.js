@@ -406,3 +406,32 @@ test("the report distinguishes issued advances without hiding ordinary overpayme
   assert.equal(covered.lines[0].advance,false);
   assert.equal(covered.totals.unpaid,2000);
 });
+
+for(const isAdvance of [false,true]){
+  test(`итог остатка сохраняет недоплату другого сотрудника рядом с ${isAdvance ? "авансом" : "переплатой"}`,()=>{
+    const built=report([
+      row({employeeId:"underpaid",base:3000,bonus:0,fine:0,due:3000,paid:2000}),
+      row({employeeId:"overpaid",base:3000,bonus:0,fine:0,due:3000,paid:3500,
+        payoutRecords:[{amount:3500,is_advance:isAdvance}]})
+    ]);
+    const html=payrollReportDocument(built);
+    const footer=html.match(/<tfoot>[\s\S]*?<\/tfoot>/)[0];
+    const balance=[...footer.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].at(-1)[1];
+
+    assert.match(balance,/Не выплачено/);
+    assert.match(balance,/1 000 ₽/);
+    assert.match(balance,isAdvance ? /Сверх начисленного/ : /Переплата/);
+    assert.match(balance,/500 ₽/);
+    assert.equal(built.totals.unpaid,1000);
+    assert.equal(built.totals.overpaid,500);
+  });
+}
+
+test("одиночный итог остатка сохраняет прежний компактный вид",()=>{
+  for(const [paid,expected] of [[2000,"1 000 ₽"],[3500,"+500 ₽"],[3000,"—"]]){
+    const footer=payrollReportDocument(report([row({base:3000,bonus:0,fine:0,due:3000,paid})]))
+      .match(/<tfoot>[\s\S]*?<\/tfoot>/)[0];
+    const balance=[...footer.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].at(-1)[1];
+    assert.equal(balance.trim(),expected);
+  }
+});

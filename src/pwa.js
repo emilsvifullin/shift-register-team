@@ -137,7 +137,10 @@ export function installPwa({
       return;
     }
 
-    if(activating || allowed()){
+    // Activation can finish after the person returned and opened a draft.
+    // Recheck now rather than trusting the earlier activation decision.
+    activating=false;
+    if(allowed()){
       reload();
       return;
     }

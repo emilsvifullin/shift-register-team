@@ -3928,6 +3928,7 @@ function priceByCurrentRules(row){
 }
 
 function openRecalcSheet({title,pointId,employeeId,from}){
+  if(recalcSaving) return false;
   const rows=buildRecalcPlan({
     shifts:affectedShifts({
       pointId,
@@ -3968,6 +3969,7 @@ function openRecalcSheet({title,pointId,employeeId,from}){
 }
 
 function closeRecalcSheet(){
+  if(recalcSaving) return;
   const veil=document.getElementById("recalcVeil");
 
   recalcSheetElement.classList.remove("on");
@@ -4142,88 +4144,58 @@ function offerRecalcAfterRateChange(options){
 }
 
 async function applyRecalc(){
-  if(!recalcDraft || recalcSaving){
-    return;
-  }
+  if(!recalcDraft || recalcSaving) return;
 
-  const rows=recalcDraft.rows.filter(row=>
-    row.mode!=="skip"
-  );
-
-  if(!rows.length){
-    return;
-  }
+  const editing=recalcDraft;
+  const plan=structuredClone(editing);
+  const rows=plan.rows.filter(row=>row.mode!=="skip");
+  const sources=new Map(shifts.map(shift=>[shift.id,structuredClone(shift)]));
+  if(!rows.length) return;
 
   recalcSaving=true;
   drawRecalcSheet();
-
-  let done=0;
+  const releaseFields=lockEditorFields(recalcSheetElement);
+  const completed=new Set();
 
   try{
     for(const row of rows){
-      const shift=shifts.find(
-        item=>item.id===row.id
-      );
+      const shift=sources.get(row.id);
+      if(!shift) continue;
 
-      if(!shift){
-        continue;
-      }
-
-      if(row.mode==="apply"){
-        const result=await withClosedPeriodConfirm(
-          "Пересчитать смену",
-          force=>repriceAdminShift(row.id,{
-            force,
-            reason:recalcDraft.title
-          })
-        );
-
-        if(result===PERIOD_CHANGE_DECLINED){
-          continue;
-        }
-      }else{
-        const amount=resolvedAmount(row);
-
-        const result=await withClosedPeriodConfirm(
-          "Изменить сумму смены",
-          force=>saveAdminShift(
-            normalizedDraft({
+      const result=await withClosedPeriodConfirm(
+        row.mode==="apply" ? "Пересчитать смену" : "Изменить сумму смены",
+        force=>row.mode==="apply"
+          ? repriceAdminShift(row.id,{force,reason:plan.title})
+          : saveAdminShift(normalizedDraft({
               ...shift,
-              baseOverride:amount,
-              baseOverrideReason:recalcDraft.title
-            }),
-            {force,reason:recalcDraft.title}
-          )
-        );
-
-        if(result===PERIOD_CHANGE_DECLINED){
-          continue;
-        }
-      }
-
-      done+=1;
+              baseOverride:resolvedAmount(row),
+              baseOverrideReason:plan.title
+            }),{force,reason:plan.title})
+      );
+      if(result!==PERIOD_CHANGE_DECLINED) completed.add(row.id);
     }
 
     await refreshTeamData({renderAfter:false});
-
-    closeRecalcSheet();
-    render();
-
-    toast(
-      done
-        ? `Пересчитано ${shiftsWord(done)}`
-        : "Ничего не изменилось"
-    );
-  }catch(error){
     recalcSaving=false;
-    drawRecalcSheet();
-
-    toast(
-      error instanceof Error
-        ? error.message
-        : "Не удалось пересчитать смены",
-      4400
-    );
+    if(recalcDraft===editing) closeRecalcSheet();
+    render();
+    toast(completed.size ? `Пересчитано ${shiftsWord(completed.size)}` : "Ничего не изменилось");
+  }catch(error){
+    // Успешные записи уже существуют на сервере; не выдаём весь пакет
+    // за откат и не предлагаем повторить подтверждённые смены.
+    await refreshTeamData({renderAfter:false});
+    recalcSaving=false;
+    if(recalcDraft===editing){
+      editing.rows=editing.rows.filter(row=>!completed.has(row.id));
+      drawRecalcSheet();
+    }
+    render();
+    const message=error instanceof Error ? error.message : "Не удалось пересчитать смены";
+    toast(completed.size ? `Сохранено ${completed.size} из ${rows.length} смен. ${message}` : message,4400);
+  }finally{
+    recalcSaving=false;
+    releaseFields();
+    if(recalcDraft===editing) drawRecalcSheet();
   }
 }
 
@@ -7057,6 +7029,7 @@ function tariffBoxHTML(){
 }
 
 function openManageEditor(kind,id=null){
+  if(manageEditorSaving) return;
   if(!isAdmin){
     return;
   }
@@ -7195,7 +7168,21 @@ function cancelManageEditor(){
   manageEditorSheetElement.scrollTop=0;
 }
 
-function closeManageEditor(){
+/* Ожидающая запись владеет карточкой до ответа: закрытие и другой
+   черновик не должны менять её продолжение после await. */
+function lockEditorFields(sheet){
+  const controls=[...sheet.querySelectorAll("input,textarea,select,button")]
+    .map(control=>[control,control.disabled]);
+  sheet.setAttribute("aria-busy","true");
+  controls.forEach(([control])=>{control.disabled=true;});
+  return ()=>{
+    controls.forEach(([control,disabled])=>{control.disabled=disabled;});
+    sheet.removeAttribute("aria-busy");
+  };
+}
+
+function closeManageEditor({force=false}={}){
+  if(manageEditorSaving && !force) return;
   if(!manageEditorSheetElement.classList.contains("on")){
     return;
   }
@@ -7240,6 +7227,8 @@ async function saveManageEditor(){
 
   readManageEditor();
 
+  const editing=manageEditorDraft;
+  let releaseFields=()=>{};
   let tiers=null;
   const tariffSaved=
     !manageEditorDraft.isNew &&
@@ -7368,15 +7357,17 @@ async function saveManageEditor(){
       }
     }
 
+    const operation=structuredClone(editing);
     manageEditorSaving=true;
+    releaseFields=lockEditorFields(manageEditorSheetElement);
     document.getElementById("manageEditorSave").disabled=true;
 
     await saveAdminPoint({
-      id:manageEditorDraft.id,
-      name:manageEditorDraft.name,
+      id:operation.id,
+      name:operation.name,
       sortOrder:
         Number(
-          manageEditorDraft.point
+          operation.point
             ?.sort_order
         ) ||
         Math.max(
@@ -7387,52 +7378,52 @@ async function saveManageEditor(){
               0
           )
         )+1,
-      active:manageEditorDraft.active,
-      advanceEnabled:manageEditorDraft.advanceEnabled,
-      pricingType:manageEditorDraft.isNew
-        ? manageEditorDraft.pricingType
+      active:operation.active,
+      advanceEnabled:operation.advanceEnabled,
+      pricingType:operation.isNew
+        ? operation.pricingType
         : null,
-      fixedRate:manageEditorDraft.isNew && manageEditorDraft.pricingType==="fixed"
-        ? manageEditorDraft.fixedRate
+      fixedRate:operation.isNew && operation.pricingType==="fixed"
+        ? operation.fixedRate
         : null,
-      shkTiers:manageEditorDraft.isNew && manageEditorDraft.pricingType==="shk_tiers"
+      shkTiers:operation.isNew && operation.pricingType==="shk_tiers"
         ? tiers
         : null,
-      effectiveFrom:manageEditorDraft.isNew
-        ? manageEditorDraft.effectiveFrom
+      effectiveFrom:operation.isNew
+        ? operation.effectiveFrom
         : null
     });
 
     if(
-      !manageEditorDraft.isNew &&
-      manageEditorDraft.tariffOpen
+      !operation.isNew &&
+      operation.tariffOpen
     ){
       const payload={
-        effectiveFrom:manageEditorDraft.effectiveFrom,
-        pricingType:manageEditorDraft.pricingType,
-        fixedRate:manageEditorDraft.pricingType==="fixed"
-          ? manageEditorDraft.fixedRate
+        effectiveFrom:operation.effectiveFrom,
+        pricingType:operation.pricingType,
+        fixedRate:operation.pricingType==="fixed"
+          ? operation.fixedRate
           : null,
-        shkTiers:manageEditorDraft.pricingType==="shk_tiers"
+        shkTiers:operation.pricingType==="shk_tiers"
           ? tiers
           : null
       };
 
       if(tariffIntentUpdatesRecord(tariffIntent)){
         await updateAdminTariff({
-          id:manageEditorDraft
+          id:operation
             .tariffInlineEditId,
           ...payload
         });
       }else{
         await addAdminTariff({
-          pointId:manageEditorDraft.point.id,
+          pointId:operation.point.id,
           ...payload
         });
       }
     }
 
-    closeManageEditor();
+    if(manageEditorDraft===editing) closeManageEditor({force:true});
     await refreshTeamData();
     toast(
       tariffEdited
@@ -7452,6 +7443,7 @@ async function saveManageEditor(){
     );
   }finally{
     manageEditorSaving=false;
+    releaseFields();
     const button=document.getElementById("manageEditorSave");
     if(button) button.disabled=false;
   }
@@ -7558,6 +7550,10 @@ async function saveOpenTariff(){
     return;
   }
 
+  const editing=manageEditorDraft;
+  const pointId=editing.point.id;
+  const pointName=editing.point.name;
+  let releaseFields=()=>{};
   const intent=
     manageEditorDraft.tariffIntent;
 
@@ -7604,6 +7600,7 @@ async function saveOpenTariff(){
     }
 
     manageEditorSaving=true;
+    releaseFields=lockEditorFields(manageEditorSheetElement);
 
     if(updatesRecord){
       await updateAdminTariff({
@@ -7612,7 +7609,7 @@ async function saveOpenTariff(){
       });
     }else{
       await addAdminTariff({
-        pointId:manageEditorDraft.point.id,
+        pointId,
         ...payload
       });
     }
@@ -7625,12 +7622,13 @@ async function saveOpenTariff(){
       Карточка остаётся открытой, поэтому её черновик берёт свежий ПВЗ:
       иначе она показывала бы состояние до сохранения.
     */
-    manageEditorDraft.point=
+    if(manageEditorDraft!==editing) return;
+    editing.point=
       teamData.points.find(
         point=>
           point.id===
-          manageEditorDraft.id
-      ) || manageEditorDraft.point;
+          editing.id
+      ) || editing.point;
 
     closeTariffEditor();
     drawManageEditor();
@@ -7649,8 +7647,8 @@ async function saveOpenTariff(){
       должен видя весь список и разницу.
     */
     offerRecalcAfterRateChange({
-      title:`Новый тариф ПВЗ «${manageEditorDraft.point.name}» с ${shortDateLabel(payload.effectiveFrom)}`,
-      pointId:manageEditorDraft.point.id,
+      title:`Новый тариф ПВЗ «${pointName}» с ${shortDateLabel(payload.effectiveFrom)}`,
+      pointId,
       employeeId:null,
       from:payload.effectiveFrom
     });
@@ -7663,10 +7661,13 @@ async function saveOpenTariff(){
     );
   }finally{
     manageEditorSaving=false;
+    releaseFields();
   }
 }
 
 async function removeHistoricalTariff(id){
+  if(manageEditorSaving || !manageEditorDraft) return;
+  const editing=manageEditorDraft;
   if(
     !await appConfirm(
       "Удалить тариф из истории?",
@@ -7680,11 +7681,14 @@ async function removeHistoricalTariff(id){
     return;
   }
 
+  manageEditorSaving=true;
+  const releaseFields=lockEditorFields(manageEditorSheetElement);
   try{
     await deleteAdminTariff(id);
     await refreshTeamData({
       renderAfter:false
     });
+    if(manageEditorDraft!==editing) return;
     closeTariffEditor();
     drawManageEditor();
     toast("Тариф удалён");
@@ -7695,6 +7699,9 @@ async function removeHistoricalTariff(id){
         : "Не удалось удалить тариф",
       4400
     );
+  }finally{
+    manageEditorSaving=false;
+    releaseFields();
   }
 }
 
@@ -7765,7 +7772,8 @@ function pointDeletionDetail(point){
 }
 
 async function deleteManagedPoint(){
-  const point=manageEditorDraft?.point;
+  const editing=manageEditorDraft;
+  const point=editing?.point;
 
   if(!point || manageEditorSaving){
     return;
@@ -7791,6 +7799,7 @@ async function deleteManagedPoint(){
   }
 
   manageEditorSaving=true;
+  const releaseFields=lockEditorFields(manageEditorSheetElement);
 
   try{
     const removed=
@@ -7799,7 +7808,7 @@ async function deleteManagedPoint(){
         name:point.name
       });
 
-    closeManageEditor();
+    if(manageEditorDraft===editing) closeManageEditor({force:true});
     await refreshTeamData();
 
     toast(
@@ -7815,6 +7824,7 @@ async function deleteManagedPoint(){
     );
   }finally{
     manageEditorSaving=false;
+    releaseFields();
   }
 }
 
@@ -8187,17 +8197,15 @@ function employeeRateEditorHTML(point){
   Создаёт ставки, дожидавшиеся сохранения карточки. Возвращает текст
   ошибки, если хоть одна не создалась, и ничего — если всё прошло.
 */
-async function createPendingEmployeeRates(employeeId){
+async function createPendingEmployeeRates(employeeId,operation){
   const pending=
-    employeeDraft?.pendingRates || {};
+    operation.pendingRates || {};
 
   const entries=Object.entries(pending);
 
   if(!entries.length){
     return null;
   }
-
-  employeeDraft.pendingRates={};
 
   for(const [pointId,value] of entries){
     try{
@@ -8208,6 +8216,7 @@ async function createPendingEmployeeRates(employeeId){
         pricingType:"fixed",
         fixedRate:value.rate
       });
+      delete operation.pendingRates[pointId];
     }catch(error){
       return error instanceof Error
         ? error.message
@@ -8222,13 +8231,17 @@ async function saveEmployeeRate(){
   if(
     !employeeRateEditor ||
     !employeeDraft ||
-    employeeRateSaving
+    employeeRateSaving || employeeSaving
   ){
     return;
   }
 
   readEmployeeRateEditor();
 
+  const editing=employeeDraft;
+  const employeeId=editing.id;
+  const employeeName=editing.fullName;
+  let releaseFields=()=>{};
   const {
     pointId,
     id,
@@ -8313,6 +8326,7 @@ async function saveEmployeeRate(){
     }
 
     employeeRateSaving=true;
+    releaseFields=lockEditorFields(employeeSheetElement);
 
     if(id){
       await updateAdminEmployeeRate({
@@ -8323,7 +8337,7 @@ async function saveEmployeeRate(){
       });
     }else{
       await addAdminEmployeeRate({
-        employeeId:employeeDraft.id,
+        employeeId,
         pointId,
         effectiveFrom,
         pricingType:"fixed",
@@ -8335,6 +8349,7 @@ async function saveEmployeeRate(){
       renderAfter:false
     });
 
+    if(employeeDraft!==editing) return;
     closeEmployeeRateEditor();
     drawEmployeeSheet();
 
@@ -8345,9 +8360,9 @@ async function saveEmployeeRate(){
     );
 
     offerRecalcAfterRateChange({
-      title:`Своя ставка ${employeeDraft.fullName} с ${shortDateLabel(effectiveFrom)}`,
+      title:`Своя ставка ${employeeName} с ${shortDateLabel(effectiveFrom)}`,
       pointId,
-      employeeId:employeeDraft.id,
+      employeeId,
       from:effectiveFrom
     });
   }catch(error){
@@ -8359,6 +8374,7 @@ async function saveEmployeeRate(){
     );
   }finally{
     employeeRateSaving=false;
+    releaseFields();
   }
 }
 
@@ -8400,6 +8416,8 @@ async function dropEmployeeRate(pointId){
 }
 
 async function removeEmployeeRate(id){
+  if(employeeSaving || employeeRateSaving || !employeeDraft) return;
+  const editing=employeeDraft;
   const rate=(teamData.employeeRates || [])
     .find(item=>item.id===id);
 
@@ -8421,6 +8439,8 @@ async function removeEmployeeRate(id){
     return;
   }
 
+  employeeRateSaving=true;
+  const releaseFields=lockEditorFields(employeeSheetElement);
   try{
     await deleteAdminEmployeeRate(id);
 
@@ -8428,6 +8448,7 @@ async function removeEmployeeRate(id){
       renderAfter:false
     });
 
+    if(employeeDraft!==editing) return;
     closeEmployeeRateEditor();
     drawEmployeeSheet();
     toast("Ставка убрана");
@@ -8438,6 +8459,9 @@ async function removeEmployeeRate(id){
         : "Не удалось убрать ставку",
       4200
     );
+  }finally{
+    employeeRateSaving=false;
+    releaseFields();
   }
 }
 
@@ -9054,6 +9078,13 @@ function employeeSaveError(
       ? error.message
       : String(error || "");
 
+  if(message.includes("employee_auth_link_conflict")){
+    return "Доступ сотрудника уже изменён в другой вкладке. Обновите данные перед повтором.";
+  }
+  if(message.includes("employee_auth_cleanup_failed")){
+    return "Не удалось завершить привязку аккаунта. Обновите данные и проверьте доступ сотрудника перед повтором.";
+  }
+
   if(
     message.includes(
       "account_already_linked"
@@ -9503,6 +9534,7 @@ function showEmployeeView(
 }
 
 function startEmployeeEdit(){
+  if(employeeSaving || employeeRateSaving) return;
   if(
     !employeeDraft?.id ||
     employeeDraft.isSystem
@@ -9540,6 +9572,7 @@ function startEmployeeEdit(){
 }
 
 function cancelEmployeeSheet(){
+  if(employeeSaving || employeeRateSaving) return;
   if(
     employeeSheetMode==="edit" &&
     employeeDraft?.id
@@ -9566,6 +9599,7 @@ function employeeSheetPrimaryAction(){
 function openEmployeeEditor(
   employeeId=null
 ){
+  if(employeeSaving || employeeRateSaving) return;
   const nextDraft=
     createEmployeeDraft(
       employeeId
@@ -9649,6 +9683,7 @@ function openEmployeeEditor(
 }
 
 function closeEmployeeEditor(){
+  if(employeeSaving || employeeRateSaving) return;
   const sheet=
     employeeSheetElement;
 
@@ -9716,7 +9751,7 @@ function closeEmployeeEditor(){
 async function saveEmployeeDraft(){
   if(
     !employeeDraft ||
-    employeeSaving ||
+    employeeSaving || employeeRateSaving ||
     employeeSheetMode==="view"
   ){
     return;
@@ -9887,37 +9922,40 @@ async function saveEmployeeDraft(){
       "employeeSheetSave"
     );
 
+  const editing=employeeDraft;
+  const operation=structuredClone(editing);
+  const pendingRates=structuredClone(operation.pendingRates || {});
   employeeSaving=true;
-  saveButton.disabled=true;
+  const releaseFields=lockEditorFields(employeeSheetElement);
 
   try{
     const employeeId=
       await saveAdminEmployee({
-        id:employeeDraft.id,
+        id:operation.id,
         fullName:name,
         status:
-          employeeDraft.status,
+          operation.status,
         hiredAt:
-          employeeDraft.hiredAt ||
+          operation.hiredAt ||
           null,
         userId:
-          employeeDraft.userId ||
+          operation.userId ||
           null,
         employmentType:"staff",
         phone,
         transferPhone,
         transferBank:
-          employeeDraft.transferBank
+          operation.transferBank
             .trim() || null,
         transferRecipient:
-          employeeDraft.transferRecipient
+          operation.transferRecipient
             .trim() || null,
         pointIds:
-          employeeDraft.pointIds
+          operation.pointIds
       });
 
-    employeeDraft.id=
-      employeeId;
+    operation.id=employeeId;
+    if(employeeDraft===editing) editing.id=employeeId;
 
     /*
       Ставки, заданные до появления назначения, создаются сразу после
@@ -9927,14 +9965,16 @@ async function saveEmployeeDraft(){
     */
     const pendingRateFailure=
       await createPendingEmployeeRates(
-        employeeId
+        employeeId,operation
       );
+    if(employeeDraft===editing) editing.pendingRates={...operation.pendingRates};
 
     let authFailure=null;
+    let authNeedsReview=false;
     let creationRolledBack=false;
 
     if(
-      employeeDraft.userId ||
+      operation.userId ||
       accountEnabled
     ){
       try{
@@ -9944,6 +9984,7 @@ async function saveEmployeeDraft(){
           password
         });
       }catch(error){
+        authNeedsReview=/employee_auth_(link_conflict|cleanup_failed)/.test(error instanceof Error ? error.message : String(error));
         authFailure=
           employeeSaveError(error);
       }
@@ -9960,6 +10001,11 @@ async function saveEmployeeDraft(){
         );
 
         creationRolledBack=true;
+        operation.pendingRates=pendingRates;
+        if(employeeDraft===editing){
+          editing.id=null;
+          editing.pendingRates=structuredClone(pendingRates);
+        }
       }catch{}
     }
 
@@ -9970,7 +10016,7 @@ async function saveEmployeeDraft(){
 
     if(!refreshed){
       if(creationRolledBack){
-        employeeDraft.id=null;
+        if(employeeDraft===editing) editing.id=null;
       }
 
       employeeSaving=false;
@@ -9989,7 +10035,7 @@ async function saveEmployeeDraft(){
     }
 
     if(creationRolledBack){
-      employeeDraft.id=null;
+      if(employeeDraft===editing) editing.id=null;
       employeeSaving=false;
       saveButton.disabled=false;
 
@@ -10010,13 +10056,14 @@ async function saveEmployeeDraft(){
             employee.id===employeeId
         );
 
-      if(savedEmployee?.user_id){
+      if(savedEmployee?.user_id && !authNeedsReview){
         authFailure=null;
       }
     }
 
     employeeSaving=false;
 
+    if(employeeDraft!==editing) return;
     if(wasExisting){
       updateEmployeeList();
       showEmployeeView(employeeId);
@@ -10050,6 +10097,8 @@ async function saveEmployeeDraft(){
       ),
       4000
     );
+  }finally{
+    releaseFields();
   }
 }
 
@@ -10127,13 +10176,14 @@ function employeeDeleteError(
 
 async function deleteEmployeeDraft(){
   if(
-    !employeeDraft?.id ||
+    !employeeDraft?.id || employeeSaving || employeeRateSaving ||
     employeeSheetMode!=="edit" ||
     employeeDraft.isSystem
   ){
     return;
   }
 
+  const editing=employeeDraft;
   const employeeId=
     employeeDraft.id;
 
@@ -10152,6 +10202,8 @@ async function deleteEmployeeDraft(){
     return;
   }
 
+  employeeSaving=true;
+  const releaseFields=lockEditorFields(employeeSheetElement);
   try{
     await deleteAdminEmployee(
       employeeId
@@ -10162,7 +10214,8 @@ async function deleteEmployeeDraft(){
         renderAfter:false
       });
 
-    closeEmployeeEditor();
+    employeeSaving=false;
+    if(employeeDraft===editing) closeEmployeeEditor();
 
     if(!refreshed){
       render();
@@ -10187,6 +10240,9 @@ async function deleteEmployeeDraft(){
       ),
       4200
     );
+  }finally{
+    employeeSaving=false;
+    releaseFields();
   }
 }
 
@@ -15217,7 +15273,8 @@ manageEditorSheetElement.addEventListener(
 
     if(
       !button ||
-      !manageEditorDraft
+      !manageEditorDraft ||
+      manageEditorSaving
     ){
       return;
     }
@@ -15466,7 +15523,8 @@ employeeSheetElement.addEventListener(
 
     if(
       !button ||
-      !employeeDraft
+      !employeeDraft ||
+      employeeSaving || employeeRateSaving
     ){
       return;
     }
@@ -15714,7 +15772,7 @@ document
 recalcSheetElement.addEventListener("click",event=>{
   const button=event.target.closest("button");
 
-  if(!button || !recalcDraft){
+  if(!button || !recalcDraft || recalcSaving){
     return;
   }
 
@@ -15732,7 +15790,7 @@ recalcSheetElement.addEventListener("click",event=>{
 
 recalcSheetElement.addEventListener("input",event=>{
   if(
-    !recalcDraft ||
+    !recalcDraft || recalcSaving ||
     event.target.dataset.recalcAmount===undefined
   ){
     return;
@@ -15759,6 +15817,7 @@ bindBottomSheetDismiss({
     closeEmployeeEditor,
 
   canStart:target=>{
+    if(employeeSaving || employeeRateSaving) return false;
     if(
       target instanceof Element &&
       target.closest(
@@ -15824,6 +15883,7 @@ bindBottomSheetDismiss({
     closeManageEditor,
 
   canStart:target=>{
+    if(manageEditorSaving) return false;
     if(
       target instanceof Element &&
       target.closest(
@@ -17140,6 +17200,7 @@ const sheetBody=
 function updateEmployeeDraftField(
   target
 ){
+  if(employeeSaving || employeeRateSaving) return;
   if(
     !employeeDraft ||
     !(target instanceof HTMLElement)

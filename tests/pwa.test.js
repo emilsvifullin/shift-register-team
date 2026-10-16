@@ -296,3 +296,27 @@ test(
     assert.deepEqual(second.messages,[ACTIVATE]);
   }
 );
+
+for(const busy of [false,true]){
+  test(`an activating update rechecks safety when the page becomes visible${busy ? " with an unsaved draft" : ""}`,async()=>{
+    let ready=true;
+    const env=await setup({ready:()=>ready});
+    const next=new FakeWorker();
+    env.touch();
+    env.hide();
+    env.deliver(next);
+    assert.deepEqual(next.messages,[ACTIVATE]);
+
+    // Activation is asynchronous: the person can return and start work
+    // before controllerchange arrives, even though activation was safe.
+    env.documentRef.visibilityState="visible";
+    ready=!busy;
+    env.documentRef.dispatch("visibilitychange");
+    env.serviceWorker.dispatch("controllerchange");
+    assert.equal(env.windowRef.reloads,0,"must not reload under the person after activation was requested");
+
+    ready=true;
+    env.hide();
+    assert.equal(env.windowRef.reloads,1,"the new controller reloads at the next safe moment");
+  });
+}

@@ -502,16 +502,25 @@ Deno.serve(async request=>{
         role:"employee"
       });
 
-  const {
-    data:linkedEmployee,
-    error:employeeSaveError
-  }=
-    await adminClient
+  const employeeLinkQuery=
+    adminClient
       .from("employees")
       .update({
         user_id:authUserId
       })
-      .eq("id",employeeId)
+      .eq("id",employeeId);
+
+  // A second request may have linked an account since our initial read.
+  // Only claim an employee who still has no account; never replace the winner.
+  if(created){
+    employeeLinkQuery.is("user_id",null);
+  }
+
+  const {
+    data:linkedEmployee,
+    error:employeeSaveError
+  }=
+    await employeeLinkQuery
       .select("id")
       .maybeSingle();
 
@@ -521,13 +530,31 @@ Deno.serve(async request=>{
     !linkedEmployee
   ){
     if(created){
-      await adminClient.auth.admin
-        .deleteUser(authUserId);
+      const {error:cleanupError}=
+        await adminClient.auth.admin
+          .deleteUser(authUserId);
+
+      if(cleanupError){
+        return json(
+          {error:"employee_auth_cleanup_failed"},
+          500
+        );
+      }
     }
 
+    const linkConflict=
+      created &&
+      !profileSaveError &&
+      !employeeSaveError &&
+      !linkedEmployee;
+
     return json(
-      {error:"employee_auth_link_failed"},
-      500
+      {
+        error:linkConflict
+          ? "employee_auth_link_conflict"
+          : "employee_auth_link_failed"
+      },
+      linkConflict ? 409 : 500
     );
   }
 

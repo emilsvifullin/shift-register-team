@@ -4,7 +4,16 @@ import {settleScreen} from "./support/settle.mjs";
 
 function emptyPayrollSeed(){
   const seed=structuredClone(ADMIN_SEED);
-  seed.shifts=[];
+  // Mode transitions require both actions to be available; zero accrual now
+  // intentionally disables ordinary payout and is covered separately.
+  seed.shifts=[{
+    id:"earned-motion-shift",
+    employee_id:"employee-1",point_id:"point-2",
+    shift_date:"2026-09-10",shift_type:"main",
+    base_amount:15000,partial:false,full_hours:12,
+    pricing_snapshot:{version:2,fixed:true,pricingType:"fixed",rate:15000,fullHours:12},
+    bonuses:[],penalties:[]
+  }];
   seed.employee_points=[];
   seed.points.forEach(point=>{point.advance_enabled=false;});
   return seed;
@@ -205,7 +214,7 @@ for(const width of [390,1440]){
         expect(switched.running).toBe(reducedMotion==='no-preference');
         await expect(page.locator('.payout-mode')).toHaveAttribute('data-mode','advance');
         await expect(page.locator('.payout-advance-note')).toHaveCount(1);
-        await expect(page.locator('.payout-advance-note')).toContainText('наличие смен не ограничивают аванс');
+        await expect(page.locator('.payout-advance-note')).toContainText('независимо от начислений');
         await settleScreen(page);
         const thumb=await page.locator('.payout-mode').evaluate(element=>getComputedStyle(element,'::before').transform);
         expect(thumb).not.toBe(switched.before);

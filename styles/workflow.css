@@ -1618,3 +1618,60 @@
   .payout-date::after,
   .payout-action-reveal .payout-add{transition:none;}
 }
+
+/* Факт и прогноз разделены; остаток учитывает все выдачи выбранного периода. */
+.payout-financial-summary{
+  margin:12px 14px;
+  padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.payout-balance-row,
+.payout-financial-summary .payout-progress,
+.payout-preview-values > div:not(.payout-preview-title){
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  padding:5px 0;
+  color:var(--ink2);
+  font-size:12px;
+  line-height:1.5;
+}
+.payout-financial-summary .payout-progress{
+  margin:0;
+  border:0;
+}
+.payout-balance-row strong,
+.payout-preview-values strong{
+  flex:none;
+  color:var(--ink);
+  font-weight:550;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.payout-financial-summary .payout-progress span,
+.payout-financial-summary .payout-progress strong{
+  color:var(--ink);
+  font-weight:550;
+}
+.payout-excess strong{color:var(--gold);}
+.payout-forecast{color:var(--ink2);}
+.payout-mode button:disabled{cursor:default;color:var(--ink3);}
+.payout-mode button[aria-pressed="true"]:disabled{color:var(--ink2);}
+.payout-preview:empty{display:none;}
+.payout-preview-values{
+  padding-top:10px;
+  border-top:1px solid var(--line);
+}
+.payout-preview-title{
+  padding-bottom:3px;
+  color:var(--ink2);
+  font-size:11px;
+}
+.payout-amount-error{
+  margin:0;
+  color:var(--rust);
+  font-size:12px;
+  line-height:1.5;
+}
+.payout-field-input[aria-invalid="true"]{border-color:var(--rust);}

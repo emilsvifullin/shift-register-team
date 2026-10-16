@@ -444,12 +444,15 @@ export function stubScript(seed){
     };
   });
 
-  function periodEntries(db,month,kind){
+  function periodEntries(db,month,kind,earnedOnly=false){
+    const asOf=earnedOnly
+      ? new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Moscow",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())
+      : null;
     return finance.buildPeriodEntries({
       ym:month.slice(0,7),
       kind,
       employees:db.employees || [],
-      shifts:(db.shifts || []).map(finance.mapServerShift),
+      shifts:(db.shifts || []).filter(shift=>!earnedOnly || shift.shift_date<=asOf).map(finance.mapServerShift),
       payoutRows:db.employee_payouts || []
     });
   }
@@ -835,7 +838,8 @@ export function stubScript(seed){
       const entry=periodEntries(
         db,
         args.p_period_month,
-        args.p_payout_kind
+        args.p_payout_kind,
+        true
       ).find(item=>item.employeeId===args.p_employee_id);
 
       const records=(db.employee_payouts || []).filter(item=>
@@ -1512,6 +1516,21 @@ export function stubScript(seed){
     const url=String(
       typeof input==="string" ? input : input?.url || ""
     );
+
+    /* Проверка пути — часть подставной сети, а не запрос к рабочей базе. */
+    const parsed=new URL(url,location.href);
+    if(
+      parsed.pathname==="/auth/v1/health" &&
+      [
+        "https://shift-register-supabase-proxy.vercel.app",
+        "https://rxosovinouuonwrrzigs.supabase.co"
+      ].includes(parsed.origin) &&
+      String(init?.method || input?.method || "GET").toUpperCase()==="GET"
+    ){
+      return new Response(JSON.stringify({status:"ok"}),{
+        status:200,headers:{"content-type":"application/json"}
+      });
+    }
 
     if(!url.includes("/functions/v1/admin-employee-auth")){
       return originalFetch(input,init);

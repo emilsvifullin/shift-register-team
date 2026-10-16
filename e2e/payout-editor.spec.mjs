@@ -207,7 +207,7 @@ test(
 
     const progress=page.locator(".payout-block.open .payout-progress");
 
-    await expect(progress).toContainText("Не выплачено");
+    await expect(progress).toContainText("Осталось выплатить");
     await expect(progress.locator("strong"))
       .toHaveText("15 000 ₽");
   }
@@ -232,7 +232,7 @@ test(
       .toContainText("Осталось выплатить");
 
     await expect(progress.locator("strong"))
-      .toHaveText("10 000 ₽ из 15 000 ₽");
+      .toHaveText("10 000 ₽");
   }
 );
 
@@ -254,7 +254,7 @@ test(
 
     await expect(
       page.locator(".payout-block.open .payout-progress strong")
-    ).toHaveText("15 000 ₽");
+    ).toHaveText("0 ₽");
 
     await expect(
       page.locator(".payout-block.open .payout-record")
@@ -445,18 +445,20 @@ test("an explicit advance records issued money above earnings and can be correct
   await expandPayout(page);
   await page.locator(".payout-block.open [data-payout-add]").click();
   await page.locator("#payoutAmount").fill("10000");
-  await page.locator("[data-payout-save]").click();
-  await expect(page.locator("#toast")).toContainText("Для выдачи вперёд");
+  await expect(page.locator("[data-payout-amount-error]")).toContainText("3 500 ₽");
+  await expect(page.locator("[data-payout-save]")).toBeDisabled();
   expect(await page.evaluate(()=>window.__stubDb.employee_payouts.length)).toBe(0);
   await page.locator('[data-payout-mode="advance"]').click();
-  await expect(page.locator(".payout-advance-note")).toContainText("Остаток не переносится");
+  await expect(page.locator(".payout-advance-note")).toContainText("Между периодами автоматически не переносится");
   await page.locator("[data-payout-save]").click();
   await expect(page.locator("#appConfirm")).toContainText("6 500 ₽");
   await page.locator("#appConfirmOk").click();
   await expect(page.locator("#toast")).toContainText("Аванс сохранён");
   await expect(page.locator(".payout-record")).toContainText("Аванс");
   await expect(page.locator(".payout-block.open .payout-status")).toHaveText("Выдано вперёд");
-  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("6 500 ₽ · всего выдано 10 000 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-overpaid]")).toHaveText("6 500 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-issued]")).toHaveText("10 000 ₽");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("0 ₽");
   const saved=await page.evaluate(()=>window.__stubDb.employee_payouts[0]);
   expect(saved.is_advance).toBe(true);
   expect(saved.amount).toBe(10000);
@@ -468,7 +470,9 @@ test("an explicit advance records issued money above earnings and can be correct
   await page.locator("#appConfirmOk").click();
   await expect(page.locator("#toast")).toContainText("Аванс сохранён");
   expect(await page.evaluate(()=>window.__stubDb.employee_payouts.length)).toBe(1);
-  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("5 500 ₽ · всего выдано 9 000 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-overpaid]")).toHaveText("5 500 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-issued]")).toHaveText("9 000 ₽");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("0 ₽");
   await page.locator("[data-payout-delete]").click();
   await page.locator("#appConfirmOk").click();
   await expect(page.locator("#toast")).toContainText("Запись выплаты удалена");
@@ -481,8 +485,8 @@ test("an advance before the first shift needs confirmation and stays in its chos
   await openStats(page,[],source);
   await expandPayout(page);
   await page.locator(".payout-block.open [data-payout-add]").click();
-  await expect(page.locator('[data-payout-mode="regular"]')).toHaveAttribute("aria-pressed","true");
-  await page.locator('[data-payout-mode="advance"]').click();
+  await expect(page.locator('[data-payout-mode="advance"]')).toHaveAttribute("aria-pressed","true");
+  await expect(page.locator('[data-payout-mode="regular"]')).toBeDisabled();
   await page.locator("#payoutAmount").fill("10000");
   await page.locator("[data-payout-save]").click();
   await page.locator("#appConfirmCancel").click();
@@ -503,7 +507,8 @@ test("new earnings cover an existing advance and leave only the true balance",as
   source.shifts[0].base_amount=3500;
   await openStats(page,[],source);
   await expandPayout(page);
-  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("6 500 ₽ · всего выдано 10 000 ₽");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("0 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-overpaid]")).toHaveText("6 500 ₽");
   await page.evaluate(()=>{
     const shift=structuredClone(window.__stubDb.shifts[0]);
     shift.id="shift-after-advance";
@@ -512,7 +517,7 @@ test("new earnings cover an existing advance and leave only the true balance",as
     window.__stubDb.shifts.push(shift);
     window.dispatchEvent(new Event("online"));
   });
-  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("2 000 ₽ из 12 000 ₽");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("2 000 ₽");
   await expect(page.locator(".payout-record")).toContainText("Аванс");
   expect(await page.evaluate(()=>window.__stubDb.employee_payouts[0].amount)).toBe(10000);
 });
@@ -583,7 +588,9 @@ test("a small advance does not turn an ordinary overpayment into a neutral balan
   source.shifts[0].base_amount=5000;
   await openStats(page,[],source);
   await expandPayout(page);
-  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("12 000 ₽ · переплата 7 000 ₽");
+  await expect(page.locator(".payout-block.open .payout-progress strong")).toHaveText("0 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-overpaid]")).toHaveText("7 000 ₽");
+  await expect(page.locator(".payout-block.open [data-payout-issued]")).toHaveText("12 000 ₽");
   await page.locator("#statsEmployeeOpen").click();
   await page.locator('[data-key="statsEmployeeReveal"] [data-stats-employee=""]').click();
   const period=page.locator(".payroll-period.open");
@@ -624,9 +631,9 @@ for(const width of [390,1440]){
     await openStats(page,[],source);
     await expandPayout(page,'second_half');
     await page.locator('.payout-block.open [data-payout-add]').click();
-    await expect(page.locator('[data-payout-mode="regular"]')).toHaveAttribute('aria-pressed','true');
-    await page.locator('[data-payout-mode="advance"]').click();
-    await expect(page.locator('.payout-advance-note')).toContainText('Тип ПВЗ и наличие смен не ограничивают аванс');
+    await expect(page.locator('[data-payout-mode="advance"]')).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('[data-payout-mode="regular"]')).toBeDisabled();
+    await expect(page.locator('.payout-advance-note')).toContainText('независимо от начислений');
     await page.locator('#payoutAmount').fill('10000');
     await page.locator('[data-payout-save]').click();
     await expect(page.locator('#appConfirm')).toContainText('10 000 ₽');
@@ -643,8 +650,9 @@ for(const width of [390,1440]){
     });
     expect(geometry.height).toBeLessThanOrEqual(80);
     expect(geometry.sameRow).toBe(true);
-    await expect(page.locator('.payout-block.open .payout-progress strong')).toHaveText('10 000 ₽');
-    await expect(page.locator('.payout-block.open .payout-progress > span')).toHaveText('Остаток аванса');
+    await expect(page.locator('.payout-block.open .payout-progress strong')).toHaveText('0 ₽');
+    await expect(page.locator('.payout-block.open [data-payout-overpaid]')).toHaveText('10 000 ₽');
+    await expect(page.locator('.payout-block.open .payout-progress > span')).toHaveText('Осталось выплатить');
     await page.screenshot({path:testInfo.outputPath(`advance-history-${width}.png`)});
   });
 }

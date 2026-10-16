@@ -12,8 +12,8 @@ function emptyPayrollSeed(){
   return seed;
 }
 
-async function openTeamStats(page){
-  await openApp(page,{seed:emptyPayrollSeed()});
+async function openTeamStats(page,seed=emptyPayrollSeed()){
+  await openApp(page,{seed});
   await page.locator("#tab-stats").click();
   await expect(page.locator("#statsEmployeeOpen")).toContainText("Все сотрудники");
   await expect(page.locator("[data-payout-advance]")).toHaveCount(0);
@@ -28,8 +28,8 @@ async function startAdvance(page,employee="employee-2"){
   const reveal=page.locator('[data-key="payoutReveal-first_half"]');
   await expect.poll(()=>reveal.evaluate(node=>node.getAnimations().length)).toBe(0);
   await page.getByRole('button',{name:'Отметить выплату',exact:true}).click();
-  await expect(page.locator('[data-payout-mode="regular"]')).toHaveAttribute("aria-pressed","true");
-  await page.locator('[data-payout-mode="advance"]').click();
+  await expect(page.locator('[data-payout-mode="advance"]')).toHaveAttribute("aria-pressed","true");
+  await expect(page.locator('[data-payout-mode="regular"]')).toBeDisabled();
   await expect(page.locator("#payoutAmount")).toBeVisible();
 }
 
@@ -37,7 +37,7 @@ test("the existing payout entry records an advance before the first shift",async
   await openTeamStats(page);
   await startAdvance(page);
   await expect(page.locator("#statsEmployeeOpen")).toContainText("Роман Белов");
-  await expect(page.locator(".payout-advance-note")).toContainText("наличие смен не ограничивают аванс");
+  await expect(page.locator(".payout-advance-note")).toContainText("независимо от начислений");
   await page.locator("#payoutAmount").fill("10000");
   await page.locator("#payoutComment").fill("До первой смены");
   await page.locator("[data-payout-save]").click();
@@ -75,8 +75,24 @@ test("the existing payout entry records an advance before the first shift",async
 });
 
 test("switching payment modes preserves amount, comment and payout date",async({page})=>{
-  await openTeamStats(page);
-  await startAdvance(page,"employee-1");
+  const seed=emptyPayrollSeed();
+  seed.shifts=[{
+    id:"earned-mode-shift",
+    employee_id:"employee-1",point_id:"point-2",
+    shift_date:"2026-09-10",shift_type:"main",
+    base_amount:15000,partial:false,full_hours:12,
+    pricing_snapshot:{version:2,fixed:true,pricingType:"fixed",rate:15000,fullHours:12},
+    bonuses:[],penalties:[]
+  }];
+  await openTeamStats(page,seed);
+  await page.locator("#statsEmployeeOpen").click();
+  await settleScreen(page);
+  await page.locator('[data-stats-employee="employee-1"]').click();
+  await settleScreen(page);
+  await page.locator('[data-payout-toggle="first_half"]').click();
+  await settleScreen(page);
+  await page.getByRole("button",{name:"Отметить выплату",exact:true}).click();
+  await page.locator('[data-payout-mode="advance"]').click();
   await page.locator("#payoutAmount").fill("12345,67");
   await page.locator("#payoutComment").fill("Согласованный аванс");
   const paidOn=await page.locator("[data-payout-date-open]").textContent();

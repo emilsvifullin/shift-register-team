@@ -368,6 +368,74 @@ function status(kind){
   return db.query(`select to_jsonb(status) from public.payroll_periods where period_month=${literal(PERIOD)} and payout_kind=${literal(kind)};`);
 }
 
+describe("обычная выплата учитывает заработанное, а не будущие смены",()=>{
+  test("дата отсечения исключает будущие премии, штрафы и перенос до распределения денег",()=>{
+    scene();
+    db.query("delete from public.shifts; select 1;");
+    addShift({id:uuid("30000000",1),employee:MARINA,point:POINT,date:"2026-09-03",base:3500,advance:false,bonuses:[500],penalties:[{amount:200,kind:null}]});
+    addShift({id:uuid("30000000",2),employee:MARINA,point:ADVANCE_POINT,date:"2026-09-05",base:25000,advance:true,bonuses:[2000],penalties:[{amount:300,kind:null}]});
+    addShift({id:uuid("30000000",3),employee:MARINA,point:POINT,date:"2026-09-20",base:6000,advance:false,bonuses:[1000],penalties:[{amount:2000,kind:"first_half"}]});
+    const earned=kind=>db.query(`select to_jsonb(f) from private.payroll_period_figures(${literal(MARINA)},${literal(PERIOD)},${literal(kind)},'2026-09-15') f;`);
+    assert.deepEqual(earned("first_half"),{shifts:2,base:23500,bonus:500,fine:200,due:23800});
+    assert.deepEqual(earned("second_half"),{shifts:0,base:5000,bonus:2000,fine:300,due:6700});
+    const beforeWork=db.query(`select to_jsonb(f) from private.payroll_period_figures(${literal(MARINA)},${literal(PERIOD)},'first_half','2026-09-02') f;`);
+    assert.equal(beforeWork.due,0);
+    // Closing/checking still sees the whole month, unchanged by the new guard.
+    for(const kind of ["first_half","second_half"]){
+      assert.deepEqual(serverEntries(kind).sort(byId).map(pick),clientEntries(kind).sort(byId).map(pick));
+    }
+    assert.equal(db.query(`select to_jsonb(due) from private.payroll_period_figures(${literal(MARINA)},${literal(PERIOD)},'first_half');`),21800);
+  });
+
+  test("RPC отклоняет выплату по полностью будущему месяцу, но принимает аванс",()=>{
+    scene();
+    const dates=db.query(`select jsonb_build_object('month',date_trunc('month',(now() at time zone 'Europe/Moscow')::date + interval '2 months')::date,'today',(now() at time zone 'Europe/Moscow')::date);`);
+    addShift({id:uuid("30000000",4),employee:MARINA,point:POINT,date:dates.month,base:3500,advance:false});
+    const save=(amount,isAdvance)=>db.rpc(ADMIN,"admin_save_employee_payout_v2",{
+      p_payout_id:"null",p_employee_id:literal(MARINA),p_period_month:literal(dates.month),
+      p_payout_kind:literal("first_half"),p_amount:String(amount),p_paid_on:literal(dates.today),p_is_advance:String(isAdvance)
+    });
+    assert.equal(db.query(`select to_jsonb(due) from private.payroll_period_figures(${literal(MARINA)},${literal(dates.month)},'first_half');`),3500);
+    assert.match(save(1,false).error,/payout_exceeds_due:0/);
+    const smallAdvance=save(500,true);
+    assert.equal(smallAdvance.error,null);
+    assert.equal(save(10000,true).error,null);
+    assert.equal(db.query(`select to_jsonb(count(*)) from public.employee_payouts where period_month=${literal(dates.month)} and is_advance;`),2);
+  });
+
+  test("обычная выдача сегодня ограничена остатком после всех выплат и авансов",()=>{
+    scene();
+    const dates=db.query(`select jsonb_build_object('month',date_trunc('month',now() at time zone 'Europe/Moscow')::date,'today',(now() at time zone 'Europe/Moscow')::date,'kind',case when extract(day from now() at time zone 'Europe/Moscow')<=15 then 'first_half' else 'second_half' end);`);
+    db.query("delete from public.shifts; select 1;");
+    addShift({id:uuid("30000000",4),employee:MARINA,point:POINT,date:dates.today,base:3500,advance:false});
+    const save=(amount,isAdvance)=>db.rpc(ADMIN,"admin_save_employee_payout_v2",{
+      p_payout_id:"null",p_employee_id:literal(MARINA),p_period_month:literal(dates.month),
+      p_payout_kind:literal(dates.kind),p_amount:String(amount),p_paid_on:literal(dates.today),p_is_advance:String(isAdvance)
+    });
+    assert.equal(save(500,true).error,null);
+    assert.match(save(3000.01,false).error,/payout_exceeds_due:3000/);
+    assert.equal(save(3000,false).error,null);
+    assert.match(save(1,false).error,/payout_exceeds_due:0/);
+    assert.equal(save(10000,true).error,null);
+    assert.match(save(1,false).error,/payout_exceeds_due:0/);
+  });
+
+  test("старую обычную выдачу можно уменьшить при нулевом заработанном, аванс снять нельзя",()=>{
+    scene();
+    const dates=db.query(`select jsonb_build_object('month',date_trunc('month',(now() at time zone 'Europe/Moscow')::date + interval '2 months')::date,'today',(now() at time zone 'Europe/Moscow')::date);`);
+    const old=db.query(`insert into public.employee_payouts(employee_id,period_month,payout_kind,amount,paid_on) values (${literal(MARINA)},${literal(dates.month)},'first_half',5000,${literal(dates.today)}) returning to_jsonb(id);`);
+    const edit=(id,amount,isAdvance)=>db.rpc(ADMIN,"admin_save_employee_payout_v2",{
+      p_payout_id:literal(id),p_employee_id:literal(MARINA),p_period_month:literal(dates.month),
+      p_payout_kind:literal("first_half"),p_amount:String(amount),p_paid_on:literal(dates.today),p_is_advance:String(isAdvance)
+    });
+    assert.equal(edit(old,3000,false).error,null);
+    assert.match(edit(old,3000.01,false).error,/payout_exceeds_due:0/);
+    assert.equal(edit(old,10000,true).error,null);
+    assert.match(edit(old,3000,false).error,/payout_exceeds_due:0/);
+    assert.equal(db.query(`select to_jsonb(is_advance) from public.employee_payouts where id=${literal(old)};`),true);
+  });
+});
+
 describe("переходы периода",()=>{
   test("закрыть можно только проверенный период",()=>{
     scene();
@@ -963,6 +1031,7 @@ describe("деньги и права",()=>{
   test("служебные функции расчёта недоступны из Data API",()=>{
     for(const fn of [
       "private.payroll_period_figures(uuid,date,text)",
+      "private.payroll_period_figures(uuid,date,text,date)",
       "private.payroll_period_entries(date,text)",
       "private.assert_month_effect(jsonb,uuid,date,text[],boolean,text,text)"
     ]){

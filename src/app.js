@@ -1,3 +1,5 @@
+import {businessDate,payoutAccruals,payoutBalance} from "./payout-balance.js?shell=7";
+
 import {
   ADVANCE_CAP,
   APP_VERSION,
@@ -2492,8 +2494,8 @@ function payoutRecords(employeeId,kind){
   смен. Сама запись о выплате остаётся: деньги действительно отданы.
 */
 function payoutDisplayProgress(due,records){
-  const progress=paymentProgress(due,records);
-  return {...progress,advance:hasAdvanceBalance(due,records)};
+  const progress=paymentProgress(Math.max(0,due),records);
+  return {...progress,due:roundMoney(due),advance:hasAdvanceBalance(Math.max(0,due),records)};
 }
 
 function payoutStateLabel(progress){
@@ -2503,42 +2505,6 @@ function payoutStateLabel(progress){
   if(progress.paid>0) return "Частично выплачено";
   if(progress.due<=0) return "Без выплаты";
   return "Не выплачено";
-}
-
-/*
-  Строка итога в раскрытой выплате отвечает на вопрос «сколько ещё должны»,
-  поэтому показывает остаток, а не выплаченную часть. Пара «Не выплачено
-  0 ₽ из 15 000 ₽» описывала ровно противоположное фактическому состоянию:
-  невыплаченными оставались все 15 000 ₽.
-*/
-function payoutRemainderLabel(progress){
-  if(progress.advance) return "Остаток аванса";
-  if(progress.complete) return "Выплачено";
-  if(progress.due<=0 && progress.paid>0) return "Выплачено сверх начисленного";
-  if(progress.paid>0) return "Осталось выплатить";
-  if(progress.due<=0) return "Без выплаты";
-  return "Не выплачено";
-}
-
-function payoutRemainderValue(progress){
-  if(progress.advance) return progress.overpaid===progress.paid
-    ? money(progress.overpaid)
-    : `${money(progress.overpaid)} · всего выдано ${money(progress.paid)}`;
-  if(progress.complete){
-    return progress.overpaid>0
-      ? `${money(progress.paid)} · переплата ${money(progress.overpaid)}`
-      : money(progress.paid);
-  }
-
-  if(progress.due<=0 && progress.paid>0){
-    return money(progress.paid);
-  }
-
-  if(progress.paid>0){
-    return `${money(progress.remaining)} из ${money(progress.due)}`;
-  }
-
-  return money(progress.due);
 }
 
 function resolvedPenaltyPayoutKind(
@@ -2572,6 +2538,7 @@ function resolvedPenaltyPayoutKind(
 }
 
 function payoutSourceRows(shiftsList,kind){
+  const asOf=businessDate();
   const matching=inMonth(cursor,shiftsList).filter(shift=>{
     const day=Number(shift.date.slice(8,10));
     const advanceEnabled=
@@ -2622,7 +2589,7 @@ function payoutSourceRows(shiftsList,kind){
       <div class="payout-source-row">
         <div class="payout-source-main">
           <strong>${esc(dateLabel(shift.date))} · ${esc(shift.point)}</strong>
-          <span>${shift.type==="extra" ? "Дополнительная" : "Основная"}${shift.partial ? ` · ${hoursWord(result.hours)}` : ""}${kind==="second_half" && Number(shift.date.slice(8,10))<=15 ? " · первая половина" : ""}</span>
+          <span>${shift.date>asOf ? "Запланировано · в прогнозе · " : ""}${shift.type==="extra" ? "Дополнительная" : "Основная"}${shift.partial ? ` · ${hoursWord(result.hours)}` : ""}${kind==="second_half" && Number(shift.date.slice(8,10))<=15 ? " · первая половина" : ""}</span>
           ${adjustments.map(text=>`<small>${esc(text)}</small>`).join("")}
         </div>
         <b>${money(result.total)}</b>
@@ -2636,33 +2603,84 @@ function payoutSourceRows(shiftsList,kind){
   раскрытом виде, поэтому внутри раскрытого блока он не повторяется: там
   разворачиваются только смены, из которых сумма собрана.
 */
-function payoutExpandedHTML({kind,due,employee,statsShifts}){
+function statsPayoutBalance(employee,kind,statsShifts,editingId=null,accruals=null){
+  return payoutBalance({
+    ym:cursor,kind,employeeId:employee?.id,shifts:statsShifts,
+    records:payoutRecords(employee?.id,kind),asOf:businessDate(),editingId,accruals
+  });
+}
+
+function payoutAmountError(balance,editor){
+  const text=String(editor.amount).trim();
+  const amount=Number(text.replace(",","."));
+  return !editor.isAdvance && text && Number.isFinite(amount) && amount>balance.allowedRegular
+    ? `Доступно ${money(balance.allowedRegular)}. Чтобы записать выдачу вперёд, выберите «Аванс».`
+    : "";
+}
+
+function payoutPreviewHTML(balance,editor){
+  const amount=Number(String(editor.amount).trim().replace(",","."));
+  const error=payoutAmountError(balance,editor);
+  const valid=Number.isFinite(amount) && amount>0 && amount<=MAX_MONEY && roundMoney(amount)===amount && !error;
+  const result=paymentProgress(Math.max(0,balance.due),[{amount:roundMoney(balance.otherPaid+(valid ? amount : 0))}]);
+  return `
+    <p id="payoutAmountFeedback" data-payout-amount-error class="payout-amount-error" ${error ? "" : "hidden"}>${esc(error)}</p>
+    ${fieldRevealHTML({
+      key:"payoutPreviewReveal",open:valid,className:"payout-motion-reveal",
+      body:`<div class="payout-preview-values">
+        <div class="payout-preview-title">После сохранения</div>
+        <div><span>Всего выдано</span><strong data-payout-preview="issued">${money(result.paid)}</strong></div>
+        <div><span>Осталось выплатить</span><strong data-payout-preview="remaining">${money(result.remaining)}</strong></div>
+        ${result.overpaid>0 ? `<div class="payout-excess"><span>Выдано сверх начисленного</span><strong data-payout-preview="overpaid">${money(result.overpaid)}</strong></div>` : ""}
+      </div>`
+    })}
+  `;
+}
+
+// Обновляем только подсказку: ввод суммы не перестраивает экран и не
+// сбрасывает фокус, выделение или положение встроенного календаря.
+function updatePayoutPreview(){
+  const editor=payoutEditor;
+  if(!editor || editor.open===false) return;
+  const context=currentStatsPayoutContext(editor.kind);
+  if(!context || context.employee.id!==editor.employeeId) return;
+  const preview=app.querySelector('.payout-preview');
+  setHTML(preview,payoutPreviewHTML(context.balance,editor));
+  const error=payoutAmountError(context.balance,editor);
+  app.querySelector('#payoutAmount')?.setAttribute('aria-invalid',String(Boolean(error)));
+  const save=app.querySelector('[data-payout-save]');
+  if(save) save.disabled=payoutSaving || Boolean(error);
+}
+
+function payoutExpandedHTML({kind,due,employee,statsShifts,accruals}){
   const records=payoutRecords(employee?.id,kind);
-  const progress=payoutDisplayProgress(due,records);
+  const balance=statsPayoutBalance(employee,kind,statsShifts,payoutEditor?.id,accruals);
+  const progress=payoutDisplayProgress(balance.due,records);
   const editor=payoutEditor?.kind===kind && payoutEditor.employeeId===employee?.id && payoutEditor.periodMonth===`${cursor}-01` ? payoutEditor : null;
   const form=editor ? `
           <div class="payout-editor" aria-busy="${payoutSaving}">
             <div class="payout-mode" data-mode="${editor.isAdvance ? "advance" : "regular"}" role="group" aria-label="Вид выплаты">
-              <button type="button" data-payout-mode="regular" aria-pressed="${!editor.isAdvance}" ${payoutSaving ? "disabled" : ""}>Выплата</button>
+              <button type="button" data-payout-mode="regular" aria-pressed="${!editor.isAdvance}" ${payoutSaving || !balance.regularAvailable ? "disabled" : ""} aria-describedby="payoutRegularAvailability">Выплата</button>
               <button type="button" data-payout-mode="advance" aria-pressed="${editor.isAdvance}" ${payoutSaving ? "disabled" : ""}>Аванс</button>
             </div>
+            <p id="payoutRegularAvailability" class="payout-note-text" ${balance.regularAvailable ? "hidden" : ""}>Нет суммы к выплате. Можно записать аванс.</p>
             <div class="payout-help">
               ${fieldRevealHTML({
                 key:"payoutRegularHelp",
                 open:!editor.isAdvance,
                 className:"payout-help-reveal payout-motion-reveal",
-                body:`<p class="payout-note-text${!editor.isAdvance ? " payout-advance-note" : ""}">Запишите фактически выданную сумму в пределах остатка. Для выдачи вперёд выберите «Аванс».</p>`
+                body:`<p class="payout-note-text${!editor.isAdvance ? " payout-advance-note" : ""}">${balance.previous && balance.allowedRegular>balance.editingRemaining ? "Исправление прежней записи: сумму можно уменьшить или сохранить в прежнем размере." : `Запишите фактически выданную сумму. Доступно ${money(balance.allowedRegular)}. Для выдачи вперёд выберите «Аванс».`}</p>`
               })}
               ${fieldRevealHTML({
                 key:"payoutAdvanceHelp",
                 open:editor.isAdvance,
                 className:"payout-help-reveal payout-motion-reveal",
-                body:`<p class="payout-note-text${editor.isAdvance ? " payout-advance-note" : ""}">Укажите деньги, уже выданные сотруднику вперёд. Тип ПВЗ и наличие смен не ограничивают аванс. Он уменьшит остаток выплаты за ${kind==="first_half" ? "1–15" : "16–конец"} ${esc(monthGen(cursor))}. Остаток не переносится в другие периоды автоматически.</p>`
+                body:`<p class="payout-note-text${editor.isAdvance ? " payout-advance-note" : ""}">Запишите фактически выданный аванс — независимо от начислений. Он учтётся за ${kind==="first_half" ? "1–15" : "16–конец"} ${esc(monthGen(cursor))}. Между периодами автоматически не переносится.</p>`
               })}
             </div>
             <label class="payout-field">
               <span>Сумма</span>
-              <input id="payoutAmount" class="payout-field-input amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="${esc(editor.amount)}" ${payoutSaving ? "disabled" : ""}>
+              <input id="payoutAmount" aria-describedby="payoutAmountFeedback" aria-invalid="${Boolean(payoutAmountError(balance,editor))}" class="payout-field-input amount" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" value="${esc(editor.amount)}" ${payoutSaving ? "disabled" : ""}>
             </label>
             <div class="payout-date-field">
               <div class="payout-field">
@@ -2686,9 +2704,10 @@ function payoutExpandedHTML({kind,due,employee,statsShifts}){
               <span>Комментарий</span>
               <input id="payoutComment" class="payout-field-input" type="text" maxlength="500" autocomplete="off" enterkeyhint="done" value="${esc(editor.comment)}" placeholder="Необязательно" ${payoutSaving ? "disabled" : ""}>
             </label>
+            <div class="payout-preview" aria-live="polite" aria-atomic="true">${payoutPreviewHTML(balance,editor)}</div>
             <div class="payout-editor-actions">
               <button type="button" class="btn" data-payout-cancel ${payoutSaving ? "disabled" : ""}>Отмена</button>
-              <button type="button" class="btn primary" data-payout-save ${payoutSaving ? "disabled" : ""}>${payoutSaving ? "Сохраняется…" : "Сохранить"}</button>
+              <button type="button" class="btn primary" data-payout-save ${payoutSaving || payoutAmountError(balance,editor) ? "disabled" : ""}>${payoutSaving ? "Сохраняется…" : "Сохранить"}</button>
             </div>
           </div>
   ` : "";
@@ -2715,9 +2734,11 @@ function payoutExpandedHTML({kind,due,employee,statsShifts}){
         <div class="payout-detail-title">Из чего сформирована сумма</div>
         <div class="payout-source-list">${payoutSourceRows(statsShifts,kind)}</div>
       </div>
-      <div class="payout-progress ${progress.advance ? "payout-progress-advance" : ""}">
-        <span>${payoutRemainderLabel(progress)}</span>
-        <strong>${payoutRemainderValue(progress)}</strong>
+      <div class="payout-financial-summary">
+        <div class="payout-balance-row"><span>Начислено</span><strong data-payout-earned>${money(balance.due)}</strong></div>
+        <div class="payout-balance-row"><span>Уже выдано</span><strong data-payout-issued>${money(balance.paid)}</strong></div>
+        <div class="payout-progress"><span>Осталось выплатить</span><strong data-payout-remaining>${money(balance.remaining)}</strong></div>
+        ${balance.overpaid>0 ? `<div class="payout-balance-row payout-excess"><span>Выдано сверх начисленного</span><strong data-payout-overpaid>${money(balance.overpaid)}</strong></div>` : ""}
       </div>
       ${records.length ? `
         <div class="payout-history">
@@ -4219,7 +4240,9 @@ function payoutSummaryAmount(progress,due){
   return money(due);
 }
 
-function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
+function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content,accruals}){
+  const balance=statsPayoutBalance(employee,kind,statsShifts,null,accruals);
+  due=balance.due;
   const progress=payoutDisplayProgress(due,payoutRecords(employee?.id,kind));
   const open=expandedPayoutKind===kind;
   return `
@@ -4238,7 +4261,8 @@ function payoutSummaryRowHTML({kind,label,due,employee,statsShifts,content}){
           kind,
           due,
           employee,
-          statsShifts
+          statsShifts,
+          accruals
         })
       })}
     </div>
@@ -4251,11 +4275,11 @@ function currentStatsPayoutContext(kind){
     : teamData.employee;
   if(!employee) return null;
   const employeeShifts=shifts.filter(shift=>shift.employeeId===employee.id);
-  const calculated=payouts(cursor,employeeShifts);
-  return {
-    employee,
-    due:kind==="first_half" ? calculated.payment25 : calculated.payment10
-  };
+  const editor=payoutEditor;
+  const editingId=editor?.open!==false && editor?.employeeId===employee.id &&
+    editor?.kind===kind && editor?.periodMonth===`${cursor}-01` ? editor.id : null;
+  const balance=statsPayoutBalance(employee,kind,employeeShifts,editingId);
+  return {employee,due:balance.due,balance};
 }
 
 function closePayoutEditor({restoreFocus=false}={}){
@@ -4339,13 +4363,7 @@ async function persistPayout(){
     toast("Сумма выплаты — не больше двух знаков после запятой");
     return;
   }
-  const records=payoutRecords(context.employee.id,editor.kind);
-  const previous=records.find(record=>record.id===editor.id);
-  const otherPaid=paymentProgress(0,records.filter(record=>record.id!==editor.id)).paid;
-  const remaining=roundMoney(Math.max(0,context.due-otherPaid));
-  const allowed=previous && !previous.is_advance
-    ? Math.max(remaining,Number(previous.amount))
-    : remaining;
+  const {editingRemaining:remaining,allowedRegular:allowed}=context.balance;
   if(!editor.isAdvance && amount>allowed){
     toast(`Осталось выплатить ${money(remaining)}. Для выдачи вперёд выберите «Аванс».`);
     return;
@@ -4534,13 +4552,18 @@ function teamStatsHTML(){
   };
 
   let working=0;
+  let forecastTotal=0;
+  let plannedCount=0;
 
   for(const employee of people){
     const own=shifts.filter(shift=>
       shift.employeeId===employee.id
     );
 
-    const result=payouts(cursor,own).all;
+    const {earned,forecast}=payoutAccruals({ym:cursor,shifts:own,asOf:businessDate()});
+    const result=earned.all;
+    forecastTotal+=forecast.all.total;
+    plannedCount+=forecast.all.n-earned.all.n;
 
     if(result.n){
       working+=1;
@@ -4573,10 +4596,12 @@ function teamStatsHTML(){
               : ""
           }
         </div>
+        ${plannedCount ? `<div class="sub payout-forecast">Прогноз со всеми сменами: ${money(roundMoney(forecastTotal))} · в плане: ${shiftsWord(plannedCount)}</div>` : ""}
       </div>
     </div>
 
-    <div class="ml">Выплаты</div>
+    <div class="ml">Расчёт за месяц</div>
+    ${plannedCount ? `<p class="note payroll-forecast-note">В расчёт периодов ниже включены все внесённые смены, в том числе запланированные.</p>` : ""}
 
     <div class="card payout-card payroll-periods">
       ${PERIOD_KINDS.map(kind=>
@@ -4620,11 +4645,8 @@ function viewStats(){
         )
       : [];
 
-  const payout=
-    payouts(
-      cursor,
-      statsShifts
-    );
+  const accruals=payoutAccruals({ym:cursor,shifts:statsShifts,asOf:businessDate()});
+  const {earned:payout,forecast}=accruals;
 
   const aggregate=
     payout.all;
@@ -4636,7 +4658,7 @@ function viewStats(){
     );
 
   const today=
-    localYMD();
+    businessDate();
 
   const workedShifts=
     monthShifts.filter(
@@ -4730,7 +4752,7 @@ function viewStats(){
 
   const shiftsSummary=
     statusParts.length
-      ? `${shiftsWord(aggregate.n)}: ${statusParts.join(", ")}`
+      ? `${shiftsWord(monthShifts.length)}: ${statusParts.join(", ")}`
       : shiftsWord(aggregate.n);
 
   const paymentBaseLine=(
@@ -5007,6 +5029,7 @@ function viewStats(){
         <div class="sub">
           ${shiftsSummary}
         </div>
+        ${plannedShifts.length ? `<div class="sub payout-forecast">Прогноз со всеми сменами: ${money(forecast.all.total)}</div>` : ""}
       </div>
     </div>
 
@@ -5021,15 +5044,17 @@ function viewStats(){
         due:payout.payment25,
         employee:selectedEmployee,
         statsShifts,
-        content:payment25Content
+        accruals,
+        content:payment25Content+(plannedShifts.length && forecast.payment25!==payout.payment25 ? `<div class="s payout-forecast">Прогноз со всеми сменами: <span data-payout-forecast>${money(forecast.payment25)}</span></div>` : "")
       })}
       ${payoutSummaryRowHTML({
         kind:"second_half",
-        label:`10 ${esc(monthGen(payout.nextYm))}`,
+        label:`10 ${esc(monthGen(shiftMonth(cursor,1)))}`,
         due:payout.payment10,
         employee:selectedEmployee,
         statsShifts,
-        content:payment10Content
+        accruals,
+        content:payment10Content+(plannedShifts.length && forecast.payment10!==payout.payment10 ? `<div class="s payout-forecast">Прогноз со всеми сменами: <span data-payout-forecast>${money(forecast.payment10)}</span></div>` : "")
       })}
     </div>
 
@@ -17294,7 +17319,10 @@ app.addEventListener(
   "input",
   event=>{
     if(payoutEditor && event.target instanceof HTMLInputElement){
-      if(event.target.id==="payoutAmount") payoutEditor.amount=event.target.value;
+      if(event.target.id==="payoutAmount"){
+        payoutEditor.amount=event.target.value;
+        updatePayoutPreview();
+      }
       if(event.target.id==="payoutComment") payoutEditor.comment=event.target.value;
     }
 
@@ -17703,13 +17731,13 @@ app.addEventListener("click",async event=>{
     if(payoutSaving || (payoutEditor && payoutEditor.open!==false)) return;
     const context=currentStatsPayoutContext(button.dataset.payoutAdd);
     if(context){
-      const progress=paymentProgress(context.due,payoutRecords(context.employee.id,button.dataset.payoutAdd));
+      const progress=context.balance;
       payoutEditor={
         kind:button.dataset.payoutAdd,
         employeeId:context.employee.id,
         periodMonth:`${cursor}-01`,
         open:true,
-        isAdvance:false,
+        isAdvance:progress.defaultIsAdvance,
         amount:String(progress.remaining || ""),
         paidOn:localYMD(),
         comment:""
@@ -17741,6 +17769,7 @@ app.addEventListener("click",async event=>{
 
   if(button.dataset.payoutMode){
     if(!payoutEditor || payoutEditor.open===false || payoutSaving) return;
+    if(button.dataset.payoutMode==="regular" && !currentStatsPayoutContext(payoutEditor.kind)?.balance.regularAvailable) return;
     payoutEditor.isAdvance=button.dataset.payoutMode==="advance";
     render();
     return;

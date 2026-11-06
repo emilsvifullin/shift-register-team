@@ -78,7 +78,7 @@ test("attach confirms separately, preserves the shift, and retries a failed read
   await expect(page.locator("#appConfirmOk")).toContainText("Прикрепить к");
   await page.locator("#appConfirmOk").click();
   await expect(page.locator("#shiftDirectoryRetry")).toHaveText("Повторить обновление");
-  await expect(page.locator(".shift-directory-status")).toContainText("Смена сохраняется отдельно");
+  await expect(page.locator(".shift-directory-status")).toContainText("Не удалось обновить справочник");
   await page.locator("#shiftDirectoryRetry").click();
   await expect(page.locator("#f-employee-open")).toContainText(longName);
   expect(await calls(page,"admin_attach_shift_employee")).toHaveLength(1);
@@ -100,7 +100,7 @@ test("attach confirms separately, preserves the shift, and retries a failed read
   });
   await page.locator("#sheetSave").click();
   await expect(page.locator("#toast")).toContainText("Контрольный отказ");
-  await expect(page.locator(".shift-directory-status")).toContainText("прикреплён к ПВЗ");
+  await expect(page.locator(".shift-directory-status")).toHaveCount(0);
   await expect(page.locator("#f-note")).toHaveValue("Черновик смены");
   await page.locator("#sheetSave").click();
   await expect(page.locator("#sheet")).not.toHaveClass(/\bon\b/);
@@ -172,6 +172,7 @@ test("create from a multi-date calendar shift replays a lost response and restor
   await expect(page.locator("#employeeSheet")).not.toHaveClass(/\bon\b/);
   await expect(page.locator("#f-employee-open")).toBeFocused();
   await expect(page.locator("#f-employee-open")).toContainText("Сотрудник из календаря");
+  await expect(page.locator(".shift-directory-status")).toHaveCount(0);
   await expect(page.locator("#f-date-open .point-value")).toHaveText(date);
   await expect(page.locator("#f-note")).toHaveValue("Остаться в той же смене");
   const writes=await calls(page,"admin_save_employee_profile_v2");
@@ -349,4 +350,102 @@ test("the existing proxy route carries both directory RPC POST paths",async({pag
     "https://shift-register-supabase-proxy.vercel.app/rest/v1/rpc/admin_save_employee_profile_v2"
   ]);
   expect(answers).toEqual([{p_operation_id:"route-test"},{p_operation_id:"route-test"}]);
+});
+
+test("new point from a shift preserves the draft and retries only the directory read",async({page},info)=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.emulateMedia({colorScheme:"dark"});
+  await openApp(page);
+  await openShift(page);
+  await page.locator("#f-note").fill("Комментарий черновика");
+  const date=await page.locator("#f-date-open .point-value").innerText();
+  await page.locator("#f-point-open").click();
+  await page.locator("#shiftPointSearch").fill("Новый");
+  await expect(page.locator("#shiftPointCreate")).toBeVisible();
+  await page.screenshot({path:info.outputPath("new-point-choice.png")});
+  await page.locator("#shiftPointCreate").click();
+  await expect(page.locator("#sheet")).toHaveAttribute("inert","");
+  await expect(page.locator("#manageTariffDateOpen")).toContainText(date);
+  await page.locator("#manageEditorCancel").click();
+  await expect(page.locator("#shiftPointCreate")).toBeFocused();
+  await expect(page.locator("#f-point-open")).toContainText("Коммунальная 10");
+  await expect(page.locator("#f-note")).toHaveValue("Комментарий черновика");
+  expect(await calls(page,"admin_save_point")).toHaveLength(0);
+
+  await page.locator("#shiftPointCreate").click();
+  await page.locator("#managePointName").fill("Демо ПВЗ «Полярная звезда»");
+  await page.locator("#manageFixedRate").fill("2600");
+  await page.evaluate(()=>{
+    const client=globalThis.supabase.createClient();
+    const rpc=client.rpc.bind(client);
+    const from=client.from.bind(client);
+    let failRead=false;
+    client.rpc=async(name,args)=>{
+      const result=await rpc(name,args);
+      if(name==="admin_save_point") failRead=true;
+      return result;
+    };
+    client.from=table=>{
+      if(table==="points" && failRead){
+        failRead=false;
+        throw new Error("read unavailable");
+      }
+      return from(table);
+    };
+  });
+  await settleScreen(page);
+  await page.screenshot({path:info.outputPath("new-point-editor.png")});
+  await page.locator("#manageEditorSave").click();
+  await expect(page.locator("#manageEditorSave")).toHaveText("Обновить");
+  await expect(page.locator("#manageEditorBody")).toHaveAttribute("inert","");
+  await page.locator("#manageEditorSave").click();
+  await expect(page.locator("#manageEditorSheet")).not.toHaveClass(/\bon\b/);
+  await expect(page.locator("#sheet")).not.toHaveAttribute("inert","");
+  await expect(page.locator("#f-point-open")).toBeFocused();
+  await expect(page.locator("#f-point-open")).toContainText("Полярная звезда");
+  await expect(page.locator("#f-date-open .point-value")).toHaveText(date);
+  await expect(page.locator("#f-note")).toHaveValue("Комментарий черновика");
+  await expect(page.locator("#f-employee-open")).toContainText("Выберите сотрудника");
+  expect(await calls(page,"admin_save_point")).toHaveLength(1);
+  expect((await calls(page,"admin_save_point"))[0].args).toMatchObject({
+    p_active:true,p_effective_from:FROZEN_TODAY.toISOString().slice(0,10),p_fixed_rate:2600
+  });
+  expect(await calls(page,"admin_save_shift_v4")).toHaveLength(0);
+});
+
+test("Back keeps the shift still while discard confirmation opens",async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  const source=structuredClone(ADMIN_SEED);
+  source.shifts.push({
+    id:"shift-back",employee_id:"employee-2",shift_date:"2026-09-20",
+    point_id:"point-2",shift_type:"main",partial:false,full_hours:12,
+    base_amount:3000,pricing_snapshot:{fixed:true,rate:3000,fullHours:12}
+  });
+  await openApp(page,{seed:source});
+  await page.locator("#app .sh").first().click();
+  await page.locator("#sheetSave").click();
+  await expect(page.locator("#sheetCancel")).toHaveText("Назад");
+  await page.locator("#f-note").fill("Изменённый комментарий");
+  const body=page.locator("#sheetBody");
+  await expect.poll(()=>body.evaluate(element=>element.getAnimations().length)).toBe(0);
+  await page.evaluate(()=>{
+    const body=document.getElementById("sheetBody");
+    const animate=body.animate.bind(body);
+    window.shiftBackFrames=[];
+    body.animate=(frames,options)=>{
+      window.shiftBackFrames.push(frames);
+      return animate(frames,options);
+    };
+  });
+
+  await page.locator("#sheetCancel").click();
+  await expect(page.locator("#appConfirmCancel")).toBeFocused();
+  await page.locator("#appConfirmCancel").click();
+  await expect(page.locator("#sheetCancel")).toHaveText("Назад");
+  await expect(page.locator("#f-note")).toHaveValue("Изменённый комментарий");
+  await page.locator("#sheetCancel").click();
+  await page.locator("#appConfirmOk").click();
+  await expect(page.locator("#sheetCancel")).toHaveText("Закрыть");
+  await expect(page.locator("#sheet")).toHaveClass(/\bon\b/);
+  expect(await page.evaluate(()=>window.shiftBackFrames.flat())).toEqual([]);
 });

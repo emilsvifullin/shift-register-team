@@ -267,7 +267,6 @@ let shiftDirectoryLimit=SHIFT_DIRECTORY_PAGE;
 let shiftDirectoryIndex={};
 // An in-flight write belongs to one draft and one point, even after a refresh.
 let shiftDirectoryOperation=null;
-let shiftDirectorySaved="";
 let shiftDateCursor="";
 let shiftDateJumpOpen=false;
 let shiftDateJumpYear=0;
@@ -1060,13 +1059,15 @@ function closeAppConfirm(result){
 
   const resolve=appConfirmResolve;
   appConfirmResolve=null;
+  const previous=appConfirmPreviousFocus;
+  appConfirmPreviousFocus=null;
   if(resolve) resolve(result);
 
   setTimeout(()=>{
-    if(appConfirmPreviousFocus && document.contains(appConfirmPreviousFocus)){
-      appConfirmPreviousFocus.focus();
+    const top=activeModal();
+    if(previous && document.contains(previous) && (!top || top.contains(previous))){
+      previous.focus({preventScroll:true});
     }
-    appConfirmPreviousFocus=null;
   },100);
 }
 
@@ -6974,11 +6975,13 @@ function drawManageEditor(){
         </label>
       </div>
 
-      <div class="ml">Статус</div>
-      <div class="card segbox"><div class="seg">
-        <button type="button" data-point-active="1" class="${manageEditorDraft.active ? "on" : ""}">Активен</button>
-        <button type="button" data-point-active="0" class="${!manageEditorDraft.active ? "on" : ""}">В архиве</button>
-      </div></div>
+      ${manageEditorDraft.shiftOwner ? "" : `
+        <div class="ml">Статус</div>
+        <div class="card segbox"><div class="seg">
+          <button type="button" data-point-active="1" class="${manageEditorDraft.active ? "on" : ""}">Активен</button>
+          <button type="button" data-point-active="0" class="${!manageEditorDraft.active ? "on" : ""}">В архиве</button>
+        </div></div>
+      `}
 
       <div class="ml">Аванс</div>
       <div class="card segbox"><div class="seg">
@@ -7066,7 +7069,7 @@ function tariffBoxHTML(){
   `;
 }
 
-function openManageEditor(kind,id=null){
+function openManageEditor(kind,id=null,shiftOwner=null){
   if(manageEditorSaving) return;
   if(!isAdmin){
     return;
@@ -7074,13 +7077,21 @@ function openManageEditor(kind,id=null){
 
   manageEditorKind=kind;
   manageEditorPreviousFocus=
-    document.activeElement;
+    shiftOwner
+      ? document.getElementById("shiftPointCreate")
+      : document.activeElement;
 
   if(kind!=="point"){
     return;
   }
 
   manageEditorDraft=createPointDraft(id);
+  if(shiftOwner){
+    manageEditorDraft.shiftOwner=shiftOwner;
+    manageEditorDraft.effectiveFrom=shiftOwner.date;
+    document.getElementById("sheet").inert=true;
+  }
+  document.getElementById("manageEditorBody").inert=false;
 
   document.getElementById(
     "manageEditorTitle"
@@ -7230,16 +7241,24 @@ function closeManageEditor({force=false}={}){
   veil.setAttribute("aria-hidden","true");
   manageEditorSheetElement.classList.remove("on");
   manageEditorSheetElement.setAttribute("aria-hidden","true");
-  document.body.classList.remove("sheet-open");
+  if(manageEditorDraft?.shiftOwner){
+    document.getElementById("sheet").inert=false;
+  }
   manageEditorDraft=null;
   manageEditorKind=null;
-  if(!activeModal()) setBackgroundInert(false);
+  if(!activeModal()){
+    document.body.classList.remove("sheet-open");
+    setBackgroundInert(false);
+  }
 
   const previous=manageEditorPreviousFocus;
   manageEditorPreviousFocus=null;
   setTimeout(()=>{
-    if(previous && document.contains(previous)) previous.focus();
     if(!manageEditorSheetElement.classList.contains("on")) manageEditorSheetElement.style.display="none";
+    const top=activeModal();
+    if(previous && document.contains(previous) && (!top || top.contains(previous))){
+      previous.focus({preventScroll:true});
+    }
   },100);
 }
 
@@ -7256,6 +7275,26 @@ function manageEditorPrimaryAction(){
   }
 
   void saveManageEditor();
+}
+
+async function returnToShiftWithPoint(editing,pointId){
+  editing.savedPointId=pointId;
+  const refreshed=await refreshTeamData({renderAfter:false});
+  if(!refreshed){
+    toast("Не удалось обновить список ПВЗ",4200);
+    return;
+  }
+
+  const point=teamData.points.find(item=>item.id===pointId && item.active!==false);
+  if(point && draft===editing.shiftOwner){
+    readForm();
+    selectShiftPoint(point);
+    manageEditorPreviousFocus=document.getElementById("f-point-open");
+  }
+
+  closeManageEditor({force:true});
+  render();
+  if(!point) toast("ПВЗ недоступен",4200);
 }
 
 async function saveManageEditor(){
@@ -7280,6 +7319,13 @@ async function saveManageEditor(){
     tariffIntentUpdatesRecord(tariffIntent);
 
   try{
+    if(editing.savedPointId){
+      manageEditorSaving=true;
+      releaseFields=lockEditorFields(manageEditorSheetElement);
+      await returnToShiftWithPoint(editing,editing.savedPointId);
+      return;
+    }
+
     if(
       manageEditorKind==="point" &&
       !manageEditorDraft.name.trim()
@@ -7395,12 +7441,12 @@ async function saveManageEditor(){
       }
     }
 
-    const operation=structuredClone(editing);
+    const {shiftOwner,...pointDraft}=editing;
+    const operation=structuredClone(pointDraft);
     manageEditorSaving=true;
     releaseFields=lockEditorFields(manageEditorSheetElement);
-    document.getElementById("manageEditorSave").disabled=true;
 
-    await saveAdminPoint({
+    const pointId=await saveAdminPoint({
       id:operation.id,
       name:operation.name,
       sortOrder:
@@ -7431,6 +7477,11 @@ async function saveManageEditor(){
         ? operation.effectiveFrom
         : null
     });
+
+    if(shiftOwner){
+      await returnToShiftWithPoint(editing,pointId);
+      return;
+    }
 
     if(
       !operation.isNew &&
@@ -7482,8 +7533,10 @@ async function saveManageEditor(){
   }finally{
     manageEditorSaving=false;
     releaseFields();
-    const button=document.getElementById("manageEditorSave");
-    if(button) button.disabled=false;
+    if(manageEditorDraft===editing && editing.savedPointId){
+      document.getElementById("manageEditorBody").inert=true;
+      document.getElementById("manageEditorSave").textContent="Обновить";
+    }
   }
 }
 
@@ -9695,7 +9748,9 @@ function openEmployeeEditor(
     );
 
   employeeSheetPreviousFocus=
-    document.activeElement;
+    shiftContext
+      ? document.getElementById("shiftDirectoryCreate")
+      : document.activeElement;
 
   if(shiftContext){
     nextDraft.shiftContext={...shiftContext,operationId:createTeamId()};
@@ -10104,8 +10159,7 @@ async function saveEmployeeDraft(){
 
     if(shiftContext && !creationRolledBack){
       const target={
-        ...shiftContext,employeeId,saved:true,verifyCreation:rollbackAttempted && !refreshed,
-        message:`Карточка сотрудника «${name}» и назначение сохранены.`
+        ...shiftContext,employeeId,saved:true,verifyCreation:rollbackAttempted && !refreshed
       };
 
       if(refreshed && !authNeedsReview && teamData.employees.find(item=>item.id===employeeId)?.user_id){
@@ -10124,13 +10178,11 @@ async function saveEmployeeDraft(){
       }
 
       render();
-      toast(target.verifyCreation
-        ? "Не удалось проверить карточку после ошибки входа. Повторите обновление справочника"
-        : authFailure
-          ? `Карточка сохранена. Вход не настроен: ${authFailure}`
-        : pendingRateFailure
-          ? `Карточка сохранена. Ставка не задана: ${pendingRateFailure}`
-          : refreshed ? "Сотрудник сохранён" : "Карточка сохранена. Повторите обновление справочника",4400);
+      if(authFailure || pendingRateFailure){
+        toast(authFailure
+          ? `Вход не настроен: ${authFailure}`
+          : `Ставка не задана: ${pendingRateFailure}`,4400);
+      }
       return;
     }
 
@@ -10626,10 +10678,9 @@ function shiftDirectoryHTML(assigned){
 
 function shiftDirectoryStatusHTML(){
   const operation=shiftDirectoryOperation;
-  if(!operation && !shiftDirectorySaved) return "";
+  if(!operation?.busy && !operation?.error) return "";
   return `
     <div class="shift-directory-status">
-      ${shiftDirectorySaved ? `<div role="status">${esc(shiftDirectorySaved)} Смена сохраняется отдельно.</div>` : ""}
       ${operation?.busy ? `<div role="status">${operation.saved ? "Обновляем справочник…" : "Прикрепляем сотрудника…"}</div>` : ""}
       ${operation?.error ? `
         <div role="status">${esc(operation.error)}</div>
@@ -10670,7 +10721,7 @@ async function finishShiftDirectoryOperation(operation){
     }
 
     const refreshed=await refreshTeamData({renderAfter:true});
-    if(applyShiftDirectoryResult(operation,refreshed)) toast(operation.message);
+    applyShiftDirectoryResult(operation,refreshed);
   }catch(error){
     if(!currentShiftDirectoryOperation(operation)) return;
     operation.error=error?.code==="write_outcome_unknown"
@@ -10686,10 +10737,9 @@ async function finishShiftDirectoryOperation(operation){
 }
 
 function applyShiftDirectoryResult(operation,refreshed){
-  if(!currentShiftDirectoryOperation(operation)) return false;
+  if(!currentShiftDirectoryOperation(operation)) return;
 
   const creationExists=refreshed && teamData.employees.some(item=>item.id===operation.employeeId);
-  if(!operation.verifyCreation || creationExists) shiftDirectorySaved=operation.message;
   const employee=refreshed && availableShiftDirectoryPoint() && shiftEmployeeOptions()
     .find(item=>item.id===operation.employeeId && item.status==="active" && !item.deletion_pending);
 
@@ -10701,7 +10751,7 @@ function applyShiftDirectoryResult(operation,refreshed){
         ? "Карточка не найдена после отката создания."
         : "Назначение больше недоступно. Проверьте сотрудника и ПВЗ.";
     drawSheet(shiftSheetMode==="edit");
-    return false;
+    return;
   }
 
   shiftDirectoryOperation=null;
@@ -10709,7 +10759,31 @@ function applyShiftDirectoryResult(operation,refreshed){
   if(activeModal()?.id==="sheet"){
     document.getElementById("f-employee-open")?.focus({preventScroll:true});
   }
-  return true;
+}
+
+function selectShiftPoint(point){
+  const wasFixed=previewCalc(draft).fixed;
+  const pointChanged=draft.dbPointId!==point.id;
+
+  draft.dbPointId=point.id;
+  draft.pointId=point.code || point.id;
+  draft.point=point.name;
+
+  if(pointChanged){
+    shiftDirectoryOperation=null;
+    draft.employeeId="";
+    draft.employeeName="";
+  }
+
+  if(previewCalc(draft).fixed){
+    draft.shk=0;
+  }else if(wasFixed){
+    draft.shk="";
+  }
+
+  resetShiftInline();
+  drawSheet(shiftSheetMode==="edit");
+  saveUIState();
 }
 
 function shiftPointOptions(
@@ -10794,7 +10868,6 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
   }
 
   shiftDirectoryOperation=null;
-  shiftDirectorySaved="";
   sheetPreviousFocus=document.activeElement;
 
   prepareBottomSheetOpen(
@@ -10949,7 +11022,6 @@ function closeSheet(){
   shiftOriginalDraft=null;
   shiftSheetMode="create";
   shiftDirectoryOperation=null;
-  shiftDirectorySaved="";
   resetShiftInline();
   saveUIState();
   if(!activeModal()) setBackgroundInert(false);
@@ -10993,7 +11065,7 @@ function shiftDraftChanged(){
 }
 
 async function requestCloseShiftSheet(){
-  if(shiftSaveInProgress){
+  if(shiftSaveInProgress || activeModal()?.id!=="sheet"){
     return;
   }
 
@@ -11007,6 +11079,7 @@ async function requestCloseShiftSheet(){
     return;
   }
 
+  const owner=draft;
   if(
     shiftDraftChanged() &&
     !await appConfirm(
@@ -11020,6 +11093,7 @@ async function requestCloseShiftSheet(){
   ){
     return;
   }
+  if(draft!==owner) return;
 
   if(
     shiftSheetMode==="edit" &&
@@ -11028,6 +11102,8 @@ async function requestCloseShiftSheet(){
     draft=cloneShiftDraft(
       shiftOriginalDraft
     );
+    shiftDirectoryOperation=null;
+    resetShiftInline();
     shiftSheetMode="view";
     document.getElementById("sheetCancel").textContent="Закрыть";
     document.getElementById("sheetSave").textContent="Изменить";
@@ -11210,7 +11286,8 @@ function inlineChoiceHTML({
   searchId,
   searchQuery,
   searchLabel,
-  searchable=true
+  searchable=true,
+  footer=""
 }){
   const visible=
     searchable
@@ -11235,6 +11312,7 @@ function inlineChoiceHTML({
         value,
         attribute
       })}
+      ${footer}
     </div>
   `;
 }
@@ -12846,7 +12924,12 @@ function drawSheet(isEdit){
             shiftInlineField==="point"
               ? shiftInlineQuery
               : "",
-          searchLabel:"Поиск пункта"
+          searchLabel:"Поиск пункта",
+          footer:`
+            <button type="button" class="point-option shift-directory-action" id="shiftPointCreate">
+              Создать ПВЗ
+            </button>
+          `
         })
       })}
 
@@ -16509,48 +16592,14 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     return;
   }
 
+  if(t.id==="shiftPointCreate"){
+    openManageEditor("point",null,draft);
+    return;
+  }
+
   if(t.dataset.shiftPoint){
-    readForm();
-
-    const wasFixed=
-      previewCalc(draft).fixed;
-
-    const point=
-      teamData.points.find(
-        item=>
-          item.id===t.dataset.shiftPoint
-      );
-
-    if(!point){
-      return;
-    }
-
-    const pointChanged=
-      draft.dbPointId!==point.id;
-
-    draft.dbPointId=point.id;
-    draft.pointId=
-      point.code || point.id;
-    draft.point=point.name;
-
-    if(pointChanged){
-      shiftDirectoryOperation=null;
-      draft.employeeId="";
-      draft.employeeName="";
-    }
-
-    const nowFixed=
-      previewCalc(draft).fixed;
-
-    if(nowFixed){
-      draft.shk=0;
-    }else if(wasFixed){
-      draft.shk="";
-    }
-
-    resetShiftInline();
-    drawSheet(isEdit);
-    saveUIState();
+    const point=teamData.points.find(item=>item.id===t.dataset.shiftPoint);
+    if(point) selectShiftPoint(point);
     return;
   }
 
@@ -16594,15 +16643,14 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
 
     const owner=draft;
     const agreed=await appConfirm("Прикрепить сотрудника?",{
-      detail:`${employee.full_name} · ${point.name}. Назначение сохранится в справочнике.`,
+      detail:employee.full_name,
       okText:`Прикрепить к ${point.name}`
     });
     if(!agreed || draft!==owner || draft.dbPointId!==point.id) return;
 
     if(shiftDirectoryOperation?.employeeId!==employee.id){
       shiftDirectoryOperation={
-        owner,employeeId:employee.id,pointId:point.id,operationId:createTeamId(),
-        message:`${employee.full_name} прикреплён к ПВЗ.`
+        owner,employeeId:employee.id,pointId:point.id,operationId:createTeamId()
       };
     }
     readForm();

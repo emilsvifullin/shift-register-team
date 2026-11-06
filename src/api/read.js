@@ -239,7 +239,7 @@ export async function loadAdminTeamData({
         counted=>supabaseClient
           .from("employees")
           .select(
-            "id, user_id, full_name, status, hired_at, is_system_substitute, phone, transfer_phone, transfer_bank, transfer_recipient",
+            "id, user_id, full_name, status, hired_at, is_system_substitute, phone, transfer_phone, transfer_bank, transfer_recipient, deletion_pending",
             counted ? {count:"exact"} : undefined
           )
           .order("status",{ascending:true})

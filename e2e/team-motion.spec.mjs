@@ -99,14 +99,14 @@ test("employee view to edit and back visibly animate instead of replacing conten
     return {
       duration:timing.duration,
       firstOpacity:frames[0].opacity,
-      firstTransform:frames[0].transform
+      firstTransform:frames[0].transform ?? null
     };
   });
 
   expect(forward).not.toBeNull();
   expect(forward.duration).toBe(260);
-  expect(Number(forward.firstOpacity)).toBeCloseTo(.18,2);
-  expect(forward.firstTransform).toContain("14px");
+  expect(Number(forward.firstOpacity)).toBeCloseTo(.78,2);
+  expect(forward.firstTransform).toBeNull();
   await expect(page.locator("#employeeSheetTitle")).toHaveText("Редактирование");
 
   await page.screenshot({
@@ -121,10 +121,11 @@ test("employee view to edit and back visibly animate instead of replacing conten
   const back=await page.locator("#employeeSheetBody").evaluate(element=>{
     const animation=element.getAnimations()[0];
     if(!animation) return null;
-    return animation.effect.getKeyframes()[0].transform;
+    const first=animation.effect.getKeyframes()[0];
+    return {opacity:Number(first.opacity),transform:first.transform ?? null};
   });
 
-  expect(back).toContain("-14px");
+  expect(back).toEqual({opacity:.78,transform:null});
   await expect(page.locator("#employeeSheetTitle")).toHaveText("Сотрудник");
 });
 

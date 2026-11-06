@@ -11,6 +11,7 @@ export {
 
 export {
   addAdminEmployeeRate,
+  attachAdminShiftEmployee,
   deleteAdminEmployee,
   deleteAdminEmployeeRate,
   rollbackAdminEmployeeCreation,

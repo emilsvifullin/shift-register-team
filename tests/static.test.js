@@ -811,7 +811,7 @@ test(
     */
     assert.match(
       app,
-      /shiftEmployeeReveal[\s\S]*inlineChoiceHTML\([\s\S]*employeeChoiceOption/
+      /shiftEmployeeReveal[\s\S]*shiftDirectoryHTML\(employeeOptions\)/
     );
 
     assert.match(

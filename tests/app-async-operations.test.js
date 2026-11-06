@@ -40,7 +40,7 @@ function refreshContext(){
     teamDataLoading:false,teamDataError:null,serverDataError:null,
     cursor:"2026-10",periodMonthKey:value=>`${value}-01`,
     loadTeamData:()=>{const next=deferred();loads.push(next);return next.promise;},
-    teamData:{},shifts:[],statsEmployeeId:"",renders:0,
+    teamData:{},shifts:[],draft:null,statsEmployeeId:"",renders:0,
     renderWhenReady:()=>{c.renders++;}
   };
   vm.createContext(c);
@@ -51,7 +51,10 @@ function saveContext(save){
   const elements=new Map(["sheetSave","sheetBody","sheetCancel"].map(id=>[id,{disabled:false,inert:false}]));
   const c={
     Error,Promise,document:{getElementById:id=>elements.get(id)},
-    isAdmin:true,shiftSheetMode:"create",shifts:[],
+    isAdmin:true,
+    shiftDirectoryOperation:null,
+    employeeDraft:null,
+    shiftSheetMode:"create",shifts:[],
     draft:{id:"first-id",employeeId:"employee-A",type:"main",date:"2026-10-15",dates:["2026-10-15","2026-10-16","2026-10-17"],shk:100,bonuses:[{id:"bonus",amount:200,comment:"initial"}],penalties:[]},
     readForm:()=>{},multiDateMode:()=>true,draftDates:value=>value.dates,
     validateDraft:()=>null,datesToCreate:async chosen=>chosen,

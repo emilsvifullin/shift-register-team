@@ -628,7 +628,7 @@ export function shiftEmployeeChoices({
           Boolean(pointId) &&
           (
             includeInactive ||
-            employee.status==="active"
+            (employee.status==="active" && !employee.deletion_pending)
           ) &&
           (
             employee.is_system_substitute===
@@ -640,6 +640,43 @@ export function shiftEmployeeChoices({
         ) ||
         employee.id===selectedEmployeeId
     );
+}
+
+export function shiftEmployeeDirectory({employees,employeePoints,points,accounts}){
+  const namesById=new Map(points.map(point=>[point.id,point.name]));
+  const emailsByUser=new Map(accounts.map(account=>[account.user_id,account.email]));
+  const pointNamesByEmployee=new Map();
+
+  for(const link of employeePoints){
+    const pointName=namesById.get(link.point_id);
+    if(link.active===false || !pointName) continue;
+    const names=pointNamesByEmployee.get(link.employee_id) || [];
+    names.push(pointName);
+    pointNamesByEmployee.set(link.employee_id,names);
+  }
+
+  const activeEmployees=employees.filter(employee=>
+    employee.status==="active" && !employee.deletion_pending && !employee.is_system_substitute
+  );
+  const nameCounts=new Map();
+  for(const employee of activeEmployees){
+    nameCounts.set(employee.full_name,(nameCounts.get(employee.full_name) || 0)+1);
+  }
+
+  return activeEmployees.map(employee=>{
+    const pointNames=pointNamesByEmployee.get(employee.id) || [];
+    const account=emailsByUser.get(employee.user_id) || "";
+    const email=account.endsWith("@phone.shift-register.example.com") ? "" : account;
+    const sameName=nameCounts.get(employee.full_name)>1;
+    const reference=sameName ? "#"+employee.id.slice(-8) : "";
+    return {
+      value:employee.id,
+      label:employee.full_name,
+      detail:[pointNames.join(", ") || "Без привязки",employee.phone,email,reference].filter(Boolean).join(" · "),
+      searchText:[...pointNames,employee.phone,email,reference].filter(Boolean).join(" "),
+      sameName
+    };
+  });
 }
 
 function adjustmentRows(

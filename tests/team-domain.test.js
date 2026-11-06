@@ -16,6 +16,7 @@ import {
   rateForTariff,
   roleCapabilities,
   shiftEmployeeChoices,
+  shiftEmployeeDirectory,
   shiftPointChoices,
   sortPointsAlphabetically,
   tariffForDate
@@ -613,4 +614,28 @@ test("point choices use Russian alphabetical order without mutating source",()=>
     points.map(point=>point.id),
     ["three","one","two"]
   );
+});
+
+test("the shift directory distinguishes namesakes and excludes unavailable people",()=>{
+  const namesake={full_name:"Иван Иванов",status:"active",phone:"+79001112233"};
+  const employees=[
+    {...namesake,id:"employee-1"},
+    {...namesake,id:"employee-2"},
+    {...namesake,id:"archived",status:"inactive"},
+    {...namesake,id:"deleting",deletion_pending:true},
+    {...namesake,id:"system",is_system_substitute:true}
+  ];
+  const directory=shiftEmployeeDirectory({
+    employees,
+    points:[point,fixedPoint],
+    employeePoints:[
+      {employee_id:"employee-1",point_id:point.id,active:true},
+      {employee_id:"employee-2",point_id:fixedPoint.id,active:false}
+    ],
+    accounts:[]
+  });
+  assert.deepEqual(directory.map(option=>option.value),["employee-1","employee-2"]);
+  assert.match(directory[0].detail,/Коммунальная Улица 10/);
+  assert.match(directory[1].detail,/Без привязки/);
+  assert.notEqual(directory[0].detail.split(" · ").at(-1),directory[1].detail.split(" · ").at(-1));
 });

@@ -246,7 +246,7 @@ function animateEditorSurface(
     sheet.querySelectorAll(".shead .lnk");
 
   body.animate(
-    [
+    direction ? [
       {
         opacity:.18,
         transform:
@@ -256,14 +256,14 @@ function animateEditorSurface(
         opacity:1,
         transform:"translate3d(0,0,0)"
       }
-    ],
+    ] : [{opacity:.78},{opacity:1}],
     {
       duration:260,
       easing:REFERENCE_EASE
     }
   );
 
-  title?.animate(
+  if(direction) title?.animate(
     [
       {
         opacity:.35,
@@ -297,7 +297,8 @@ function animateEditorSurface(
 
 function queueEditorTransition(
   definition,
-  direction
+  direction,
+  changed=()=>true
 ){
   queueMicrotask(()=>{
     requestAnimationFrame(()=>{
@@ -311,7 +312,7 @@ function queueEditorTransition(
           definition.body
         );
 
-      if(!sheet || !body){
+      if(!sheet || !body || !changed()){
         return;
       }
 
@@ -346,24 +347,15 @@ document.addEventListener(
         );
 
       if(
-        definition.forwardText &&
-        text===definition.forwardText
-      ){
-        queueEditorTransition(
-          definition,
-          1
-        );
-
-        return;
-      }
-
-      if(
-        definition.backText &&
+        text===definition.forwardText ||
         text===definition.backText
       ){
+        // «Назад» может сначала открыть подтверждение. Пока содержимое
+        // листа прежнее, его не нужно анимировать.
         queueEditorTransition(
           definition,
-          -1
+          0,
+          ()=>normalizeText(button.textContent)!==text
         );
 
         return;

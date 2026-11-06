@@ -84,6 +84,15 @@ jobs:
       - name: Run browser smoke
         run: npx playwright test e2e --browser=${{ matrix.browser }} --reporter=line
 
+      - name: Upload shift employee acceptance screenshots
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v6
+        with:
+          name: shift-employee-directory-${{ matrix.browser }}
+          path: test-results/shift-employee-directory-*/*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       # Трасса упавшего теста — единственный способ разобрать редкий сбой
       # после того, как он случился. Суток на это не хватало.
       - name: Upload Playwright report

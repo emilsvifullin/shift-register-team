@@ -45,6 +45,7 @@ import {
 
 import {
   addAdminEmployeeRate,
+  attachAdminShiftEmployee,
   checkPayrollPeriod,
   closePayrollPeriod,
   addAdminTariff,
@@ -81,6 +82,7 @@ import {
   pricingDriversChanged,
   rateForTariff,
   shiftEmployeeChoices,
+  shiftEmployeeDirectory,
   shiftRateForDate,
   shiftPointChoices,
   sortPointsAlphabetically,
@@ -260,11 +262,18 @@ let shiftOriginalDraft=null;
 */
 let shiftInlineField=null;
 let shiftInlineQuery="";
+const SHIFT_DIRECTORY_PAGE=40;
+let shiftDirectoryLimit=SHIFT_DIRECTORY_PAGE;
+let shiftDirectoryIndex={};
+// An in-flight write belongs to one draft and one point, even after a refresh.
+let shiftDirectoryOperation=null;
+let shiftDirectorySaved="";
 let shiftDateCursor="";
 let shiftDateJumpOpen=false;
 let shiftDateJumpYear=0;
 
 function resetShiftInline(){
+  shiftDirectoryLimit=SHIFT_DIRECTORY_PAGE;
   shiftInlineField=null;
   shiftInlineQuery="";
   shiftDateJumpOpen=false;
@@ -642,6 +651,10 @@ async function refreshTeamData({
 
       if(shouldRender){
         renderWhenReady();
+        if(draft && shiftInlineField==="employee" && !employeeDraft?.shiftContext && !shiftSaveInProgress){
+          readForm();
+          drawSheet(shiftSheetMode==="edit");
+        }
       }
     }
   });
@@ -8824,6 +8837,7 @@ function drawEmployeeSheet(){
                   type="button"
                   class="employee-point ${selected ? "on" : ""} ${archived ? "employee-point-archived" : ""}"
                   data-employee-point="${esc(point.id)}"
+                  ${employeeDraft.shiftContext?.pointId===point.id ? "disabled" : ""}
                   aria-label="${esc(point.name)}, ${archived ? "в архиве" : "активен"}, ${selected ? "назначен" : "не назначен"}"
                 >
                   <span
@@ -9073,6 +9087,11 @@ function drawEmployeeSheet(){
       Пункты выдачи
     </div>
 
+    ${employeeDraft.shiftContext ? `<div class="employee-help">ПВЗ из смены уже выбран.</div>` : ""}
+    ${employeeDraft.pointsConflict ? `
+      <div class="employee-help" role="status">Назначения изменились. Обновите ПВЗ и проверьте выбор.</div>
+      <button type="button" class="btn" id="employeeReloadPoints">Обновить назначения</button>
+    ` : ""}
     <div class="card employee-points">
       ${pointRows}
     </div>
@@ -9271,6 +9290,7 @@ function createEmployeeDraft(
       employee
     );
 
+  const pointIds=employeePointIds(employee.id);
   return {
     pendingRates:{},
     id:employee.id,
@@ -9296,10 +9316,8 @@ function createEmployeeDraft(
     transferRecipient:
       employee.transfer_recipient || "",
     password:"",
-    pointIds:
-      employeePointIds(
-        employee.id
-      )
+    originalPointIds:pointIds,
+    pointIds:[...pointIds]
   };
 }
 
@@ -9488,7 +9506,7 @@ function syncEmployeeSheetHeader(){
       "Отмена";
 
     actionButton.textContent=
-      "Готово";
+      employeeDraft?.shiftProfileRequest ? "Повторить" : "Готово";
 
     actionButton.disabled=
       employeeSaving;
@@ -9521,7 +9539,7 @@ function syncEmployeeSheetHeader(){
     "Готово";
 
   actionButton.disabled=
-    employeeSaving;
+    employeeSaving || Boolean(employeeDraft?.pointsConflict);
 }
 
 function showEmployeeView(
@@ -9612,6 +9630,34 @@ function cancelEmployeeSheet(){
   closeEmployeeEditor();
 }
 
+async function reloadEmployeeAssignments(){
+  const editing=employeeDraft;
+  if(!editing?.pointsConflict) return;
+  employeeSaving=true;
+  const releaseFields=lockEditorFields(employeeSheetElement);
+  try{
+    if(!await refreshTeamData({renderAfter:false})){
+      toast("Не удалось обновить назначения. Повторите попытку");
+      return;
+    }
+    if(employeeDraft!==editing) return;
+    // Reapply only the changes made in this editor to the current set.
+    const latest=employeePointIds(editing.id);
+    const removed=new Set(editing.originalPointIds.filter(id=>!editing.pointIds.includes(id)));
+    const added=editing.pointIds.filter(id=>!editing.originalPointIds.includes(id));
+    editing.originalPointIds=latest;
+    editing.pointIds=[...new Set([...latest.filter(id=>!removed.has(id)),...added])];
+    editing.pointsConflict=false;
+    drawEmployeeSheet();
+    toast("Назначения обновлены. Проверьте ПВЗ перед сохранением");
+  }finally{
+    employeeSaving=false;
+    releaseFields();
+    syncEmployeeSheetHeader();
+  }
+  document.getElementById("employeeSheetSave").focus({preventScroll:true});
+}
+
 function employeeSheetPrimaryAction(){
   if(employeeSheetMode==="view"){
     startEmployeeEdit();
@@ -9622,7 +9668,8 @@ function employeeSheetPrimaryAction(){
 }
 
 function openEmployeeEditor(
-  employeeId=null
+  employeeId=null,
+  shiftContext=null
 ){
   if(employeeSaving || employeeRateSaving) return;
   const nextDraft=
@@ -9649,6 +9696,12 @@ function openEmployeeEditor(
 
   employeeSheetPreviousFocus=
     document.activeElement;
+
+  if(shiftContext){
+    nextDraft.shiftContext={...shiftContext,operationId:createTeamId()};
+    nextDraft.pointIds=[shiftContext.pointId];
+    document.getElementById("sheet").inert=true;
+  }
 
   employeeDraft=
     nextDraft;
@@ -9743,10 +9796,12 @@ function closeEmployeeEditor(){
     "true"
   );
 
-  document.body.classList.remove(
-    "sheet-open"
-  );
+  if(employeeDraft?.shiftContext){
+    document.getElementById("sheet").inert=false;
+  }
+  if(!activeModal()) document.body.classList.remove("sheet-open");
 
+  document.getElementById("employeeSheetBody").inert=false;
   employeeDraft=null;
   employeeSaving=false;
   employeeSheetMode="create";
@@ -9764,11 +9819,10 @@ function closeEmployeeEditor(){
   setTimeout(()=>{
     if(
       previousFocus &&
-      document.contains(
-        previousFocus
-      )
+      document.contains(previousFocus) &&
+      (!activeModal() || activeModal().contains(previousFocus))
     ){
-      previousFocus.focus();
+      previousFocus.focus({preventScroll:true});
     }
   },100);
 }
@@ -9777,7 +9831,7 @@ async function saveEmployeeDraft(){
   if(
     !employeeDraft ||
     employeeSaving || employeeRateSaving ||
-    employeeSheetMode==="view"
+    employeeSheetMode==="view" || employeeDraft.pointsConflict
   ){
     return;
   }
@@ -9948,36 +10002,34 @@ async function saveEmployeeDraft(){
     );
 
   const editing=employeeDraft;
-  const operation=structuredClone(editing);
+  const {shiftContext,shiftProfileRequest,...fields}=editing;
+  const operation=structuredClone(fields);
   const pendingRates=structuredClone(operation.pendingRates || {});
   employeeSaving=true;
   const releaseFields=lockEditorFields(employeeSheetElement);
 
   try{
-    const employeeId=
-      await saveAdminEmployee({
-        id:operation.id,
-        fullName:name,
-        status:
-          operation.status,
-        hiredAt:
-          operation.hiredAt ||
-          null,
-        userId:
-          operation.userId ||
-          null,
-        employmentType:"staff",
-        phone,
-        transferPhone,
-        transferBank:
-          operation.transferBank
-            .trim() || null,
-        transferRecipient:
-          operation.transferRecipient
-            .trim() || null,
-        pointIds:
-          operation.pointIds
-      });
+    const profileRequest=shiftProfileRequest || {
+      id:operation.id,
+      fullName:name,
+      status:operation.status,
+      hiredAt:operation.hiredAt || null,
+      userId:operation.userId || null,
+      employmentType:"staff",
+      phone,
+      transferPhone,
+      transferBank:operation.transferBank.trim() || null,
+      transferRecipient:operation.transferRecipient.trim() || null,
+      pointIds:operation.pointIds,
+      expectedPointIds:operation.originalPointIds,
+      shiftPointId:shiftContext?.pointId,
+      operationId:shiftContext?.operationId
+    };
+
+    if(shiftContext) editing.shiftProfileRequest=profileRequest;
+    const employeeId=await saveAdminEmployee(profileRequest);
+    delete editing.shiftProfileRequest;
+    if(wasExisting) editing.originalPointIds=[...operation.pointIds];
 
     operation.id=employeeId;
     if(employeeDraft===editing) editing.id=employeeId;
@@ -9997,6 +10049,7 @@ async function saveEmployeeDraft(){
     let authFailure=null;
     let authNeedsReview=false;
     let creationRolledBack=false;
+    let rollbackAttempted=false;
 
     if(
       operation.userId ||
@@ -10020,6 +10073,7 @@ async function saveEmployeeDraft(){
       !wasExisting &&
       !hadLinkedAccount
     ){
+      rollbackAttempted=true;
       try{
         await rollbackAdminEmployeeCreation(
           employeeId
@@ -10029,6 +10083,7 @@ async function saveEmployeeDraft(){
         operation.pendingRates=pendingRates;
         if(employeeDraft===editing){
           editing.id=null;
+          if(shiftContext) shiftContext.operationId=createTeamId();
           editing.pendingRates=structuredClone(pendingRates);
         }
       }catch{}
@@ -10038,6 +10093,46 @@ async function saveEmployeeDraft(){
       await refreshTeamData({
         renderAfter:false
       });
+
+    if(shiftContext && rollbackAttempted && !creationRolledBack && refreshed &&
+      !teamData.employees.some(item=>item.id===employeeId)){
+      creationRolledBack=true;
+      editing.id=null;
+      shiftContext.operationId=createTeamId();
+      editing.pendingRates=structuredClone(pendingRates);
+    }
+
+    if(shiftContext && !creationRolledBack){
+      const target={
+        ...shiftContext,employeeId,saved:true,verifyCreation:rollbackAttempted && !refreshed,
+        message:`Карточка сотрудника «${name}» и назначение сохранены.`
+      };
+
+      if(refreshed && !authNeedsReview && teamData.employees.find(item=>item.id===employeeId)?.user_id){
+        authFailure=null;
+      }
+
+      employeeSaving=false;
+      if(employeeDraft===editing){
+        const sameShift=draft===target.owner && draft.dbPointId===target.pointId;
+        if(sameShift) employeeSheetPreviousFocus=document.getElementById("f-employee-open");
+        closeEmployeeEditor();
+        if(sameShift){
+          shiftDirectoryOperation=target;
+          applyShiftDirectoryResult(target,refreshed);
+        }
+      }
+
+      render();
+      toast(target.verifyCreation
+        ? "Не удалось проверить карточку после ошибки входа. Повторите обновление справочника"
+        : authFailure
+          ? `Карточка сохранена. Вход не настроен: ${authFailure}`
+        : pendingRateFailure
+          ? `Карточка сохранена. Ставка не задана: ${pendingRateFailure}`
+          : refreshed ? "Сотрудник сохранён" : "Карточка сохранена. Повторите обновление справочника",4400);
+      return;
+    }
 
     if(!refreshed){
       if(creationRolledBack){
@@ -10064,6 +10159,7 @@ async function saveEmployeeDraft(){
       employeeSaving=false;
       saveButton.disabled=false;
 
+      if(shiftContext) drawEmployeeSheet();
       updateEmployeeList();
 
       toast(
@@ -10114,16 +10210,26 @@ async function saveEmployeeDraft(){
     );
   }catch(error){
     employeeSaving=false;
-    saveButton.disabled=false;
+    if(error?.code==="SR001") editing.pointsConflict=true;
+    if(error?.code!=="write_outcome_unknown") delete editing.shiftProfileRequest;
+
+    if(employeeDraft===editing){
+      drawEmployeeSheet();
+      syncEmployeeSheetHeader();
+    }
 
     toast(
-      employeeSaveError(
-        error
-      ),
+      editing.shiftProfileRequest
+        ? "Результат сохранения неизвестен. Повтор проверит ту же операцию."
+        : employeeSaveError(error),
       4000
     );
   }finally{
     releaseFields();
+    if(employeeDraft===editing){
+      document.getElementById("employeeSheetBody").inert=Boolean(editing.shiftProfileRequest);
+      syncEmployeeSheetHeader();
+    }
   }
 }
 
@@ -10455,6 +10561,157 @@ function shiftEmployeeOptions(
   });
 }
 
+function availableShiftDirectoryPoint(){
+  if(!isAdmin || !draft) return null;
+  return teamData.points.find(point=>point.id===draft.dbPointId && point.active!==false) || null;
+}
+
+function shiftDirectoryHTML(assigned){
+  const query=shiftInlineQuery;
+  const point=availableShiftDirectoryPoint();
+  let assignedOptions=assigned.map(employeeChoiceOption);
+  const operation=shiftDirectoryOperation;
+  let others=[];
+
+  if(point){
+    if(shiftDirectoryIndex.data!==teamData){
+      const options=shiftEmployeeDirectory(teamData);
+      const namesakes=new Map(options.filter(option=>option.sameName).map(option=>[option.value,option.detail]));
+      shiftDirectoryIndex={data:teamData,options,namesakes};
+    }
+    assignedOptions=assignedOptions.map(option=>({
+      ...option,detail:shiftDirectoryIndex.namesakes.get(option.value)
+    }));
+    const assignedIds=new Set(assigned.map(employee=>employee.id));
+    others=filterChoiceOptions(shiftDirectoryIndex.options,query)
+      .filter(option=>!assignedIds.has(option.value));
+  }
+
+  const assignedMatches=filterChoiceOptions(assignedOptions,query);
+  return `
+    <div class="inline-choice">
+      ${inlineSearchHTML({id:"shiftEmployeeSearch",value:query,label:"Поиск сотрудника"})}
+      <div class="inline-options shift-directory-options">
+        <div class="inline-choice-heading">Сотрудники ПВЗ</div>
+        ${assignedMatches.length
+          ? inlineOptionButtonsHTML({
+              options:assignedMatches,
+              value:draft.employeeId,
+              attribute:"data-shift-employee",
+              disabled:operation?.busy
+            })
+          : `<div class="inline-empty">${query.trim() ? "На этом ПВЗ ничего не найдено" : "Список сотрудников ПВЗ пуст"}</div>`}
+        ${point ? `
+          <div class="inline-choice-heading">Другие сотрудники</div>
+          ${others.length
+            ? inlineOptionButtonsHTML({
+                options:others.slice(0,shiftDirectoryLimit),
+                attribute:"data-shift-directory-employee",
+                disabled:operation?.busy
+              })
+            : `<div class="inline-empty">${query.trim() ? "Другие сотрудники не найдены" : "Нет других активных сотрудников"}</div>`}
+          ${others.length>shiftDirectoryLimit ? `
+            <button type="button" class="point-option shift-directory-action" id="shiftDirectoryMore">
+              Показать ещё · ${others.length-shiftDirectoryLimit}
+            </button>` : ""}
+        ` : `<div class="inline-empty" role="status">ПВЗ недоступен. Выберите действующий ПВЗ.</div>`}
+      </div>
+      ${point ? `
+        <button type="button" class="point-option shift-directory-action" id="shiftDirectoryCreate"
+          ${operation?.busy ? "disabled" : ""}>Создать сотрудника</button>
+      ` : ""}
+    </div>
+  `;
+}
+
+function shiftDirectoryStatusHTML(){
+  const operation=shiftDirectoryOperation;
+  if(!operation && !shiftDirectorySaved) return "";
+  return `
+    <div class="shift-directory-status">
+      ${shiftDirectorySaved ? `<div role="status">${esc(shiftDirectorySaved)} Смена сохраняется отдельно.</div>` : ""}
+      ${operation?.busy ? `<div role="status">${operation.saved ? "Обновляем справочник…" : "Прикрепляем сотрудника…"}</div>` : ""}
+      ${operation?.error ? `
+        <div role="status">${esc(operation.error)}</div>
+        <button type="button" class="point-option shift-directory-action" id="shiftDirectoryRetry">
+          ${operation.saved ? "Повторить обновление" : "Повторить прикрепление"}
+        </button>
+        <button type="button" class="point-option shift-directory-action" id="shiftDirectoryDismiss">
+          Вернуться к выбору
+        </button>` : ""}
+    </div>
+  `;
+}
+
+function selectShiftEmployee(employee){
+  draft.employeeId=employee.id;
+  draft.employeeName=employee.full_name;
+
+  resetShiftInline();
+  drawSheet(shiftSheetMode==="edit");
+  saveUIState();
+}
+
+function currentShiftDirectoryOperation(operation){
+  return shiftDirectoryOperation===operation &&
+    draft===operation.owner && draft.dbPointId===operation.pointId;
+}
+
+async function finishShiftDirectoryOperation(operation){
+  if(!operation || operation.busy || !currentShiftDirectoryOperation(operation)) return;
+  operation.busy=true;
+  operation.error="";
+  drawSheet(shiftSheetMode==="edit");
+
+  try{
+    if(!operation.saved){
+      await attachAdminShiftEmployee(operation);
+      operation.saved=true;
+    }
+
+    const refreshed=await refreshTeamData({renderAfter:true});
+    if(applyShiftDirectoryResult(operation,refreshed)) toast(operation.message);
+  }catch(error){
+    if(!currentShiftDirectoryOperation(operation)) return;
+    operation.error=error?.code==="write_outcome_unknown"
+      ? "Результат прикрепления неизвестен. Повтор проверит ту же операцию."
+      : error.message;
+  }finally{
+    operation.busy=false;
+    if(currentShiftDirectoryOperation(operation)){
+      readForm();
+      drawSheet(shiftSheetMode==="edit");
+    }
+  }
+}
+
+function applyShiftDirectoryResult(operation,refreshed){
+  if(!currentShiftDirectoryOperation(operation)) return false;
+
+  const creationExists=refreshed && teamData.employees.some(item=>item.id===operation.employeeId);
+  if(!operation.verifyCreation || creationExists) shiftDirectorySaved=operation.message;
+  const employee=refreshed && availableShiftDirectoryPoint() && shiftEmployeeOptions()
+    .find(item=>item.id===operation.employeeId && item.status==="active" && !item.deletion_pending);
+
+  readForm();
+  if(!employee){
+    operation.error=!refreshed
+      ? "Не удалось обновить справочник."
+      : operation.verifyCreation && !creationExists
+        ? "Карточка не найдена после отката создания."
+        : "Назначение больше недоступно. Проверьте сотрудника и ПВЗ.";
+    drawSheet(shiftSheetMode==="edit");
+    return false;
+  }
+
+  shiftDirectoryOperation=null;
+  selectShiftEmployee(employee);
+  if(activeModal()?.id==="sheet"){
+    document.getElementById("f-employee-open")?.focus({preventScroll:true});
+  }
+  return true;
+}
+
 function shiftPointOptions(
   value=draft
 ){
@@ -10536,20 +10793,8 @@ function openSheet(id,restoredDraft=null,restoredScrollTop=0){
     return;
   }
 
-  if(
-    !savedShift &&
-    !teamData.employees.some(
-      employee=>
-        employee.status==="active"
-    )
-  ){
-    tab="manage";
-    manageSection="employees";
-    render();
-    toast("Сначала добавьте активного сотрудника",3200);
-    return;
-  }
-
+  shiftDirectoryOperation=null;
+  shiftDirectorySaved="";
   sheetPreviousFocus=document.activeElement;
 
   prepareBottomSheetOpen(
@@ -10703,6 +10948,8 @@ function closeSheet(){
   draft=null;
   shiftOriginalDraft=null;
   shiftSheetMode="create";
+  shiftDirectoryOperation=null;
+  shiftDirectorySaved="";
   resetShiftInline();
   saveUIState();
   if(!activeModal()) setBackgroundInert(false);
@@ -10920,11 +11167,19 @@ function inlineOptionsHTML({
 
   return `
     <div class="inline-options">
-      ${options.map(option=>`
+      ${inlineOptionButtonsHTML({options,value,attribute})}
+    </div>
+  `;
+}
+
+function inlineOptionButtonsHTML({options,value,attribute,disabled=false}){
+  return options.map(option=>`
         <button
           type="button"
           class="point-option ${option.value===value?"on":""}"
+          data-key="${esc(attribute)}-${esc(option.value)}"
           ${attribute}="${esc(option.value)}"
+          ${disabled ? "disabled" : ""}
         >
           <span class="point-check">
             ${option.value===value?"\u2713":""}
@@ -10932,11 +11187,10 @@ function inlineOptionsHTML({
 
           <span class="point-name">
             ${esc(option.label)}
+            ${option.detail ? `<span class="shift-directory-detail">${esc(option.detail)}</span>` : ""}
           </span>
         </button>
-      `).join("")}
-    </div>
-  `;
+      `).join("");
 }
 
 /*
@@ -12453,6 +12707,9 @@ function tariffDivergenceHTML(value){
 }
 
 function drawSheet(isEdit){
+  if(!shiftSaveInProgress){
+    document.getElementById("sheetSave").disabled=Boolean(shiftDirectoryOperation);
+  }
   const result=previewCalc(draft);
   const fixed=result.fixed;
   const manualPayment=
@@ -12508,8 +12765,9 @@ function drawSheet(isEdit){
     return;
   }
 
+  const employeeOptions=shiftEmployeeOptions();
   const selectedEmployee=
-    shiftEmployeeOptions()
+    employeeOptions
       .find(
         employee=>
           employee.id===
@@ -12614,19 +12872,9 @@ function drawSheet(isEdit){
       ${fieldRevealHTML({
         key:"shiftEmployeeReveal",
         open:shiftInlineField==="employee",
-        body:inlineChoiceHTML({
-          options:shiftEmployeeOptions()
-            .map(employeeChoiceOption),
-          value:draft.employeeId,
-          attribute:"data-shift-employee",
-          searchId:"shiftEmployeeSearch",
-          searchQuery:
-            shiftInlineField==="employee"
-              ? shiftInlineQuery
-              : "",
-          searchLabel:"Поиск сотрудника"
-        })
+        body:shiftInlineField==="employee" ? shiftDirectoryHTML(employeeOptions) : ""
       })}
+      ${shiftDirectoryStatusHTML()}
 
       ${fixed ? "" : `
         <label class="row">
@@ -15556,6 +15804,11 @@ employeeSheetElement.addEventListener(
 
     syncEmployeeDraftFromForm();
 
+    if(button.id==="employeeReloadPoints"){
+      void reloadEmployeeAssignments();
+      return;
+    }
+
     /* Индивидуальные ставки: строка ПВЗ, её редактор и история. */
     if(button.dataset.employeeRatePoint){
       const pointId=
@@ -15973,7 +16226,7 @@ bindBottomSheetDismiss({
 let shiftSaveInProgress=false;
 
 document.getElementById("sheetSave").onclick=async()=>{
-  if(!isAdmin || shiftSaveInProgress){
+  if(!isAdmin || shiftSaveInProgress || shiftDirectoryOperation || employeeDraft?.shiftContext){
     return;
   }
 
@@ -16281,6 +16534,7 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     draft.point=point.name;
 
     if(pointChanged){
+      shiftDirectoryOperation=null;
       draft.employeeId="";
       draft.employeeName="";
     }
@@ -16300,28 +16554,68 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     return;
   }
 
-  if(t.dataset.shiftEmployee){
-    readForm();
+  if(t.id==="shiftDirectoryMore"){
+    shiftDirectoryLimit+=SHIFT_DIRECTORY_PAGE;
+    drawSheet(isEdit);
+    return;
+  }
 
-    const employee=
-      shiftEmployeeOptions()
-        .find(
-          item=>
-            item.id===
-            t.dataset.shiftEmployee
-        );
+  if(t.id==="shiftDirectoryDismiss"){
+    shiftDirectoryOperation=null;
+    shiftInlineField="employee";
+    drawSheet(isEdit);
+    document.getElementById("f-employee-open")?.focus({preventScroll:true});
+    return;
+  }
 
-    if(!employee){
+  if(t.id==="shiftDirectoryRetry"){
+    await finishShiftDirectoryOperation(shiftDirectoryOperation);
+    return;
+  }
+
+  if(t.id==="shiftDirectoryCreate"){
+    const point=availableShiftDirectoryPoint();
+    if(point && !shiftDirectoryOperation?.busy){
+      openEmployeeEditor(null,{owner:draft,pointId:point.id});
+    }
+    return;
+  }
+
+  if(t.dataset.shiftDirectoryEmployee){
+    const point=availableShiftDirectoryPoint();
+    const employee=teamData.employees.find(item=>item.id===t.dataset.shiftDirectoryEmployee);
+    if(!point || !employee || shiftDirectoryOperation?.busy || activeModal()?.id==="appConfirm") return;
+
+    // Realtime may have delivered the assignment since the list was drawn.
+    if(shiftEmployeeOptions().some(item=>item.id===employee.id)){
+      selectShiftEmployee(employee);
       return;
     }
 
-    draft.employeeId=employee.id;
-    draft.employeeName=
-      employee.full_name;
+    const owner=draft;
+    const agreed=await appConfirm("Прикрепить сотрудника?",{
+      detail:`${employee.full_name} · ${point.name}. Назначение сохранится в справочнике.`,
+      okText:`Прикрепить к ${point.name}`
+    });
+    if(!agreed || draft!==owner || draft.dbPointId!==point.id) return;
 
-    resetShiftInline();
-    drawSheet(isEdit);
-    saveUIState();
+    if(shiftDirectoryOperation?.employeeId!==employee.id){
+      shiftDirectoryOperation={
+        owner,employeeId:employee.id,pointId:point.id,operationId:createTeamId(),
+        message:`${employee.full_name} прикреплён к ПВЗ.`
+      };
+    }
+    readForm();
+    await finishShiftDirectoryOperation(shiftDirectoryOperation);
+    return;
+  }
+
+  if(t.dataset.shiftEmployee){
+    const employee=shiftEmployeeOptions().find(item=>item.id===t.dataset.shiftEmployee);
+    if(employee && !shiftDirectoryOperation?.busy){
+      shiftDirectoryOperation=null;
+      selectShiftEmployee(employee);
+    }
     return;
   }
 
@@ -17095,6 +17389,7 @@ document.getElementById("sheetBody").addEventListener("input",e=>{
     e.target.id==="shiftEmployeeSearch"
   ){
     shiftInlineQuery=e.target.value;
+    shiftDirectoryLimit=SHIFT_DIRECTORY_PAGE;
 
     /* Поиск перерисовывает весь лист, а не только список. */
     readForm();

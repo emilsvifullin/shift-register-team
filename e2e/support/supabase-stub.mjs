@@ -165,9 +165,11 @@ export function stubScript(seed){
   const db=${JSON.stringify(seed)};
 
   db.saved_shifts=[];
+  const directoryReceipts=new Map();
 
   globalThis.__stubDb=db;
   globalThis.__stubCalls=[];
+  globalThis.__stubReads=[];
 
   const ok=data=>Promise.resolve({data,error:null});
 
@@ -698,7 +700,7 @@ export function stubScript(seed){
 
       const id=existing
         ? existing.id
-        : "employee-"+((db.employees || []).length+1)+"-new";
+        : crypto.randomUUID();
 
       const record={
         id,
@@ -721,18 +723,57 @@ export function stubScript(seed){
 
       const wanted=new Set(args.p_point_ids || []);
 
-      db.employee_points=(db.employee_points || [])
-        .filter(link=>link.employee_id!==id);
+      for(const link of db.employee_points){
+        if(link.employee_id===id) link.active=wanted.delete(link.point_id);
+      }
 
       for(const pointId of wanted){
-        db.employee_points.push({
-          employee_id:id,
-          point_id:pointId,
-          active:true
-        });
+        db.employee_points.push({employee_id:id,point_id:pointId,active:true});
       }
 
       return id;
+    },
+    admin_attach_shift_employee(args){
+      const prior=directoryReceipts.get(args.p_operation_id);
+      if(prior) return prior;
+      const employee=db.employees.find(item=>item.id===args.p_employee_id);
+      if(!employee) throw new Error("employee_not_found");
+      if(employee.status!=="active" || employee.deletion_pending || employee.is_system_substitute){
+        throw new Error("employee_inactive");
+      }
+      if(!db.points.some(point=>point.id===args.p_point_id && point.active)){
+        throw new Error("shift_employee_point_unavailable");
+      }
+      const link=db.employee_points.find(item=>item.employee_id===employee.id && item.point_id===args.p_point_id);
+      if(link) link.active=true;
+      else db.employee_points.push({employee_id:employee.id,point_id:args.p_point_id,active:true});
+      directoryReceipts.set(args.p_operation_id,employee.id);
+      return employee.id;
+    },
+    admin_save_employee_profile_v2(args){
+      const prior=directoryReceipts.get(args.p_operation_id);
+      if(prior){
+        if(!db.employees.some(employee=>employee.id===prior)) throw new Error("shift_employee_creation_removed");
+        return prior;
+      }
+      if(args.p_employee_id){
+        const current=db.employee_points.filter(link=>link.employee_id===args.p_employee_id && link.active)
+          .map(link=>link.point_id).sort();
+        if(current.join()!==[...args.p_expected_point_ids].sort().join()){
+          throw Object.assign(new Error("employee_points_changed"),{code:"SR001"});
+        }
+      }else if(!args.p_point_ids.includes(args.p_shift_point_id) ||
+        !db.points.some(point=>point.id===args.p_shift_point_id && point.active)){
+        throw new Error("shift_employee_point_unavailable");
+      }
+      const id=rpc.admin_save_employee_profile(args);
+      if(args.p_operation_id) directoryReceipts.set(args.p_operation_id,id);
+      return id;
+    },
+    admin_rollback_employee_creation(args){
+      db.employees=db.employees.filter(item=>item.id!==args.p_employee_id);
+      db.employee_points=db.employee_points.filter(item=>item.employee_id!==args.p_employee_id);
+      return args.p_employee_id;
     },
     /* Расчётные периоды: те же переходы, что и на сервере. */
     admin_save_shift_v4(args){
@@ -1394,6 +1435,7 @@ export function stubScript(seed){
       signOut(){return ok(null);}
     },
     from(table){
+      globalThis.__stubReads.push(table);
       if(table==="profiles"){
         return {
           select(){return this;},
@@ -1418,7 +1460,7 @@ export function stubScript(seed){
         try{
           return ok(handler(args));
         }catch(error){
-          return fail(error.message);
+          return {data:null,error};
         }
       });
     },

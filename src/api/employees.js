@@ -18,12 +18,16 @@ export async function saveAdminEmployee({
   transferPhone=null,
   transferBank=null,
   transferRecipient=null,
-  pointIds=[]
+  pointIds=[],
+  expectedPointIds=null,
+  shiftPointId=null,
+  operationId=null
 }){
+  const versioned=expectedPointIds!==null || shiftPointId!==null;
   const result=
     await supabaseClient
       .rpc(
-        "admin_save_employee_profile",
+        versioned ? "admin_save_employee_profile_v2" : "admin_save_employee_profile",
         {
           p_employee_id:id,
           p_full_name:fullName,
@@ -39,13 +43,29 @@ export async function saveAdminEmployee({
             transferBank,
           p_transfer_recipient:
             transferRecipient,
-          p_point_ids:pointIds
+          p_point_ids:pointIds,
+          ...(versioned && {
+            p_expected_point_ids:expectedPointIds,
+            p_shift_point_id:shiftPointId,
+            p_operation_id:operationId
+          })
         }
       );
 
   return resultData(
     result,
     "Не удалось сохранить сотрудника"
+  );
+}
+
+export async function attachAdminShiftEmployee({employeeId,pointId,operationId}){
+  return resultData(
+    await supabaseClient.rpc("admin_attach_shift_employee",{
+      p_employee_id:employeeId,
+      p_point_id:pointId,
+      p_operation_id:operationId
+    }),
+    "Не удалось прикрепить сотрудника"
   );
 }
 

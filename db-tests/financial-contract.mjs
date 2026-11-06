@@ -997,13 +997,13 @@ describe("деньги и права",()=>{
     const gateways=db.query(`select json_agg(json_build_object(
         'name',p.oid::regprocedure::text,
         'locked',p.prosrc like '%perform private.lock_financial_write();%',
-        'admin',p.prosrc like '%if not private.is_admin()%',
+        'admin',p.prosrc like '%not private.is_admin()%',
         'searchPath',p.proconfig
       )) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       where n.nspname='public' and p.proname like 'admin_%'
         and p.proname<>'admin_account_options_v2'
         and has_function_privilege('authenticated',p.oid,'EXECUTE');`);
-    assert.equal(gateways.length,26);
+    assert.equal(gateways.length,28);
     for(const gateway of gateways){
       assert.equal(gateway.locked,true,gateway.name);
       assert.equal(gateway.admin,true,gateway.name);
@@ -1055,5 +1055,150 @@ describe("деньги и права",()=>{
       }).error,
       /forbidden/
     );
+  });
+});
+
+function directoryProfile({
+  employeeId=null,pointIds=[],expectedPointIds=null,shiftPointId=null,operationId=null
+}={}){
+  const ids=values=>values===null ? "null" : "array["+values.map(literal).join(",")+"]::uuid[]";
+  return {
+    p_employee_id:literal(employeeId),
+    p_full_name:literal("Тестовый сотрудник"),
+    p_status:"'active'",
+    p_hired_at:"null",
+    p_user_id:"null",
+    p_phone:"null",
+    p_transfer_phone:"null",
+    p_transfer_bank:"null",
+    p_transfer_recipient:"null",
+    p_point_ids:ids(pointIds),
+    p_employment_type:"'staff'",
+    p_expected_point_ids:ids(expectedPointIds),
+    p_shift_point_id:literal(shiftPointId),
+    p_operation_id:literal(operationId)
+  };
+}
+
+function attachDirectoryEmployee(employeeId,pointId,operationId,user=ADMIN){
+  return db.rpc(user,"admin_attach_shift_employee",{
+    p_employee_id:literal(employeeId),
+    p_point_id:literal(pointId),
+    p_operation_id:literal(operationId)
+  });
+}
+
+describe("сотрудник из смены",()=>{
+  test("конкурентное прикрепление реактивирует ровно одну пару и сохраняет старые связи",async()=>{
+    scene();
+    const third=uuid("10000000",3);
+    addPoint({id:third,name:"Третий ПВЗ",advance:false});
+    const id=db.query(`
+      insert into public.employee_points (employee_id,point_id,active) values
+        ('${MARINA}','${third}',false);
+      select to_jsonb(id) from public.employee_points where employee_id='${MARINA}' and point_id='${third}';
+    `);
+    const op1=uuid("40000000",1);
+    const op2=uuid("40000000",2);
+    const session=(op,keepOpen)=>databaseSession("directory-"+op,`begin;
+      set local statement_timeout='10s';
+      set local role authenticated;
+      set local request.jwt.claim.sub='${ADMIN}';
+      select public.admin_attach_shift_employee('${MARINA}','${third}','${op}');
+      ${keepOpen ? "" : "commit;"}`,{keepOpen});
+    const first=session(op1,true);
+    let second;
+    try{
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity
+        where application_name='directory-${op1}' and state='idle in transaction'));`));
+      second=session(op2,false);
+      await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity
+        where application_name='directory-${op2}' and wait_event='advisory'));`));
+      first.child.stdin.end("commit;\n");
+      for(const {result} of [first,second]){
+        const response=await result;
+        assert.equal(response.code,0,response.error);
+        assert.equal(response.output.trim(),MARINA);
+      }
+    }finally{
+      if(!first.child.stdin.destroyed) first.child.stdin.end("rollback;\n");
+      await first.result;
+      await second?.result;
+    }
+    assert.equal(db.query(`select count(*) from public.employee_points where employee_id='${MARINA}' and active;`),3);
+    assert.equal(db.query(`select to_jsonb(id) from public.employee_points where employee_id='${MARINA}' and point_id='${third}';`),id);
+    assert.equal(db.query(`select count(*) from public.audit_log where entity_id='${id}' and actor_id='${ADMIN}';`),1);
+  });
+
+  test("устаревшая карточка отклоняется, явное снятие связи сохраняется",()=>{
+    scene();
+    const operationId=uuid("40000000",3);
+    assert.equal(attachDirectoryEmployee(ROMAN,ADVANCE_POINT,operationId).data,ROMAN);
+    const input=directoryProfile({employeeId:ROMAN,pointIds:[POINT],expectedPointIds:[POINT]});
+    assert.match(db.rpc(ADMIN,"admin_save_employee_profile_v2",input).error,/employee_points_changed/);
+    const {p_expected_point_ids,p_shift_point_id,p_operation_id,...legacy}=input;
+    assert.match(db.rpc(ADMIN,"admin_save_employee_profile",legacy).error,/employee_points_changed/);
+    assert.equal(db.query(`select count(*) from public.employee_points where employee_id='${ROMAN}' and active;`),2);
+    assert.equal(db.rpc(ADMIN,"admin_save_employee_profile_v2",{
+      ...input,p_expected_point_ids:`array['${POINT}','${ADVANCE_POINT}']::uuid[]`
+    }).data,ROMAN);
+    assert.equal(attachDirectoryEmployee(ROMAN,ADVANCE_POINT,operationId).data,ROMAN);
+    assert.equal(db.query(`select count(*) from public.employee_points where employee_id='${ROMAN}' and active;`),1);
+  });
+
+  test("создание атомарно, повтор возвращает UUID, откат исключает назначение",()=>{
+    scene();
+    const input={
+      ...directoryProfile({pointIds:[POINT],shiftPointId:POINT,operationId:uuid("40000000",4)}),
+      p_phone:literal("+79001112233")
+    };
+    assert.match(db.rpc(ADMIN,"admin_save_employee_profile_v2",{
+      ...input,p_point_ids:"'{}'::uuid[]"
+    }).error,/shift_employee_assignment_required/);
+    const saved=db.rpc(ADMIN,"admin_save_employee_profile_v2",input);
+    assert.equal(saved.error,null);
+    assert.equal(db.rpc(ADMIN,"admin_save_employee_profile_v2",input).data,saved.data);
+    assert.equal(db.query(`select count(*) from public.employees where full_name='Тестовый сотрудник';`),1);
+    assert.equal(db.query(`select count(*) from public.employee_points where employee_id='${saved.data}' and active;`),1);
+    const namesake=db.rpc(ADMIN,"admin_save_employee_profile_v2",{
+      ...input,p_operation_id:literal(uuid("40000000",9))
+    });
+    assert.equal(namesake.error,null);
+    assert.notEqual(namesake.data,saved.data);
+    assert.equal(db.rpc(ADMIN,"admin_rollback_employee_creation",{p_employee_id:literal(saved.data)}).data,saved.data);
+    assert.match(db.rpc(ADMIN,"admin_save_employee_profile_v2",input).error,/shift_employee_creation_removed/);
+    assert.match(attachDirectoryEmployee(saved.data,POINT,uuid("40000000",5)).error,/employee_not_found/);
+    assert.equal(db.query(`select count(*) from public.employee_points where employee_id='${saved.data}';`),0);
+  });
+
+  test("прямые вызовы проверяют роль, каталог, ПВЗ, архив и удаление",()=>{
+    scene();
+    const stranger=uuid("40000000",6);
+    const missing=uuid("40000000",7);
+    const operation=uuid("40000000",8);
+    const input=directoryProfile({pointIds:[POINT],shiftPointId:POINT,operationId:operation});
+    db.query(`insert into auth.users(id) values ('${stranger}'); select 1;`);
+    assert.match(attachDirectoryEmployee(ROMAN,POINT,operation,stranger).error,/forbidden/);
+    assert.match(db.rpc(stranger,"admin_save_employee_profile_v2",input).error,/forbidden/);
+    assert.equal(db.query(`begin; set local role authenticated; set local request.jwt.claim.sub='${stranger}';
+      select count(*) from public.employees where id='${ROMAN}'; rollback;`),0);
+    const anonymous=databaseSession("directory-anon",`begin; set local role anon;
+      select public.admin_attach_shift_employee('${ROMAN}','${POINT}','${operation}'); rollback;`);
+    assert.match(attachDirectoryEmployee(missing,POINT,operation).error,/employee_not_found/);
+    assert.match(attachDirectoryEmployee(ROMAN,missing,operation).error,/shift_employee_point_unavailable/);
+
+    db.query(`update public.points set active=false where id='${ADVANCE_POINT}'; select 1;`);
+    assert.match(attachDirectoryEmployee(ROMAN,ADVANCE_POINT,operation).error,/shift_employee_point_unavailable/);
+    assert.match(db.rpc(ADMIN,"admin_save_employee_profile_v2",{
+      ...input,p_point_ids:`array['${ADVANCE_POINT}']::uuid[]`,p_shift_point_id:literal(ADVANCE_POINT)
+    }).error,/shift_employee_point_unavailable/);
+
+    const archived=uuid("20000000",3);
+    addEmployee({id:archived,name:"Архив"});
+    db.query(`update public.employees set status='inactive' where id='${archived}'; select 1;`);
+    assert.match(attachDirectoryEmployee(archived,POINT,operation).error,/employee_inactive/);
+    assert.equal(db.rpc(ADMIN,"admin_begin_employee_deletion",{p_employee_id:literal(archived)}).error,null);
+    assert.match(attachDirectoryEmployee(archived,POINT,operation).error,/employee_deletion_pending/);
+    return anonymous.result.then(result=>assert.match(result.error,/permission denied/));
   });
 });

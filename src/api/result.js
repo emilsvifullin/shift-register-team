@@ -11,6 +11,12 @@ const ERROR_MESSAGES=Object.freeze({
     "Сотрудник не найден",
   employee_inactive:
     "Для новой смены нужен активный сотрудник",
+  shift_employee_point_unavailable:
+    "ПВЗ недоступен. Выберите действующий ПВЗ",
+  shift_employee_creation_removed:
+    "Созданная карточка уже удалена. Проверьте справочник",
+  employee_points_changed:
+    "Назначения изменились в другой вкладке. Проверьте список ПВЗ",
   point_not_found:
     "Пункт выдачи не найден",
   point_inactive:

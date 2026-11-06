@@ -286,7 +286,9 @@ test("an account failure rolls back the shift employee and permits a corrected c
 
 test("a profile opened before a new link reviews the fresh assignments before saving",async({page})=>{
   await page.emulateMedia({colorScheme:"dark",reducedMotion:"reduce"});
-  await openApp(page);
+  const source=structuredClone(ADMIN_SEED);
+  source.accounts[0].email="marina@example.test";
+  await openApp(page,{seed:source});
   await page.locator("#tab-manage").click();
   await settleScreen(page);
   await page.locator('[data-manage-section="employees"]').click();
@@ -295,9 +297,10 @@ test("a profile opened before a new link reviews the fresh assignments before sa
   await settleScreen(page);
   await page.locator("#employeeSheetSave").click();
   await page.locator("#employeeName").fill("Марина Абрамова после правки");
-  await page.evaluate(()=>globalThis.supabase.createClient().rpc("admin_attach_shift_employee",{
+  const attached=await page.evaluate(()=>globalThis.supabase.createClient().rpc("admin_attach_shift_employee",{
     p_employee_id:"employee-1",p_point_id:"point-2",p_operation_id:crypto.randomUUID()
   }));
+  expect(attached).toEqual({data:"employee-1",error:null});
 
   await page.locator("#employeeSheetSave").click();
   await expect(page.locator("#employeeReloadPoints")).toBeVisible();

@@ -719,7 +719,7 @@ describe("закрытый период не меняется в обход",()=
         set local statement_timeout='10s';
         set local role authenticated;
         set local request.jwt.claim.sub=${literal(ADMIN)};
-        select public.admin_save_shift_v4(${literal(shift)},${literal(MARINA)},'2026-09-03',${literal(POINT)},'main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);
+        select public.admin_save_shift_v5(${literal(shift)},1,${literal(uuid("40000000",1))},${literal(MARINA)},'2026-09-03',${literal(POINT)},'main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);
         commit;`);
       await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(saveName)} and wait_event_type='Lock'));`));
       closing=databaseSession(closeName,`begin;
@@ -748,7 +748,7 @@ describe("закрытый период не меняется в обход",()=
   });
 
   for(const [name,statement,error] of [
-    ["сохранение",()=>`public.admin_save_shift_v4('${uuid("30000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null)`,/payroll_period_closed/],
+    ["сохранение",()=>`public.admin_save_shift_v5('${uuid("30000000",1)}',1,'${uuid("40000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null)`,/payroll_period_closed/],
     ["удаление",()=>`public.admin_delete_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
     ["пересчёт",()=>`public.admin_reprice_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
     ["импорт",()=>`public.admin_import_legacy_shift('race-import','${MARINA}','${POINT}','2026-09-07','main',null,false,null,12,3000,'{"rate":3000,"fixed":true,"fullHours":12}','[]','[]')`,/payroll_period_closed/],
@@ -803,7 +803,7 @@ describe("закрытый период не меняется в обход",()=
           set local statement_timeout='10s';
           set local role authenticated;
           set local request.jwt.claim.sub=${literal(ADMIN)};
-          select public.admin_save_shift_v4('${uuid("30000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
+          select public.admin_save_shift_v5('${uuid("30000000",index)}',1,'${uuid("40000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
           commit;`)});
       }
       for(const writer of writers){
@@ -831,7 +831,7 @@ describe("закрытый период не меняется в обход",()=
     const editing=databaseSession(editName,`begin;
       set local role authenticated;
       set local request.jwt.claim.sub=${literal(ADMIN)};
-      select public.admin_save_shift_v4('${uuid("30000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);`,{keepOpen:true});
+      select public.admin_save_shift_v5('${uuid("30000000",1)}',1,'${uuid("40000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);`,{keepOpen:true});
     let closing;
     try{
       await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(editName)} and state='idle in transaction'));`));

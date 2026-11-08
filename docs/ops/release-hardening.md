@@ -45,6 +45,10 @@ same `p_operation_id` returns the original result without creating a second row.
 Production rollout is blocked until the staging run, restore evidence, and the
 migration gate are attached to the release checklist.
 
+The current security grant matrix is documented in
+`docs/ops/security-grants.md`; the local restore evidence is recorded in
+`docs/ops/restore-drill-2026-11-08.md`.
+
 ## Local manual review
 
 With Docker Desktop running, one command resets only the local Supabase

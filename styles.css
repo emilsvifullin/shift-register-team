@@ -2967,5 +2967,6 @@ button:disabled{
 }
 
 .dot{width:7px;height:7px;border-radius:4px;background:var(--gold);flex:none;box-shadow:0 0 0 3px var(--gold-soft)}
+.dot.stale{background:var(--rust);box-shadow:0 0 0 3px var(--rust-line)}
 .dot.off{background:var(--rust);box-shadow:0 0 0 3px var(--rust-line)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}

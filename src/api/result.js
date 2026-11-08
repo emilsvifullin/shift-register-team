@@ -45,6 +45,8 @@ const ERROR_MESSAGES=Object.freeze({
     "Смена уже изменена в другой вкладке. Обновите данные и проверьте форму",
   record_deleted:
     "Смена уже удалена в другой вкладке",
+  record_not_found:
+    "Смена не найдена. Обновите данные перед повтором",
   optimistic_lock_required:
     "Обновите приложение перед сохранением смены",
   operation_conflict:
@@ -120,6 +122,9 @@ export function resultData(
   message
 ){
   if(result.error){
+    const raw=String(result.error.message || "");
+    const knownCode=Object.entries(ERROR_MESSAGES)
+      .find(([code])=>raw.includes(code))?.[0];
     const error=new Error(
       readableError(
         result,
@@ -129,7 +134,7 @@ export function resultData(
 
     error.code=writeOutcomeUnknown(result.error)
       ? "write_outcome_unknown"
-      : result.error.code;
+      : knownCode || result.error.code;
 
     error.details=
       result.error.details;

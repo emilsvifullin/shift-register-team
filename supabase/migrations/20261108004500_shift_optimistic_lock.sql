@@ -25,6 +25,40 @@ revoke all on table private.shift_write_operations from public, anon, authentica
 create index if not exists shift_write_operations_target_idx
   on private.shift_write_operations (target_id);
 
+create table if not exists private.shift_tombstones (
+  shift_id uuid primary key,
+  version integer not null,
+  deleted_at timestamptz not null default now(),
+  deleted_by uuid,
+  reason text
+);
+
+revoke all on table private.shift_tombstones from public, anon, authenticated;
+
+create or replace function private.capture_shift_tombstone()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into private.shift_tombstones(shift_id, version, deleted_by)
+  values (old.id, old.version, auth.uid())
+  on conflict (shift_id) do update set
+    version = excluded.version,
+    deleted_at = now(),
+    deleted_by = excluded.deleted_by;
+  return old;
+end;
+$$;
+
+revoke all on function private.capture_shift_tombstone() from public, anon, authenticated;
+
+drop trigger if exists shifts_capture_tombstone on public.shifts;
+create trigger shifts_capture_tombstone
+after delete on public.shifts
+for each row execute function private.capture_shift_tombstone();
+
 create or replace function private.bump_shift_version()
 returns trigger
 language plpgsql
@@ -149,7 +183,14 @@ begin
   if p_shift_id is not null then
     select * into v_existing from public.shifts where id = p_shift_id for update;
     if not found then
-      raise exception 'record_deleted' using errcode = 'P0002';
+      if exists(
+        select 1
+        from private.shift_tombstones
+        where shift_id = p_shift_id
+      ) then
+        raise exception 'record_deleted' using errcode = 'P0002';
+      end if;
+      raise exception 'record_not_found' using errcode = 'P0002';
     end if;
     if p_expected_version is null or v_existing.version <> p_expected_version then
       raise exception 'record_changed' using errcode = 'SR002';
@@ -263,5 +304,11 @@ $$;
 
 revoke all on function public.admin_save_shift_v4(uuid,uuid,date,uuid,text,integer,boolean,numeric,text,jsonb,jsonb,numeric,text,boolean,text)
 from public, anon, authenticated;
+
+revoke execute on function public.admin_delete_shift_v2(uuid,boolean,text)
+from authenticated;
+
+revoke execute on function public.admin_delete_point(uuid)
+from authenticated;
 
 commit;

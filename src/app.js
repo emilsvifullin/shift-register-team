@@ -308,6 +308,7 @@ let employeeLinked=true;
 let employeeArchived=false;
 let serverConnected=false;
 let serverDataError=null;
+let lastSuccessfulTeamRefreshAt=0;
 let realtimeStatus="connecting";
 let realtimeStop=null;
 let realtimeRefreshTimer=0;
@@ -615,6 +616,7 @@ async function refreshTeamData({
           employeeArchived=
             teamData.archived===true;
           serverConnected=true;
+          lastSuccessfulTeamRefreshAt=Date.now();
 
           teamDataLoaded=true;
 
@@ -5106,10 +5108,24 @@ function viewData(){
       : "Автосинхронизация включена"
     : "Нет соединения с сервером";
 
+  const stale=Boolean(
+    serverConnected &&
+    lastSuccessfulTeamRefreshAt &&
+    Date.now()-lastSuccessfulTeamRefreshAt>60000
+  );
+  const lastUpdate=lastSuccessfulTeamRefreshAt
+    ? new Date(lastSuccessfulTeamRefreshAt).toLocaleTimeString("ru-RU",{
+        hour:"2-digit",
+        minute:"2-digit",
+        second:"2-digit"
+      })
+    : null;
   const detail=serverDataError ||
     (
       serverConnected
-        ? "Данные обновляются автоматически."
+        ? stale
+          ? `Данные могли устареть. Последнее обновление: ${lastUpdate}`
+          : `Обновляется автоматически. Последнее обновление: ${lastUpdate}`
         : "Проверьте подключение и повторите загрузку."
     );
 
@@ -5202,8 +5218,8 @@ function viewData(){
 
   return `
     <div class="ml">Синхронизация</div>
-    <div class="data-status">
-      <div class="dot ${serverConnected ? "" : "off"}"></div>
+    <div class="data-status${stale ? " stale" : ""}">
+      <div class="dot ${serverConnected ? stale ? "stale" : "" : "off"}"></div>
       <div class="data-status-copy">
         <div class="data-status-title">
           ${esc(title)}
@@ -10266,7 +10282,10 @@ async function saveEmployeeDraft(){
     );
   }catch(error){
     employeeSaving=false;
-    if(error?.code==="SR001") editing.pointsConflict=true;
+    if(
+      error?.code==="SR001" ||
+      error?.code==="employee_points_changed"
+    ) editing.pointsConflict=true;
     if(error?.code!=="write_outcome_unknown") delete editing.shiftProfileRequest;
 
     if(employeeDraft===editing){
@@ -16313,6 +16332,54 @@ bindBottomSheetDismiss({
 
 let shiftSaveInProgress=false;
 
+function shiftConflictError(error){
+  return error?.code===
+    "record_changed" ||
+    error?.code===
+    "record_deleted";
+}
+
+function shiftConflictDetail(latest){
+  if(!latest){
+    return "Смена уже удалена на сервере. Ваши данные останутся в форме, пока вы не выберете действие.";
+  }
+
+  return `На сервере сейчас: ${latest.date}, ${latest.point}, ${latest.employeeName}, ${money(latest.baseAmount)}. Ваши введённые данные останутся в форме до явного решения.`;
+}
+
+async function resolveShiftConflict(snapshot,error){
+  const localDraft=cloneShiftDraft(snapshot);
+  await refreshTeamData({renderAfter:false});
+  const latest=shifts.find(item=>item.id===snapshot.id) || null;
+  const update=await appConfirm(
+    error.code==="record_deleted"
+      ? "Смена удалена в другой вкладке"
+      : "Смена изменена в другой вкладке",
+    {
+      detail:shiftConflictDetail(latest),
+      okText:latest ? "Обновить данные" : "Закрыть",
+      danger:!latest
+    }
+  );
+
+  if(update){
+    if(latest){
+      draft=cloneShiftDraft(latest);
+      drawSheet(true);
+      saveUIState();
+    }else{
+      closeSheet();
+      render();
+    }
+    toast("Данные формы обновлены");
+    return;
+  }
+
+  draft=localDraft;
+  drawSheet(true);
+  saveUIState();
+}
+
 document.getElementById("sheetSave").onclick=async()=>{
   if(!isAdmin || shiftSaveInProgress || shiftDirectoryOperation || employeeDraft?.shiftContext){
     return;
@@ -16430,6 +16497,15 @@ document.getElementById("sheetSave").onclick=async()=>{
     toast(created>1 ? `Создано ${shiftsWord(created)}` : "Смена сохранена");
   }catch(error){
     console.error("Не удалось сохранить смену:",error);
+
+    if(
+      shiftConflictError(error) &&
+      payloads.length===1 &&
+      snapshot.id
+    ){
+      await resolveShiftConflict(snapshot,error);
+      return;
+    }
 
     if(created){
       await refreshTeamData({renderAfter:false});

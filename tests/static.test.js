@@ -173,6 +173,8 @@ test(
     assert.match(migration,/pg_advisory_xact_lock/);
     assert.match(migration,/record_changed/);
     assert.match(migration,/record_deleted/);
+    assert.match(migration,/record_not_found/);
+    assert.match(migration,/shift_tombstones/);
     assert.match(migration,/operation_conflict/);
     assert.match(migration,/create or replace function public\.admin_save_shift_v4/);
     assert.match(migration,/optimistic_lock_required/);
@@ -183,6 +185,11 @@ test(
     assert.match(shifts,/"admin_delete_shift_v3"/);
     assert.match(readApi,/updated_at,\s*version/);
     assert.match(config,/password_hibp_enabled\s*=\s*true/);
+    const app=await read("src/app.js");
+    assert.match(app,/lastSuccessfulTeamRefreshAt/);
+    assert.match(app,/Данные могли устареть/);
+    assert.match(app,/function resolveShiftConflict\(snapshot,error\)/);
+    assert.match(app,/Обновить данные/);
   }
 );
 
@@ -661,7 +668,7 @@ test(
 
     assert.match(
       app,
-      /Данные обновляются автоматически\./
+      /Обновляется автоматически\. Последнее обновление:/
     );
 
     assert.match(

@@ -69,7 +69,8 @@ function resetData(){
     truncate public.payroll_events, public.payroll_period_entries,
       public.payroll_periods, public.employee_payouts, public.shift_bonuses,
       public.shift_penalties, public.shifts, public.employee_points,
-      public.point_tariffs, public.employee_point_rates cascade;
+      public.point_tariffs, public.employee_point_rates,
+      private.shift_write_operations cascade;
     delete from public.employees where not is_system_substitute;
     delete from public.points;
     select 1;
@@ -803,7 +804,7 @@ describe("закрытый период не меняется в обход",()=
           set local statement_timeout='10s';
           set local role authenticated;
           set local request.jwt.claim.sub=${literal(ADMIN)};
-          select public.admin_save_shift_v5('${uuid("30000000",index)}',1,'${uuid("40000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
+          select public.admin_save_shift_v5('${uuid("30000000",index)}',${index===3 ? 2 : 1},'${uuid("40000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
           commit;`)});
       }
       for(const writer of writers){

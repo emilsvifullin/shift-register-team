@@ -11,11 +11,23 @@ import {
   которым хранится сеанс. Сменить его — значит разлогинить всех, поэтому
   ключ дополнительно закреплён явно, а подмену хоста делает маршрутизатор.
 */
+const localConfig=
+  globalThis.__SHIFT_REGISTER_LOCAL_SUPABASE__;
+
+const useLocal=Boolean(
+  localConfig?.url &&
+  localConfig?.anonKey
+);
+
 const SUPABASE_PROXY_URL=
-  "https://shift-register-supabase-proxy.vercel.app";
+  useLocal
+    ? localConfig.url
+    : "https://shift-register-supabase-proxy.vercel.app";
 
 const SUPABASE_PROJECT_URL=
-  "https://rxosovinouuonwrrzigs.supabase.co";
+  useLocal
+    ? localConfig.url
+    : "https://rxosovinouuonwrrzigs.supabase.co";
 
 const SUPABASE_URL=
   SUPABASE_PROXY_URL;
@@ -24,10 +36,14 @@ const SUPABASE_FUNCTIONS_URL=
   `${SUPABASE_PROXY_URL}/functions/v1`;
 
 const SUPABASE_PUBLISHABLE_KEY=
-  "sb_publishable_f-tS0xagjlx2giW2k5u0hw_dxzEtV-v";
+  useLocal
+    ? localConfig.anonKey
+    : "sb_publishable_f-tS0xagjlx2giW2k5u0hw_dxzEtV-v";
 
 const SESSION_STORAGE_KEY=
-  "sb-shift-register-supabase-proxy-auth-token";
+  useLocal
+    ? "sb-shift-register-local-auth-token"
+    : "sb-shift-register-supabase-proxy-auth-token";
 
 function safeLocalStorage(){
   try{
@@ -39,10 +55,12 @@ function safeLocalStorage(){
 
 export const supabaseRoutes=
   createRouteFetch({
-    routes:[
-      {id:"proxy",base:SUPABASE_PROXY_URL},
-      {id:"direct",base:SUPABASE_PROJECT_URL}
-    ],
+    routes:useLocal
+      ? [{id:"local",base:SUPABASE_PROJECT_URL}]
+      : [
+          {id:"proxy",base:SUPABASE_PROXY_URL},
+          {id:"direct",base:SUPABASE_PROJECT_URL}
+        ],
     fetchImpl:(...args)=>globalThis.fetch(...args),
     storage:safeLocalStorage(),
     probeHeaders:{

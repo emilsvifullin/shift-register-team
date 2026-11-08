@@ -159,6 +159,34 @@ test(
 );
 
 test(
+  "shift writes require optimistic locking and idempotency",
+  async()=>{
+    const migration=await read(
+      "supabase/migrations/20261108004500_shift_optimistic_lock.sql"
+    );
+    const shifts=await read("src/api/shifts.js");
+    const readApi=await read("src/api/read.js");
+    const config=await read("supabase/config.toml");
+
+    assert.match(migration,/add column if not exists version integer not null default 1/);
+    assert.match(migration,/create table if not exists private\.shift_write_operations/);
+    assert.match(migration,/pg_advisory_xact_lock/);
+    assert.match(migration,/record_changed/);
+    assert.match(migration,/record_deleted/);
+    assert.match(migration,/operation_conflict/);
+    assert.match(migration,/create or replace function public\.admin_save_shift_v4/);
+    assert.match(migration,/optimistic_lock_required/);
+    assert.match(migration,/admin_delete_shift_v3/);
+    assert.match(shifts,/p_expected_version:value\.version/);
+    assert.match(shifts,/p_operation_id:value\.operationId/);
+    assert.match(shifts,/"admin_save_shift_v5"/);
+    assert.match(shifts,/"admin_delete_shift_v3"/);
+    assert.match(readApi,/updated_at,\s*version/);
+    assert.match(config,/password_hibp_enabled\s*=\s*true/);
+  }
+);
+
+test(
   "login entrypoint keeps the authentication contract",
   async()=>{
     const html=
@@ -1836,7 +1864,7 @@ test(
 
     assert.match(
       team,
-      /p_base_amount_override[\s\S]*p_base_amount_reason[\s\S]*\.rpc\(\s*"admin_save_shift_v4"/
+      /p_base_amount_override[\s\S]*p_base_amount_reason[\s\S]*\.rpc\(\s*"admin_save_shift_v5"/
     );
 
     /*

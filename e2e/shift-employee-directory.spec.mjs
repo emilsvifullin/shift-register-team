@@ -84,14 +84,14 @@ test("attach confirms separately, preserves the shift, and retries a failed read
   expect(await calls(page,"admin_attach_shift_employee")).toHaveLength(1);
   await expect(page.locator("#f-note")).toHaveValue("Черновик смены");
   await expect(page.locator("#f-shk")).toHaveValue("150");
-  expect(await calls(page,"admin_save_shift_v4")).toHaveLength(0);
+  expect(await calls(page,"admin_save_shift_v5")).toHaveLength(0);
 
   await page.evaluate(()=>{
     const client=globalThis.supabase.createClient();
     const rpc=client.rpc.bind(client);
     let rejectShift=true;
     client.rpc=(name,args)=>{
-      if(name==="admin_save_shift_v4" && rejectShift){
+      if(name==="admin_save_shift_v5" && rejectShift){
         rejectShift=false;
         return Promise.resolve({data:null,error:{message:"Контрольный отказ сохранения смены"}});
       }
@@ -104,7 +104,7 @@ test("attach confirms separately, preserves the shift, and retries a failed read
   await expect(page.locator("#f-note")).toHaveValue("Черновик смены");
   await page.locator("#sheetSave").click();
   await expect(page.locator("#sheet")).not.toHaveClass(/\bon\b/);
-  const saved=await calls(page,"admin_save_shift_v4");
+  const saved=await calls(page,"admin_save_shift_v5");
   expect(saved).toHaveLength(1);
   expect(saved[0].args).toMatchObject({p_employee_id:outsider,p_shk:150,p_note:"Черновик смены"});
   const links=await page.evaluate(id=>globalThis.__stubDb.employee_points.filter(link=>link.employee_id===id),outsider);
@@ -181,7 +181,7 @@ test("create from a multi-date calendar shift replays a lost response and restor
   expect(writes[0].args.p_phone).toBeNull();
   const cards=await page.evaluate(()=>globalThis.__stubDb.employees.filter(employee=>employee.full_name==="Сотрудник из календаря"));
   expect(cards).toHaveLength(1);
-  expect(await calls(page,"admin_save_shift_v4")).toHaveLength(0);
+  expect(await calls(page,"admin_save_shift_v5")).toHaveLength(0);
   await page.locator("#sheetCancel").click();
   await page.locator("#appConfirmOk").click();
   await expect(page.locator("#sheet")).not.toHaveClass(/\bon\b/);
@@ -410,7 +410,7 @@ test("new point from a shift preserves the draft and retries only the directory 
   expect((await calls(page,"admin_save_point"))[0].args).toMatchObject({
     p_active:true,p_effective_from:FROZEN_TODAY.toISOString().slice(0,10),p_fixed_rate:2600
   });
-  expect(await calls(page,"admin_save_shift_v4")).toHaveLength(0);
+  expect(await calls(page,"admin_save_shift_v5")).toHaveLength(0);
 });
 
 test("Back keeps the shift still while discard confirmation opens",async({page})=>{

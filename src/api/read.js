@@ -13,6 +13,8 @@ import {
 
 const SHIFT_SELECT=`
   id,
+  updated_at,
+  version,
   employee_id,
   shift_date,
   point_id,

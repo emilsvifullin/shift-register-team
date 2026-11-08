@@ -790,6 +790,8 @@ export function mapServerShift(
   return {
     v:3,
     id:row.id,
+    updatedAt:row.updated_at || "",
+    version:Number(row.version) || 1,
     employeeId:
       row.employee_id,
     employeeName:

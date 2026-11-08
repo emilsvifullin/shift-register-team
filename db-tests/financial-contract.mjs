@@ -69,7 +69,8 @@ function resetData(){
     truncate public.payroll_events, public.payroll_period_entries,
       public.payroll_periods, public.employee_payouts, public.shift_bonuses,
       public.shift_penalties, public.shifts, public.employee_points,
-      public.point_tariffs, public.employee_point_rates cascade;
+      public.point_tariffs, public.employee_point_rates,
+      private.shift_write_operations cascade;
     delete from public.employees where not is_system_substitute;
     delete from public.points;
     select 1;
@@ -719,7 +720,7 @@ describe("закрытый период не меняется в обход",()=
         set local statement_timeout='10s';
         set local role authenticated;
         set local request.jwt.claim.sub=${literal(ADMIN)};
-        select public.admin_save_shift_v4(${literal(shift)},${literal(MARINA)},'2026-09-03',${literal(POINT)},'main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);
+        select public.admin_save_shift_v5(${literal(shift)},1,${literal(uuid("40000000",1))},${literal(MARINA)},'2026-09-03',${literal(POINT)},'main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);
         commit;`);
       await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(saveName)} and wait_event_type='Lock'));`));
       closing=databaseSession(closeName,`begin;
@@ -748,7 +749,7 @@ describe("закрытый период не меняется в обход",()=
   });
 
   for(const [name,statement,error] of [
-    ["сохранение",()=>`public.admin_save_shift_v4('${uuid("30000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null)`,/payroll_period_closed/],
+    ["сохранение",()=>`public.admin_save_shift_v5('${uuid("30000000",1)}',1,'${uuid("40000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null)`,/payroll_period_closed/],
     ["удаление",()=>`public.admin_delete_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
     ["пересчёт",()=>`public.admin_reprice_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
     ["импорт",()=>`public.admin_import_legacy_shift('race-import','${MARINA}','${POINT}','2026-09-07','main',null,false,null,12,3000,'{"rate":3000,"fixed":true,"fullHours":12}','[]','[]')`,/payroll_period_closed/],
@@ -803,7 +804,7 @@ describe("закрытый период не меняется в обход",()=
           set local statement_timeout='10s';
           set local role authenticated;
           set local request.jwt.claim.sub=${literal(ADMIN)};
-          select public.admin_save_shift_v4('${uuid("30000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
+          select public.admin_save_shift_v5('${uuid("30000000",index)}',${index===3 ? 2 : 1},'${uuid("40000000",index)}','${employee}','${date}','${POINT}','main',null,false,null,'перенос','[]','[]',null,null,false,null);
           commit;`)});
       }
       for(const writer of writers){
@@ -831,7 +832,7 @@ describe("закрытый период не меняется в обход",()=
     const editing=databaseSession(editName,`begin;
       set local role authenticated;
       set local request.jwt.claim.sub=${literal(ADMIN)};
-      select public.admin_save_shift_v4('${uuid("30000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);`,{keepOpen:true});
+      select public.admin_save_shift_v5('${uuid("30000000",1)}',1,'${uuid("40000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null);`,{keepOpen:true});
     let closing;
     try{
       await waitForDatabase(()=>db.query(`select to_jsonb(exists(select 1 from pg_stat_activity where application_name=${literal(editName)} and state='idle in transaction'));`));
@@ -1003,7 +1004,19 @@ describe("деньги и права",()=>{
       where n.nspname='public' and p.proname like 'admin_%'
         and p.proname<>'admin_account_options_v2'
         and has_function_privilege('authenticated',p.oid,'EXECUTE');`);
-    assert.equal(gateways.length,28);
+    assert.equal(gateways.length,29);
+    assert.equal(
+      gateways.some(item=>item.name.includes("admin_save_shift_v4")),
+      false
+    );
+    assert.equal(
+      gateways.some(item=>item.name.includes("admin_save_shift_v5")),
+      true
+    );
+    assert.equal(
+      gateways.some(item=>item.name.includes("admin_delete_shift_v3")),
+      true
+    );
     for(const gateway of gateways){
       assert.equal(gateway.locked,true,gateway.name);
       assert.equal(gateway.admin,true,gateway.name);
@@ -1054,6 +1067,93 @@ describe("деньги и права",()=>{
         p_payout_kind:literal("first_half")
       }).error,
       /forbidden/
+    );
+
+    assert.equal(
+      db.query(`select to_jsonb(has_function_privilege('authenticated',${literal("public.admin_save_shift_v4(uuid,uuid,date,uuid,text,integer,boolean,numeric,text,jsonb,jsonb,numeric,text,boolean,text)")},'execute'));`),
+      false
+    );
+  });
+});
+
+describe("оптимистическая блокировка смен",()=>{
+  test("stale update, delete resurrection and duplicate retry are rejected",()=>{
+    resetData();
+    addPoint({id:POINT,name:"Комета",advance:false,rate:3000});
+    addEmployee({id:MARINA,name:"Марина",points:[POINT]});
+
+    const createOperation=uuid("40000000",1);
+    const payload={
+      p_shift_id:"null",
+      p_expected_version:"null",
+      p_operation_id:literal(createOperation),
+      p_employee_id:literal(MARINA),
+      p_shift_date:literal("2026-09-03"),
+      p_point_id:literal(POINT),
+      p_shift_type:literal("main"),
+      p_shk:"null",
+      p_partial:"false",
+      p_hours:"null",
+      p_note:literal("первая запись"),
+      p_bonuses:jsonLiteral([]),
+      p_penalties:jsonLiteral([]),
+      p_base_amount_override:"null",
+      p_base_amount_reason:"null",
+      p_force:"false",
+      p_reason:"null"
+    };
+
+    const created=db.rpc(ADMIN,"admin_save_shift_v5",payload);
+    assert.equal(created.error,null);
+    assert.equal(created.data.status,"saved");
+    assert.ok(created.data.version>0);
+    const firstVersion=created.data.version;
+
+    const retried=db.rpc(ADMIN,"admin_save_shift_v5",payload);
+    assert.equal(retried.error,null);
+    assert.equal(retried.data.shift_id,created.data.shift_id);
+
+    const winner=db.rpc(ADMIN,"admin_save_shift_v5",{
+      ...payload,
+      p_shift_id:literal(created.data.shift_id),
+      p_expected_version:String(firstVersion),
+      p_operation_id:literal(uuid("40000000",2)),
+      p_note:literal("свежая запись")
+    });
+    assert.equal(winner.error,null);
+    assert.ok(winner.data.version>firstVersion);
+    const winnerVersion=winner.data.version;
+
+    const stale=db.rpc(ADMIN,"admin_save_shift_v5",{
+      ...payload,
+      p_shift_id:literal(created.data.shift_id),
+      p_expected_version:String(firstVersion),
+      p_operation_id:literal(uuid("40000000",3)),
+      p_note:literal("устаревшая запись")
+    });
+    assert.match(stale.error,/record_changed/);
+
+    const deleted=db.rpc(ADMIN,"admin_delete_shift_v3",{
+      p_shift_id:literal(created.data.shift_id),
+      p_expected_version:String(winnerVersion),
+      p_operation_id:literal(uuid("40000000",4)),
+      p_force:"false",
+      p_reason:"null"
+    });
+    assert.equal(deleted.error,null);
+    assert.equal(deleted.data.status,"deleted");
+
+    const resurrect=db.rpc(ADMIN,"admin_save_shift_v5",{
+      ...payload,
+      p_shift_id:literal(created.data.shift_id),
+      p_expected_version:String(winnerVersion),
+      p_operation_id:literal(uuid("40000000",5)),
+      p_note:literal("воскресшая запись")
+    });
+    assert.match(resurrect.error,/record_deleted/);
+    assert.equal(
+      db.query(`select count(*) from public.shifts where id=${literal(created.data.shift_id)};`),
+      0
     );
   });
 });

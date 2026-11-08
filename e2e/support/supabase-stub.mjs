@@ -166,6 +166,7 @@ export function stubScript(seed){
 
   db.saved_shifts=[];
   const directoryReceipts=new Map();
+  const shiftReceipts=new Map();
 
   globalThis.__stubDb=db;
   globalThis.__stubCalls=[];
@@ -776,6 +777,51 @@ export function stubScript(seed){
       return args.p_employee_id;
     },
     /* Расчётные периоды: те же переходы, что и на сервере. */
+    admin_save_shift_v5(args){
+      const operationId=args.p_operation_id;
+      if(!operationId) throw new Error("operation_id_required");
+
+      const requestHash=JSON.stringify({
+        ...args,
+        p_operation_id:undefined
+      });
+      const prior=shiftReceipts.get(operationId);
+      if(prior){
+        if(prior.requestHash!==requestHash) throw new Error("operation_conflict");
+        return prior.result;
+      }
+
+      const isCreate=!args.p_shift_id;
+      const existing=isCreate
+        ? null
+        : db.shifts.find(item=>item.id===args.p_shift_id);
+      if(!isCreate && !existing) throw new Error("record_deleted");
+      if(!isCreate && Number(existing.version || 1)!==Number(args.p_expected_version)){
+        throw new Error("record_changed");
+      }
+      if(isCreate && args.p_expected_version!==null && args.p_expected_version!==undefined){
+        throw new Error("invalid_create_version");
+      }
+
+      const normalized={
+        ...args,
+        p_shift_id:args.p_shift_id || "shift-"+(db.shifts.length+1)
+      };
+      const previousVersion=existing ? Number(existing.version || 1) : 0;
+      const result=rpc.admin_save_shift_v4(normalized);
+      const row=db.shifts.find(item=>item.id===normalized.p_shift_id);
+      if(row) row.version=previousVersion+1;
+      const payload={
+        status:"saved",
+        shift_id:normalized.p_shift_id,
+        version:row?.version || 1,
+        result
+      };
+      shiftReceipts.set(operationId,{requestHash,result:payload});
+      return {
+        ...payload
+      };
+    },
     admin_save_shift_v4(args){
       const existing=(db.shifts || []).find(item=>
         item.id===args.p_shift_id
@@ -802,6 +848,28 @@ export function stubScript(seed){
         },
         ()=>rpc.admin_save_shift_v3(args)
       );
+    },
+    admin_delete_shift_v3(args){
+      const operationId=args.p_operation_id;
+      if(!operationId) throw new Error("operation_id_required");
+      const requestHash=JSON.stringify({
+        ...args,
+        p_operation_id:undefined
+      });
+      const prior=shiftReceipts.get(operationId);
+      if(prior){
+        if(prior.requestHash!==requestHash) throw new Error("operation_conflict");
+        return prior.result;
+      }
+      const shift=(db.shifts || []).find(item=>item.id===args.p_shift_id);
+      if(!shift) throw new Error("record_deleted");
+      if(Number(shift.version || 1)!==Number(args.p_expected_version)){
+        throw new Error("record_changed");
+      }
+      const result=rpc.admin_delete_shift_v2(args);
+      const payload={status:"deleted",shift_id:args.p_shift_id,result};
+      shiftReceipts.set(operationId,{requestHash,result:payload});
+      return payload;
     },
     admin_delete_shift_v2(args){
       const shift=(db.shifts || []).find(item=>
@@ -924,7 +992,8 @@ export function stubScript(seed){
         amount,paid_on:args.p_paid_on,
         comment:String(args.p_comment || "").trim() || null,
         is_advance:Boolean(args.p_is_advance),
-        updated_at:new Date().toISOString()
+        updated_at:new Date().toISOString(),
+        version:existing?.version || 1
       });
       const id=record.id;
 

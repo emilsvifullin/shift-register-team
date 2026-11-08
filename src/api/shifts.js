@@ -31,7 +31,9 @@ function adjustmentPayload(
 
 function shiftPayload(value){
   return {
-    p_shift_id:value.id,
+    p_shift_id:value.version ? value.id : null,
+    p_expected_version:value.version || null,
+    p_operation_id:value.operationId || globalThis.crypto.randomUUID(),
     p_employee_id:value.employeeId,
     p_shift_date:value.date,
     p_point_id:value.dbPointId,
@@ -92,7 +94,7 @@ export async function saveAdminShift(
 ){
   return resultData(
     await supabaseClient.rpc(
-      "admin_save_shift_v4",
+      "admin_save_shift_v5",
       {
         ...shiftPayload(value),
         p_force:force,
@@ -127,14 +129,16 @@ export async function repriceAdminShift(
 
 export async function deleteAdminShift(
   id,
-  {force=false,reason=null}={}
+  {force=false,reason=null,version=null,operationId=null}={}
 ){
   const result=
     await supabaseClient
       .rpc(
-        "admin_delete_shift_v2",
+        "admin_delete_shift_v3",
         {
           p_shift_id:id,
+          p_expected_version:version,
+          p_operation_id:operationId || globalThis.crypto.randomUUID(),
           p_force:force,
           p_reason:reason
         }

@@ -31,7 +31,7 @@ test("a delayed batch locks editing and dismissal until every original payload i
     const rpc=client.rpc.bind(client);
     let first=true;
     client.rpc=async(name,args)=>{
-      if(name==="admin_save_shift_v4" && first){
+      if(name==="admin_save_shift_v5" && first){
         first=false;
         globalThis.__batchWaiting=true;
         await new Promise(resolve=>{globalThis.__releaseBatch=resolve;});
@@ -67,7 +67,7 @@ test("declining the closed second half keeps only retry dates and never overwrit
     const rpc=client.rpc.bind(client);
     let declineOnce=true;
     client.rpc=(name,args)=>{
-      if(name==="admin_save_shift_v4" && args.p_shift_date==="2026-09-16" && declineOnce){
+      if(name==="admin_save_shift_v5" && args.p_shift_date==="2026-09-16" && declineOnce){
         declineOnce=false;
         return Promise.resolve({data:null,error:{message:"payroll_period_closed:2026-09-01:second_half:closed"}});
       }

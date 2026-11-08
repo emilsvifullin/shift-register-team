@@ -2142,6 +2142,8 @@ async function deleteShiftBatch(list,done){
 
     try{
       await deleteAdminShift(shift.id,{
+        version:shift.version,
+        operationId:createTeamId(),
         force:allowed.has(key),
         reason:"Массовое удаление смен"
       });
@@ -2184,6 +2186,8 @@ async function deleteShiftBatch(list,done){
 
       try{
         await deleteAdminShift(shift.id,{
+          version:shift.version,
+          operationId:createTeamId(),
           force:true,
           reason:"Массовое удаление смен"
         });
@@ -13330,6 +13334,7 @@ function normalizedDraft(value){
 
   return {
     ...cloneShiftDraft(value),
+    operationId:value.operationId || globalThis.crypto.randomUUID(),
     point:point.name,
     pointId:point.code || point.id,
     employeeName:employee.full_name,
@@ -16351,6 +16356,7 @@ document.getElementById("sheetSave").onclick=async()=>{
   const prepared=chosen.map((date,index)=>normalizedDraft({
     ...snapshot,
     id:index ? createTeamId() : snapshot.id,
+    operationId:createTeamId(),
     date,
     bonuses:snapshot.bonuses.map(item=>({...item,id:createTeamId()})),
     penalties:snapshot.penalties.map(item=>({...item,id:createTeamId()}))
@@ -17057,9 +17063,14 @@ document.getElementById("sheetBody").addEventListener("click",async e=>{
     if(!confirmed) return;
 
     try{
+      const operationId=createTeamId();
       const removed=await withClosedPeriodConfirm(
         "Удалить смену",
-        force=>deleteAdminShift(draft.id,{force})
+        force=>deleteAdminShift(draft.id,{
+          version:draft.version,
+          operationId,
+          force
+        })
       );
 
       if(removed===PERIOD_CHANGE_DECLINED){

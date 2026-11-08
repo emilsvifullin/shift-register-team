@@ -7,6 +7,8 @@
     "test": "node --test",
     "check:syntax": "node ./scripts/check-source.mjs",
     "stamp:sw": "node ./scripts/stamp-sw.mjs",
+    "check:migrations": "node ./scripts/check-migration-state.mjs",
+    "local:review": "node ./scripts/local-review.mjs",
     "serve": "node ./scripts/serve.mjs",
     "check": "npm run check:syntax && node --test",
     "test:db": "node --test db-tests/financial-contract.mjs",

@@ -1,0 +1,5 @@
+# Local Supabase defaults used by staging and isolated developer instances.
+# Production Auth settings are managed separately in the Supabase dashboard.
+
+[auth]
+password_hibp_enabled = true

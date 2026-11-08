@@ -42,6 +42,21 @@ const server=createServer(async(request,response)=>{
     return;
   }
 
+  if(path==="/local-supabase-config.js"){
+    const url=String(process.env.LOCAL_SUPABASE_URL || "").trim();
+    const anonKey=String(process.env.LOCAL_SUPABASE_ANON_KEY || "").trim();
+    const body=url && anonKey
+      ? `globalThis.__SHIFT_REGISTER_LOCAL_SUPABASE__=${JSON.stringify({url,anonKey})};`
+      : "globalThis.__SHIFT_REGISTER_LOCAL_SUPABASE__=null;";
+    response.writeHead(200,{
+      "content-type":"text/javascript; charset=utf-8",
+      "cache-control":"no-store",
+      "content-length":Buffer.byteLength(body)
+    });
+    response.end(body);
+    return;
+  }
+
   if(path.endsWith("/")){
     path+="index.html";
   }

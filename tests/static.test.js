@@ -187,6 +187,23 @@ test(
 );
 
 test(
+  "application migrations do not depend on managed Supabase event triggers",
+  async()=>{
+    const hardening=await read(
+      "supabase/migrations/20260822132637_harden_security_definer_functions.sql"
+    );
+    const workflow=await read(
+      "supabase/migrations/20260823230320_complete_team_workflow.sql"
+    );
+    const bootstrap=await read("db-tests/bootstrap.sql");
+
+    assert.doesNotMatch(hardening,/revoke all on function public\.rls_auto_enable/);
+    assert.doesNotMatch(workflow,/revoke all on function public\.rls_auto_enable/);
+    assert.doesNotMatch(bootstrap,/create function public\.rls_auto_enable/);
+  }
+);
+
+test(
   "login entrypoint keeps the authentication contract",
   async()=>{
     const html=
@@ -443,7 +460,7 @@ test(
     */
     assert.match(
       login,
-      /connect-src 'self' https:\/\/shift-register-supabase-proxy\.vercel\.app https:\/\/rxosovinouuonwrrzigs\.supabase\.co;/
+      /connect-src 'self' http:\/\/127\.0\.0\.1:54321 ws:\/\/127\.0\.0\.1:54321 https:\/\/shift-register-supabase-proxy\.vercel\.app https:\/\/rxosovinouuonwrrzigs\.supabase\.co;/
     );
 
     assert.match(

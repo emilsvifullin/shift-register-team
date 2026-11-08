@@ -46,12 +46,5 @@ grant execute on function auth.uid() to anon, authenticated, service_role;
 
 create publication supabase_realtime;
 
--- Supabase ставит эту функцию событийным триггером; миграции только
--- отзывают у неё права.
-create function public.rls_auto_enable()
-returns event_trigger
-language plpgsql
-as $$
-begin
-end;
-$$;
+-- Managed Supabase may install platform event triggers, but application
+-- migrations must not assume that platform-only objects exist locally.

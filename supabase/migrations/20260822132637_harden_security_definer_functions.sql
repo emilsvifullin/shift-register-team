@@ -151,6 +151,8 @@ using (private.is_admin());
 
 revoke all on function public.handle_new_auth_user() from public, anon, authenticated;
 revoke all on function public.write_audit_log() from public, anon, authenticated;
-revoke all on function public.rls_auto_enable() from public, anon, authenticated;
+-- `rls_auto_enable()` is a Supabase platform event trigger, not an
+-- application migration object. A clean local database does not create it,
+-- so this migration must not depend on its presence.
 revoke all on function public.is_admin() from public, anon, authenticated;
 drop function public.is_admin();

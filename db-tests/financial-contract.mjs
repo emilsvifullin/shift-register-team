@@ -70,7 +70,7 @@ function resetData(){
       public.payroll_periods, public.employee_payouts, public.shift_bonuses,
       public.shift_penalties, public.shifts, public.employee_points,
       public.point_tariffs, public.employee_point_rates,
-      private.shift_write_operations cascade;
+      private.shift_write_operations, private.shift_tombstones cascade;
     delete from public.employees where not is_system_substitute;
     delete from public.points;
     select 1;
@@ -750,7 +750,7 @@ describe("закрытый период не меняется в обход",()=
 
   for(const [name,statement,error] of [
     ["сохранение",()=>`public.admin_save_shift_v5('${uuid("30000000",1)}',1,'${uuid("40000000",1)}','${MARINA}','2026-09-03','${POINT}','main',null,false,null,'изменение','[]','[]',4000,'исправление',false,null)`,/payroll_period_closed/],
-    ["удаление",()=>`public.admin_delete_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
+    ["удаление",()=>`public.admin_delete_shift_v3('${uuid("30000000",1)}',1,'${uuid("40000000",7)}',false,null)`,/payroll_period_closed/],
     ["пересчёт",()=>`public.admin_reprice_shift_v2('${uuid("30000000",1)}',false,null)`,/payroll_period_closed/],
     ["импорт",()=>`public.admin_import_legacy_shift('race-import','${MARINA}','${POINT}','2026-09-07','main',null,false,null,12,3000,'{"rate":3000,"fixed":true,"fullHours":12}','[]','[]')`,/payroll_period_closed/],
     ["каскад ПВЗ",()=>`public.admin_delete_point_cascade('${POINT}','Корабельная 1')`,/point_has_closed_period/]
@@ -860,8 +860,10 @@ describe("закрытый период не меняется в обход",()=
     scene();
     closePeriod("first_half");
 
-    const remove=force=>db.rpc(ADMIN,"admin_delete_shift_v2",{
+    const remove=force=>db.rpc(ADMIN,"admin_delete_shift_v3",{
       p_shift_id:literal(uuid("30000000",3)),
+      p_expected_version:"1",
+      p_operation_id:literal(uuid("40000000",8)),
       p_force:String(force),
       p_reason:literal("ошибка ввода")
     });
@@ -890,8 +892,10 @@ describe("закрытый период не меняется в обход",()=
     /* 21 000 за первую половину: 20 000 — 25-го, 1 000 — 10-го. */
     closePeriod("second_half");
 
-    const remove=force=>db.rpc(ADMIN,"admin_delete_shift_v2",{
+    const remove=force=>db.rpc(ADMIN,"admin_delete_shift_v3",{
       p_shift_id:literal(uuid("40000000",1)),
+      p_expected_version:"1",
+      p_operation_id:literal(uuid("40000000",9)),
       p_force:String(force),
       p_reason:"null"
     });
@@ -1004,7 +1008,7 @@ describe("деньги и права",()=>{
       where n.nspname='public' and p.proname like 'admin_%'
         and p.proname<>'admin_account_options_v2'
         and has_function_privilege('authenticated',p.oid,'EXECUTE');`);
-    assert.equal(gateways.length,29);
+    assert.equal(gateways.length,27);
     assert.equal(
       gateways.some(item=>item.name.includes("admin_save_shift_v4")),
       false
@@ -1016,6 +1020,14 @@ describe("деньги и права",()=>{
     assert.equal(
       gateways.some(item=>item.name.includes("admin_delete_shift_v3")),
       true
+    );
+    assert.equal(
+      gateways.some(item=>item.name.includes("admin_delete_shift_v2")),
+      false
+    );
+    assert.equal(
+      gateways.some(item=>item.name.includes("admin_delete_point(uuid)")),
+      false
     );
     for(const gateway of gateways){
       assert.equal(gateway.locked,true,gateway.name);
@@ -1151,6 +1163,14 @@ describe("оптимистическая блокировка смен",()=>{
       p_note:literal("воскресшая запись")
     });
     assert.match(resurrect.error,/record_deleted/);
+    const missing=db.rpc(ADMIN,"admin_save_shift_v5",{
+      ...payload,
+      p_shift_id:literal(uuid("50000000",1)),
+      p_expected_version:"1",
+      p_operation_id:literal(uuid("40000000",6)),
+      p_note:literal("несуществующая запись")
+    });
+    assert.match(missing.error,/record_not_found/);
     assert.equal(
       db.query(`select count(*) from public.shifts where id=${literal(created.data.shift_id)};`),
       0

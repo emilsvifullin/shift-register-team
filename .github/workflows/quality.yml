@@ -183,15 +183,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Supabase CLI
-        uses: supabase/setup-cli@v1
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
         with:
-          version: 2.116.0
+          node-version: 22
 
       - name: Verify remote migration state
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_PROJECT_REF: rxosovinouuonwrrzigs
         run: npm run check:migrations
 
       # Сайт — ровно отслеживаемые файлы этой версии, как их отдавала

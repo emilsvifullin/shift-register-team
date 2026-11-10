@@ -78,8 +78,9 @@ authenticated grants для `admin_save_shift_v4`, `admin_delete_shift_v2` и
 
 ## 6. Production smoke и сохранность данных
 
-После утверждения release и прохождения пунктов 1–5 задать GitHub secrets
-`SUPABASE_ACCESS_TOKEN` и `SUPABASE_PROJECT_REF`, дождаться зелёного CI и только
+Для полного плана после утверждения release и прохождения пунктов 1–5 добавить
+токен Supabase с правом `database_migrations_read` в секрет
+`SUPABASE_ACCESS_TOKEN` окружения `github-pages`, дождаться зелёного CI и только
 затем разрешить production deploy job. Перед deploy снять read-only snapshot
 количеств строк и контрольных сумм старых финансовых полей. После deploy
 повторить snapshot, войти администратором и проверить чтение смен, итогов,

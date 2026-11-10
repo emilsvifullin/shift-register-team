@@ -11,9 +11,11 @@ Set `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF`, then run:
 npm run check:migrations
 ```
 
-The command uses `supabase db push --dry-run --skip-vault` and never writes to
-the database. It fails closed if the remote migration state is behind or the
-CLI is unavailable.
+The production job uses the Supabase Management API to read the migration
+history of the project configured in the workflow. Its fine-grained access token
+needs only `database_migrations_read`. Any version mismatch or API failure blocks
+deployment. For a local database, set `SUPABASE_DB_URL` to use the Supabase CLI
+dry run.
 
 ## Staging race and idempotency checks
 
